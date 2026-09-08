@@ -86,7 +86,7 @@ test('macOS 更新通道按 CPU 架构隔离', () => {
 })
 
 test('更新错误不得回传本地路径', () => {
-  assert.equal(publicDesktopUpdateError(new Error('ENOENT: D:\\Tools\\DSH Desktop\\latest.yml')), '桌面端更新失败，请查看桌面日志。')
+  assert.equal(publicDesktopUpdateError(new Error('ENOENT: D:\\Tools\\DSH My Desktop\\latest.yml')), '桌面端更新失败，请查看桌面日志。')
   assert.match(publicDesktopUpdateError(new Error('getaddrinfo ENOTFOUND github.com')), /无法检查/)
 })
 

@@ -38,7 +38,7 @@
   Pop $0
 !macroend
 
-; 只按精确进程名结束主程序。Uninstall DSH Desktop.exe 包含主程序文件名，
+; 只按精确进程名结束主程序。Uninstall DSH My Desktop.exe 包含主程序文件名，
 ; 不能用子串，否则卸载器会被当成仍在运行并自己退出。
 !macro desktopAppIsRunning _RESULT
   nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "if (@(Get-CimInstance Win32_Process | Where-Object { $$_.Name -eq ''${APP_EXECUTABLE_FILENAME}'' }).Count -gt 0) { exit 0 } else { exit 1 }"'
@@ -100,8 +100,8 @@
 !macro customUnInstall
   SetShellVarContext current
   !insertmacro safeKillDesktopProcesses
-  RMDir /r "$APPDATA\DSH Desktop"
-  RMDir /r "$LOCALAPPDATA\DSH Desktop"
+  RMDir /r "$APPDATA\DSH My Desktop"
+  RMDir /r "$LOCALAPPDATA\DSH My Desktop"
   DeleteRegKey HKCU "Software\${APP_GUID}"
   DeleteRegKey HKLM "Software\${APP_GUID}"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}"

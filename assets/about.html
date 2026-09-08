@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>关于 DSH Desktop</title>
+  <title>关于 DSH My Desktop</title>
   <script>document.documentElement.dataset.colorScheme=new URLSearchParams(location.search).get('theme')==='light'?'light':'dark'</script>
   <style>
     :root{color-scheme:dark;font-family:Inter,"Segoe UI","Microsoft YaHei UI",sans-serif;background:#202322;color:#eef0ef}
@@ -35,13 +35,13 @@
 </head>
 <body>
   <header class="titlebar">
-    <span id="windowTitle" class="titlebar-title">关于 DSH Desktop</span>
+    <span id="windowTitle" class="titlebar-title">关于 DSH My Desktop</span>
     <button id="close" class="titlebar-close" type="button" aria-label="关闭"><img src="shell-icons/xmark.svg" alt=""></button>
   </header>
   <main>
     <section class="hero">
-      <img class="icon" src="icon.png" alt="DSH Desktop">
-      <div><h1>DSH Desktop</h1><p id="tagline" class="tagline">面向 DeepSeek Harness 的跨平台桌面客户端</p></div>
+      <img class="icon" src="icon.png" alt="DSH My Desktop">
+      <div><h1>DSH My Desktop</h1><p id="tagline" class="tagline">面向 DeepSeek Harness 的跨平台桌面客户端</p></div>
     </section>
     <dl class="card meta">
       <dt id="desktopLabel">桌面版本</dt><dd id="desktopVersion">—</dd>
@@ -57,11 +57,11 @@
       <button id="releases" class="primary" type="button">查看新功能</button>
       <button id="feedback" type="button">问题反馈</button>
     </div>
-    <footer id="footer">MIT 开源许可 · DSH Desktop 不存储你的模型凭据。</footer>
+    <footer id="footer">MIT 开源许可 · DSH My Desktop 不存储你的模型凭据。</footer>
   </main>
   <script>
     const api=window.dshShell;
-    function applyBootstrap(value){const zh=value.locale.startsWith('zh');document.documentElement.lang=value.locale;document.documentElement.dataset.colorScheme=value.colorScheme;document.documentElement.style.colorScheme=value.colorScheme;document.title=zh?'关于 DSH Desktop':'About DSH Desktop';document.getElementById('windowTitle').textContent=document.title;document.getElementById('close').setAttribute('aria-label',zh?'关闭':'Close');document.getElementById('desktopVersion').textContent=`v${value.version}`;document.getElementById('runtimeVersion').textContent=value.runtimeVersion;document.getElementById('platform').textContent=value.platform;document.getElementById('tagline').textContent=zh?'面向 DeepSeek Harness 的跨平台桌面客户端':'A cross-platform desktop client for DeepSeek Harness';document.getElementById('desktopLabel').textContent=zh?'桌面版本':'Desktop version';document.getElementById('runtimeLabel').textContent=zh?'DSH 运行时':'DSH runtime';document.getElementById('platformLabel').textContent=zh?'运行平台':'Platform';document.getElementById('aboutTitle').textContent=zh?'关于这个项目':'About this project';document.getElementById('aboutCopy').textContent=zh?'把本地项目、会话、插件、自动化与智能体工作流集中在一个原生桌面窗口中，同时保留 DeepSeek Harness 的开放插件能力。':'Bring local projects, chats, plugins, automations, and agent workflows into one native desktop window while preserving the open DeepSeek Harness plugin model.';document.getElementById('features').innerHTML=zh?'<li>按项目管理聊天和工作区</li><li>原生菜单、托盘、快捷键与安全重载</li><li>由 luoxunhao 维护的开源桌面应用</li>':'<li>Project-based chats and workspaces</li><li>Native menus, tray, shortcuts, and safe reload</li><li>Open-source desktop app maintained by luoxunhao</li>';document.getElementById('releases').textContent=zh?'查看新功能':"What's new";document.getElementById('feedback').textContent=zh?'问题反馈':'Send feedback';document.getElementById('footer').textContent=zh?'MIT 开源许可 · DSH Desktop 不存储你的模型凭据。':'MIT licensed · DSH Desktop does not store your model credentials.'}
+    function applyBootstrap(value){const zh=value.locale.startsWith('zh');document.documentElement.lang=value.locale;document.documentElement.dataset.colorScheme=value.colorScheme;document.documentElement.style.colorScheme=value.colorScheme;document.title=zh?'关于 DSH My Desktop':'About DSH My Desktop';document.getElementById('windowTitle').textContent=document.title;document.getElementById('close').setAttribute('aria-label',zh?'关闭':'Close');document.getElementById('desktopVersion').textContent=`v${value.version}`;document.getElementById('runtimeVersion').textContent=value.runtimeVersion;document.getElementById('platform').textContent=value.platform;document.getElementById('tagline').textContent=zh?'面向 DeepSeek Harness 的跨平台桌面客户端':'A cross-platform desktop client for DeepSeek Harness';document.getElementById('desktopLabel').textContent=zh?'桌面版本':'Desktop version';document.getElementById('runtimeLabel').textContent=zh?'DSH 运行时':'DSH runtime';document.getElementById('platformLabel').textContent=zh?'运行平台':'Platform';document.getElementById('aboutTitle').textContent=zh?'关于这个项目':'About this project';document.getElementById('aboutCopy').textContent=zh?'把本地项目、会话、插件、自动化与智能体工作流集中在一个原生桌面窗口中，同时保留 DeepSeek Harness 的开放插件能力。':'Bring local projects, chats, plugins, automations, and agent workflows into one native desktop window while preserving the open DeepSeek Harness plugin model.';document.getElementById('features').innerHTML=zh?'<li>按项目管理聊天和工作区</li><li>原生菜单、托盘、快捷键与安全重载</li><li>由 luoxunhao 维护的开源桌面应用</li>':'<li>Project-based chats and workspaces</li><li>Native menus, tray, shortcuts, and safe reload</li><li>Open-source desktop app maintained by luoxunhao</li>';document.getElementById('releases').textContent=zh?'查看新功能':"What's new";document.getElementById('feedback').textContent=zh?'问题反馈':'Send feedback';document.getElementById('footer').textContent=zh?'MIT 开源许可 · DSH My Desktop 不存储你的模型凭据。':'MIT licensed · DSH My Desktop does not store your model credentials.'}
     api.getBootstrap().then(applyBootstrap);api.onBootstrap(applyBootstrap);
     document.getElementById('close').addEventListener('click',()=>window.close());
     document.getElementById('releases').addEventListener('click',()=>api.action('whats-new'));

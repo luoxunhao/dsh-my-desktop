@@ -107,7 +107,7 @@ test('Windows 根目录图标不会进入 macOS 应用包', async () => {
   }
   assert.equal(manifest.build?.extraFiles, undefined)
   assert.equal(
-    manifest.build?.win?.extraFiles?.some(item => item.from === 'assets/icons/icon.ico' && item.to === 'DSH Desktop.ico'),
+    manifest.build?.win?.extraFiles?.some(item => item.from === 'assets/icons/icon.ico' && item.to === 'DSH My Desktop.ico'),
     true,
   )
 })
@@ -142,17 +142,17 @@ test('打包前删除 pnpm store 的 projects 链接，避免 7zip 扫到断裂�
   }
 })
 
-test('安装器产品名、进程名和安装目录都使用 DSH Desktop', async () => {
+test('安装器产品名、进程名和安装目录都使用 DSH My Desktop', async () => {
   const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
     desktopName?: string
     build?: { productName?: string, executableName?: string, nsis?: { include?: string, shortcutName?: string, uninstallDisplayName?: string } }
   }
-  assert.equal(manifest.build?.productName, 'DSH Desktop')
-  assert.equal(manifest.desktopName, 'DSH Desktop')
-  assert.equal(manifest.build?.executableName, 'DSH Desktop')
+  assert.equal(manifest.build?.productName, 'DSH My Desktop')
+  assert.equal(manifest.desktopName, 'DSH My Desktop')
+  assert.equal(manifest.build?.executableName, 'DSH My Desktop')
   assert.equal(manifest.build?.nsis?.include, 'build/installer.nsh')
-  assert.equal(manifest.build?.nsis?.shortcutName, 'DSH Desktop')
-  assert.equal(manifest.build?.nsis?.uninstallDisplayName, 'DSH Desktop')
+  assert.equal(manifest.build?.nsis?.shortcutName, 'DSH My Desktop')
+  assert.equal(manifest.build?.nsis?.uninstallDisplayName, 'DSH My Desktop')
   const installer = await readFile(new URL('../../build/installer.nsh', import.meta.url), 'utf8')
   assert.match(installer, /APP_FILENAME/)
   assert.match(installer, /onVerifyInstDir/)
@@ -206,7 +206,7 @@ test('打包配置包含恢复页及其运行依赖', async () => {
 
 test('Windows 冒烟检查使用实际产品可执行文件名', async () => {
   const workflow = await readFile(new URL('../../.github/workflows/desktop-package.yml', import.meta.url), 'utf8')
-  assert.match(workflow, /release\\win-unpacked\\DSH Desktop\.exe/)
+  assert.match(workflow, /release\\win-unpacked\\DSH My Desktop\.exe/)
 })
 
 test('官方运行时使用 npm 安装以兼容预发布 peer 依赖', () => {
@@ -301,7 +301,7 @@ test('首启页面会向辅助技术播报初始化阶段', async () => {
   assert.match(startup, /role="status"/)
   assert.match(startup, /aria-live="polite"/)
   assert.match(startup, /aria-atomic="true"/)
-  assert.match(startup, /<h1>DSH Desktop<\/h1>/)
+  assert.match(startup, /<h1>DSH My Desktop<\/h1>/)
 })
 
 test('Windows 冒烟兼容 alpha.2+ 启动 token 鉴权', async () => {
@@ -415,9 +415,9 @@ test('更新产物使用不会被 GitHub 改写的固定文件名', async () => 
       linux?: { artifactName?: string }
     }
   }
-  assert.equal(manifest.build?.win?.artifactName, 'dsh-desktop-${version}-win-${arch}.${ext}')
-  assert.equal(manifest.build?.mac?.artifactName, 'dsh-desktop-${version}-mac-${arch}.${ext}')
-  assert.equal(manifest.build?.linux?.artifactName, 'dsh-desktop-${version}-linux-${arch}.${ext}')
+  assert.equal(manifest.build?.win?.artifactName, 'dsh-my-desktop-${version}-win-${arch}.${ext}')
+  assert.equal(manifest.build?.mac?.artifactName, 'dsh-my-desktop-${version}-mac-${arch}.${ext}')
+  assert.equal(manifest.build?.linux?.artifactName, 'dsh-my-desktop-${version}-linux-${arch}.${ext}')
 })
 
 test('macOS 双架构使用各自的更新通道元数据', async () => {

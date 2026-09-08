@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { dirname, join, win32 } from 'node:path'
 
-export const DESKTOP_APP_NAME = 'DSH Desktop'
+export const DESKTOP_APP_NAME = 'DSH My Desktop'
 export const DESKTOP_USER_DATA_DIR = DESKTOP_APP_NAME
 export const DESKTOP_APP_USER_MODEL_ID = 'ai.micheng.deepseekHarnessDesktop'
 export const DESKTOP_TOAST_ACTIVATOR_CLSID = '{9D7BD1F0-EB17-48E8-AC4A-5347F81E719A}'

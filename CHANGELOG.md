@@ -4,7 +4,7 @@
 
 ## 0.1.0
 
-Initial release of **DSH Desktop**, a native Electron launcher for
+Initial release of **DSH My Desktop**, a native Electron launcher for
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
 This version is a launcher / desktop shell:

@@ -21,7 +21,7 @@ test('installer.nsh 在使用 LogicLib 宏前必须引入 LogicLib.nsh', async (
   assert.match(source, /customUnInstall/)
   assert.match(source, /taskkill\.exe/)
   assert.match(source, /\$\{APP_EXECUTABLE_FILENAME\}/)
-  assert.match(source, /\$APPDATA\\DSH Desktop/)
+  assert.match(source, /\$APPDATA\\DSH My Desktop/)
   assert.doesNotMatch(source, /userdata-dir\.txt/)
   assert.doesNotMatch(source, /DeepSeek Harness Desktop/)
   assert.doesNotMatch(source, /\\.dsh/)

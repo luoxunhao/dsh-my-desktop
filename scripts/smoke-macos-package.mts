@@ -10,7 +10,7 @@ import { verifyBundledPluginsInstalled } from './smoke-packaged-plugins.mjs'
 const execFileAsync = promisify(execFile)
 const startupTimeoutMs = 180_000
 
-export function resolveMacApplicationExecutable(applicationBundle: string, executableName = 'DSH Desktop'): string {
+export function resolveMacApplicationExecutable(applicationBundle: string, executableName = 'DSH My Desktop'): string {
   return join(applicationBundle, 'Contents', 'MacOS', executableName)
 }
 

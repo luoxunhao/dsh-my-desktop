@@ -1,4 +1,4 @@
-# DSH Desktop — Windows x64 打包脚本
+# DSH My Desktop — Windows x64 打包脚本
 #
 # 在项目根目录以 PowerShell 运行本脚本，产出 NSIS 安装器 (.exe) 与 .zip 到 release\。
 #
@@ -9,9 +9,9 @@
 #   - 首次运行会从 registry.npmjs.org 装配官方 DSH 运行时与随包 pnpm，需要网络。
 #
 # 用法：  powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
-# 产物：  release\dsh-desktop-<version>-win-x64.exe  （NSIS 安装器）
-#         release\dsh-desktop-<version>-win-x64.zip
-#         release\win-unpacked\DSH Desktop.exe           （免安装解包版）
+# 产物：  release\dsh-my-desktop-<version>-win-x64.exe  （NSIS 安装器）
+#         release\dsh-my-desktop-<version>-win-x64.zip
+#         release\win-unpacked\DSH My Desktop.exe           （免安装解包版）
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

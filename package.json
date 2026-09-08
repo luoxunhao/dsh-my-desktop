@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "DeepSeek Harness 原生桌面启动器",
   "author": "luoxunhao",
-  "desktopName": "DSH Desktop",
+  "desktopName": "DSH My Desktop",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -44,7 +44,7 @@
   },
   "build": {
     "appId": "ai.micheng.deepseekHarnessDesktop",
-    "productName": "DSH Desktop",
+    "productName": "DSH My Desktop",
     "icon": "assets/icon.png",
     "asar": true,
     "afterPack": "dist/scripts/adhoc-sign.mjs",
@@ -170,14 +170,14 @@
       "extraFiles": [
         {
           "from": "assets/icons/icon.ico",
-          "to": "DSH Desktop.ico"
+          "to": "DSH My Desktop.ico"
         }
       ],
       "target": [
         "nsis",
         "zip"
       ],
-      "artifactName": "dsh-desktop-${version}-win-${arch}.${ext}"
+      "artifactName": "dsh-my-desktop-${version}-win-${arch}.${ext}"
     },
     "mac": {
       "icon": "assets/icons/icon.icns",
@@ -186,18 +186,18 @@
         "dmg",
         "zip"
       ],
-      "artifactName": "dsh-desktop-${version}-mac-${arch}.${ext}"
+      "artifactName": "dsh-my-desktop-${version}-mac-${arch}.${ext}"
     },
     "linux": {
       "category": "Development",
-      "executableName": "dsh-desktop",
+      "executableName": "dsh-my-desktop",
       "maintainer": "luoxunhao <luoxunhao@users.noreply.github.com>",
       "syncDesktopName": true,
       "target": [
         "AppImage",
         "deb"
       ],
-      "artifactName": "dsh-desktop-${version}-linux-${arch}.${ext}"
+      "artifactName": "dsh-my-desktop-${version}-linux-${arch}.${ext}"
     },
     "nsis": {
       "perMachine": false,
@@ -207,10 +207,10 @@
       "uninstallerIcon": "assets/icons/icon.ico",
       "installerHeaderIcon": "assets/icons/icon.ico",
       "include": "build/installer.nsh",
-      "shortcutName": "DSH Desktop",
-      "uninstallDisplayName": "DSH Desktop"
+      "shortcutName": "DSH My Desktop",
+      "uninstallDisplayName": "DSH My Desktop"
     },
-    "executableName": "DSH Desktop",
+    "executableName": "DSH My Desktop",
     "publish": {
       "provider": "github",
       "owner": "luoxunhao",

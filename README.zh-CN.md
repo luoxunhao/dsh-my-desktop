@@ -1,6 +1,6 @@
 <div align="center">
 
-# DSH Desktop
+# DSH My Desktop
 
 **面向 DeepSeek Harness 的原生桌面启动器。**
 
@@ -10,16 +10,16 @@
 
 </div>
 
-> DSH Desktop 是 DeepSeek Harness 的社区维护桌面启动器，并非 DeepSeek AI 官方产品。
+> DSH My Desktop 是 DeepSeek Harness 的社区维护桌面启动器，并非 DeepSeek AI 官方产品。
 
-DSH Desktop 是一个 Electron 应用：它在本地启动一个
+DSH My Desktop 是一个 Electron 应用：它在本地启动一个
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 实例，并把其
 Web 界面承载到原生桌面窗口里。安装包自带 Node.js 与一套自包含的 DSH 核心运行时，
 打开应用即可使用 DSH，无需自行安装 Node.js，也不必从终端启动。
 
 ## 这个项目实际是什么
 
-DSH Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工作台 UI。窗口里看到的内容，
+DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工作台 UI。窗口里看到的内容，
 来自 DSH 核心（`@deepseek-ai/dsh`）以及你安装进其 `web` profile 的插件。
 
 本版本（0.1.0）：
@@ -88,6 +88,15 @@ pnpm run dist
 `pnpm run dist` 先跑 `prepare-runtime`（装配随包 Node + pnpm，并把官方 DSH 核心
 运行时打成 tarball），再由 electron-builder 把安装器写到 `release\`。本地用固定
 Node 24.20.0 构建的辅助脚本是 `scripts/build.ps1`（用 `pwsh` 运行）。
+
+`prepare-runtime` 会从 npm registry 下载官方 DSH 运行时与随包插件。默认使用官方
+`https://registry.npmjs.org/`，可用环境变量 `DSH_BUILD_REGISTRY` 覆盖——例如官方源
+较慢或不可达时指到镜像（如 `https://registry.npmmirror.com/`）：
+
+```powershell
+$env:DSH_BUILD_REGISTRY = 'https://registry.npmmirror.com/'
+pnpm run dist
+```
 
 ## 数据与隐私
 

@@ -6,7 +6,7 @@ import { adhocSignMacApplication, resolveMacApplicationPath, shouldAdhocSignMacA
 
 const context = {
   appOutDir: '/tmp/release/mac-arm64',
-  packager: { appInfo: { productFilename: 'DSH Desktop' } },
+  packager: { appInfo: { productFilename: 'DSH My Desktop' } },
 }
 
 test('只在 macOS 显式 ad-hoc 模式下签名', () => {
@@ -21,7 +21,7 @@ test('afterPack 对完整应用执行用户验证过的 ad-hoc 签名命令', as
     calls.push({ file, arguments_ })
   }, 'darwin', 'true')
   const applicationPath = resolveMacApplicationPath(context)
-  assert.equal(applicationPath, join(context.appOutDir, 'DSH Desktop.app'))
+  assert.equal(applicationPath, join(context.appOutDir, 'DSH My Desktop.app'))
   assert.deepEqual(calls, [{
     file: '/usr/bin/codesign',
     arguments_: ['--force', '--deep', '--sign', '-', applicationPath],

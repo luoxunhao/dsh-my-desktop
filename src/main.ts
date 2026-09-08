@@ -373,7 +373,7 @@ async function showStartupWindow(message: string): Promise<void> {
   const escaped = message.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character)
   await windowNavigation.navigate(
     view,
-    () => view.webContents.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent('<main style="font-family:sans-serif;padding:48px"><h1>DSH Desktop</h1><p>' + escaped + '</p></main>')),
+    () => view.webContents.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent('<main style="font-family:sans-serif;padding:48px"><h1>' + DESKTOP_APP_NAME + '</h1><p>' + escaped + '</p></main>')),
   )
 }
 

@@ -4,7 +4,7 @@
 
 ## 0.1.0
 
-**DSH Desktop** 首个版本——面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的原生 Electron 启动器。
+**DSH My Desktop** 首个版本——面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的原生 Electron 启动器。
 
 本版本定位是启动器 / 桌面壳：
 

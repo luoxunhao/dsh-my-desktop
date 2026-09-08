@@ -1,6 +1,6 @@
 <div align="center">
 
-# DSH Desktop
+# DSH My Desktop
 
 **A native desktop launcher for DeepSeek Harness.**
 
@@ -10,9 +10,9 @@
 
 </div>
 
-> DSH Desktop is a community-maintained desktop launcher for DeepSeek Harness. It is not an official DeepSeek AI product.
+> DSH My Desktop is a community-maintained desktop launcher for DeepSeek Harness. It is not an official DeepSeek AI product.
 
-DSH Desktop is an Electron application that launches a local
+DSH My Desktop is an Electron application that launches a local
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) instance and
 shows its web UI in a native desktop window. The installer carries its own
 Node.js runtime and a self-contained DSH core runtime, so you can open the app
@@ -20,7 +20,7 @@ and use DSH without installing Node.js or starting it from a terminal.
 
 ## What this project actually is
 
-DSH Desktop is a **launcher and desktop shell**. It does not implement the
+DSH My Desktop is a **launcher and desktop shell**. It does not implement the
 chat / workbench UI itself. What you see inside the window is the DSH core
 (`@deepseek-ai/dsh`) plus any plugins you install into its `web` profile.
 
@@ -100,6 +100,18 @@ pnpm run dist
 packs the official DSH core runtime tarball) and then electron-builder writes
 installers into `release\`. A local helper that uses a pinned Node 24.20.0 is
 available at `scripts/build.ps1` (run with `pwsh`).
+
+`prepare-runtime` downloads the official DSH runtime and any bundled plugins
+from an npm registry. The registry defaults to the official
+`https://registry.npmjs.org/`, but can be overridden with the
+`DSH_BUILD_REGISTRY` environment variable — e.g. point it at a mirror
+(`https://registry.npmmirror.com/`) when the default registry is slow or
+unreachable:
+
+```powershell
+$env:DSH_BUILD_REGISTRY = 'https://registry.npmmirror.com/'
+pnpm run dist
+```
 
 ## Data and privacy
 

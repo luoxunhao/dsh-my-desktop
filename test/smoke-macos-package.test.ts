@@ -6,10 +6,10 @@ import test from 'node:test'
 import { resolveMacApplicationExecutable } from '../scripts/smoke-macos-package.mjs'
 
 test('定位 macOS 应用包内的可执行文件', () => {
-  const applicationBundle = join('release', 'DSH Desktop.app')
+  const applicationBundle = join('release', 'DSH My Desktop.app')
   assert.equal(
     resolveMacApplicationExecutable(applicationBundle),
-    join(applicationBundle, 'Contents', 'MacOS', 'DSH Desktop'),
+    join(applicationBundle, 'Contents', 'MacOS', 'DSH My Desktop'),
   )
 })
 
