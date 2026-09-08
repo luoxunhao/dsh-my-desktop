@@ -1374,7 +1374,6 @@ function updatePreferencesPath(): string {
  */
 function ensureWindowsNotificationIdentity(): void {
   if (process.platform !== 'win32') return
-  const notificationIcon = resolveNotificationIconPath({ appPath: app.getAppPath(), isPackaged: app.isPackaged, resourcesPath: process.resourcesPath })
   const shortcutDirectories = [
     join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
     process.env.ProgramData === undefined ? undefined : join(process.env.ProgramData, 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
@@ -1386,11 +1385,14 @@ function ensureWindowsNotificationIdentity(): void {
       try {
         const details = shell.readShortcutLink(shortcut)
         if (resolve(details.target).toLocaleLowerCase() !== resolve(process.execPath).toLocaleLowerCase()) continue
+        // 只补 AUMID / toastActivatorClsid 做身份注册，绝不改写图标：
+        // 用 notification.ico 覆盖会毁掉 electron-builder 生成的开始菜单快捷方式图标，
+        // 进而导致任务栏按钮（按 AUMID 从该快捷方式取图标）变成空白。
         shell.writeShortcutLink(shortcut, 'update', {
           target: details.target,
           appUserModelId: DESKTOP_APP_USER_MODEL_ID,
           toastActivatorClsid: DESKTOP_TOAST_ACTIVATOR_CLSID,
-          ...(notificationIcon === undefined ? {} : { icon: notificationIcon, iconIndex: 0 }),
+          ...(details.icon === undefined ? {} : { icon: details.icon, iconIndex: details.iconIndex ?? 0 }),
         })
       } catch {
         // A stale or protected shortcut must not prevent the desktop app from starting.
@@ -1398,7 +1400,7 @@ function ensureWindowsNotificationIdentity(): void {
     }
   }
   if (app.isPackaged || !process.argv.some(argument => argument.startsWith('--user-data-dir='))) return
-  const icon = notificationIcon
+  const icon = resolveNotificationIconPath({ appPath: app.getAppPath(), isPackaged: app.isPackaged, resourcesPath: process.resourcesPath })
   if (icon === undefined) return
   const shortcut = join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', `${DESKTOP_APP_NAME} Test.lnk`)
   const args = process.argv.slice(1)
