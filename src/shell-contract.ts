@@ -4,6 +4,8 @@ export const SHELL_BAR_HEIGHT = 40
 
 export const SHELL_IPC = {
   action: 'dsh-shell:action',
+  tool: 'dsh-shell:tool',
+  popupTool: 'dsh-shell:popup-tool',
   getBootstrap: 'dsh-shell:get-bootstrap',
   popupMenu: 'dsh-shell:popup-menu',
   state: 'dsh-shell:state',
@@ -63,3 +65,9 @@ export interface ShellMenuPopupRequest {
 export type DshShellActionId = Extract<ShellActionId,
   'new-chat' | 'open-folder' | 'settings' | 'toggle-sidebar' | 'find' |
   'previous-chat' | 'next-chat' | 'back' | 'forward'>
+
+/** Title-bar tool actions surfaced by the Desktop frame (reference-aligned). */
+export type ShellToolId = 'terminal' | 'reload' | 'developer'
+
+/** Native popup shown for a popup-capable title-bar tool. */
+export type ShellToolPopupId = 'reload' | 'developer'

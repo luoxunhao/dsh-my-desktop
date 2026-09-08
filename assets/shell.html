@@ -6,47 +6,51 @@
   <title>DSH My Desktop</title>
   <script>document.documentElement.dataset.platform=window.dshShell.platform;document.documentElement.dataset.colorScheme=new URLSearchParams(location.search).get('theme')==='light'?'light':'dark'</script>
   <style>
-    :root{color-scheme:dark;font-family:Inter,"Segoe UI","Microsoft YaHei UI",sans-serif;background:#171918;color:#d7d9d8}
+    :root{color-scheme:dark;font-family:Inter,"Segoe UI","Microsoft YaHei UI",sans-serif;background:#1a1c1b;color:#d7d9d8}
     *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden}
-    .bar{-webkit-app-region:drag;height:40px;display:flex;align-items:center;gap:4px;padding:0 154px 0 6px;background:linear-gradient(90deg,#1f2121 0%,#1e2120 16%,#1c2221 29%,#1b2223 48%,#1b2222 61%,#1e2120 79%,#1f2020 100%);border-bottom:1px solid #292c2b;user-select:none}
-    html[data-platform="darwin"] .bar{padding-left:78px;padding-right:12px}
-    button{-webkit-app-region:no-drag;font:inherit;color:inherit;border:0;background:transparent}
-    .nav{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;opacity:.82;transition:background .12s,opacity .12s}
-    .nav:hover:not(:disabled){background:#2b2e2d;opacity:1}.nav:disabled{opacity:.28}
-    .nav img{width:14px;height:14px;filter:invert(91%) sepia(5%) saturate(80%) hue-rotate(80deg)}
-    .divider{width:1px;height:18px;background:#363938;margin:0 3px}
-    .menu{height:30px;padding:0 10px;border-radius:7px;font-size:14px;color:#8f9492}
-    .menu:hover{color:#c9cdcb}.menu[aria-expanded="true"]{background:#2b2e2d;color:#c9cdcb}
-    .status{margin-left:auto;font-size:12px;color:#8f9592;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-    :root[data-color-scheme="light"]{color-scheme:light;background:#fff;color:#0f1115}
-    :root[data-color-scheme="light"] .bar{background:linear-gradient(105deg,#eff5f3 0%,#ecf7f4 21%,#e8f8f7 38%,#eaf7f9 57%,#e8f8f6 73%,#eef5f3 89%,#f1f4f3 100%);border-bottom-color:transparent}
-    :root[data-color-scheme="light"] .nav:hover:not(:disabled),:root[data-color-scheme="light"] .menu[aria-expanded="true"]{background:#2631480f}
-    :root[data-color-scheme="light"] .nav img{filter:brightness(0);opacity:.72}
+    .bar{position:relative;-webkit-app-region:drag;height:40px;display:flex;align-items:center;gap:2px;padding:0 154px 0 8px;background:linear-gradient(180deg,#222423 0%,#1d201e 100%);border-bottom:1px solid #2b2e2c;user-select:none}
+    html[data-platform="darwin"] .bar{padding-left:80px;padding-right:10px}
+    button{-webkit-app-region:no-drag;font:inherit;color:inherit;border:0;background:transparent;cursor:pointer}
+    .icon{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;opacity:.86;transition:background .12s,opacity .12s}
+    .icon:hover:not(:disabled){background:#ffffff14;opacity:1}.icon:disabled{opacity:.3}
+    .icon img{width:15px;height:15px;filter:invert(88%) sepia(4%) saturate(30%) hue-rotate(90deg) brightness(.98)}
+    .divider{width:1px;height:18px;background:#363937;margin:0 4px;flex:none}
+    .identity{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:8px;min-width:0;padding:0 8px;-webkit-app-region:no-drag}
+    .identity .word{font-size:13px;font-weight:650;letter-spacing:.2px;color:#e9ebea;white-space:nowrap}
+    .identity .version{font-size:11px;color:#9aa09c;white-space:nowrap}
+    .status{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;color:#8f9592;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:30%}
+    .identity,.status{pointer-events:none}
+    :root[data-color-scheme="light"]{color-scheme:light;background:#ffffff;color:#1a1d1c}
+    :root[data-color-scheme="light"] .bar{background:linear-gradient(180deg,#ffffff 0%,#f6f7f6 100%);border-bottom:1px solid #e7e8e7}
+    :root[data-color-scheme="light"] .icon:hover:not(:disabled){background:#2631480f}
+    :root[data-color-scheme="light"] .icon img{filter:brightness(0) opacity(.72)}
     :root[data-color-scheme="light"] .divider{background:#0000001a}
-    :root[data-color-scheme="light"] .menu,:root[data-color-scheme="light"] .status{color:#61666b}
-    :root[data-color-scheme="light"] .menu:hover,:root[data-color-scheme="light"] .menu[aria-expanded="true"]{color:#0f1115}
-    @media(max-width:720px){.status{display:none}.bar{padding-right:144px}.menu{padding:0 7px}}
+    :root[data-color-scheme="light"] .identity .word{color:#171a19}
+    :root[data-color-scheme="light"] .identity .version,:root[data-color-scheme="light"] .status{color:#6b726e}
+    @media(max-width:760px){.bar{padding-right:146px}.identity .version{display:none}.status{max-width:20%}}
   </style>
 </head>
 <body>
   <header class="bar" aria-label="DSH My Desktop">
-    <button id="back" class="nav" data-action="back" title="返回" aria-label="返回"><img src="shell-icons/arrow-left.svg" alt=""></button>
-    <button id="forward" class="nav" data-action="forward" title="前进" aria-label="前进"><img src="shell-icons/arrow-right.svg" alt=""></button>
-    <span class="divider" aria-hidden="true"></span>
-    <nav id="menus" aria-label="应用菜单"></nav>
+    <button id="terminal" class="icon" data-tool="terminal" title="打开终端" aria-label="打开终端"><img src="shell-icons/terminal.svg" alt=""></button>
+    <button id="reloadBtn" class="icon" data-tool="reload" aria-haspopup="menu" title="重启选项" aria-label="重启选项"><img src="shell-icons/rotate.svg" alt=""></button>
+    <button id="developerBtn" class="icon" data-tool="developer" aria-haspopup="menu" title="开发者选项" aria-label="开发者选项"><img src="shell-icons/wrench.svg" alt=""></button>
+    <span class="identity" aria-hidden="true">
+      <span class="word" id="appName">DSH My Desktop</span>
+      <span class="version" id="version">v0.1.0</span>
+    </span>
     <span id="status" class="status" role="status"></span>
   </header>
   <script>
     const api=window.dshShell;let bootstrap;let state;let openMenu;
-    const menuHost=document.getElementById('menus');const status=document.getElementById('status');
-    function applyState(next){state=next;document.getElementById('back').disabled=!next.canBack;document.getElementById('forward').disabled=!next.canForward;const zh=bootstrap?.locale?.startsWith('zh')??navigator.language.toLowerCase().startsWith('zh');status.textContent=next.reloading?(zh?'正在重新加载…':'Reloading…'):''}
-    function applyBootstrap(value){bootstrap=value;document.documentElement.lang=value.locale;document.documentElement.dataset.colorScheme=value.colorScheme;document.documentElement.style.colorScheme=value.colorScheme;const zh=value.locale.startsWith('zh');const back=document.getElementById('back');const forward=document.getElementById('forward');back.title=back.ariaLabel=zh?'返回':'Back';forward.title=forward.ariaLabel=zh?'前进':'Forward';menuHost.setAttribute('aria-label',zh?'应用菜单':'Application menu');menuHost.replaceChildren();for(const menu of value.menus){const button=document.createElement('button');button.className='menu';button.textContent=menu.label;button.setAttribute('aria-haspopup','menu');button.setAttribute('aria-expanded','false');button.addEventListener('click',()=>showMenu(button,menu.id));menuHost.append(button)}applyState(state??value.state)}
+    const status=document.getElementById('status');
+    const zhOf=()=>bootstrap?.locale?.startsWith('zh')??navigator.language.toLowerCase().startsWith('zh');
+    function applyState(next){state=next;status.textContent=next.reloading?(zhOf()?'正在重新加载…':'Reloading…'):''}
+    function applyBootstrap(value){bootstrap=value;document.documentElement.lang=value.locale;document.documentElement.dataset.colorScheme=value.colorScheme;document.documentElement.style.colorScheme=value.colorScheme;const zh=value.locale.startsWith('zh');const terminal=document.getElementById('terminal');terminal.title=terminal.ariaLabel=zh?'打开终端':'Open terminal';applyState(state??value.state)}
     function clearOpenMenu(button=openMenu){if(!button)return;button.setAttribute('aria-expanded','false');if(openMenu===button)openMenu=undefined}
-    async function showMenu(button,menu){clearOpenMenu();button.setAttribute('aria-expanded','true');openMenu=button;const rect=button.getBoundingClientRect();try{await api.popupMenu({menu,x:Math.round(rect.left),y:Math.round(rect.bottom)})}finally{clearOpenMenu(button)}}
-    // Native Windows menus can consume the initial outside click. If the
-    // click is subsequently delivered to the shell, clear immediately too.
+    async function showToolMenu(button){clearOpenMenu();button.setAttribute('aria-expanded','true');openMenu=button;const rect=button.getBoundingClientRect();try{await api.popupTool(button.dataset.tool,rect.left,rect.bottom)}finally{clearOpenMenu(button)}}
     document.addEventListener('pointerdown',event=>{if(openMenu&&event.target!==openMenu)clearOpenMenu()},true);window.addEventListener('blur',()=>clearOpenMenu());
-    document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>api.action(button.dataset.action)));
+    document.querySelectorAll('[data-tool]').forEach(button=>{button.addEventListener('click',()=>{const tool=button.dataset.tool;if(tool==='reload'||tool==='developer')showToolMenu(button);else api.tool(tool)})});
     api.getBootstrap().then(value=>{document.documentElement.dataset.platform=value.platform;applyBootstrap(value)});api.onBootstrap(applyBootstrap);
     api.onState(applyState);
   </script>

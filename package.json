@@ -1,6 +1,6 @@
 {
   "name": "deepseek-harness-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DeepSeek Harness 原生桌面启动器",
   "author": "luoxunhao",
   "desktopName": "DSH My Desktop",
@@ -117,6 +117,10 @@
       {
         "from": "assets/shell.html",
         "to": "shell.html"
+      },
+      {
+        "from": "build/dsh-path.ps1",
+        "to": "dsh-path.ps1"
       },
       {
         "from": "assets/shortcuts.html",

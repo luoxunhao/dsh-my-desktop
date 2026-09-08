@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron') as typeof import('ele
 
 const IPC = {
   action: 'dsh-shell:action',
+  tool: 'dsh-shell:tool',
+  popupTool: 'dsh-shell:popup-tool',
   getBootstrap: 'dsh-shell:get-bootstrap',
   popupMenu: 'dsh-shell:popup-menu',
   state: 'dsh-shell:state',
@@ -20,6 +22,8 @@ const IPC = {
 contextBridge.exposeInMainWorld('dshShell', {
   platform: process.platform,
   action: (id: string) => ipcRenderer.invoke(IPC.action, id),
+  tool: (tool: string) => ipcRenderer.invoke(IPC.tool, tool),
+  popupTool: (tool: string, x: number, y: number) => ipcRenderer.invoke(IPC.popupTool, tool, x, y),
   getBootstrap: () => ipcRenderer.invoke(IPC.getBootstrap),
   getNotificationPreferences: () => ipcRenderer.invoke(IPC.getNotificationPreferences),
   updateNotificationPreferences: (value: unknown) => ipcRenderer.invoke(IPC.updateNotificationPreferences, value),

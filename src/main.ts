@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, Notification, Tray, WebContentsView, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, session, shell, type Input, type MenuItemConstructorOptions, type WebContents } from 'electron'
-import { existsSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile as writeTextFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
@@ -28,7 +29,7 @@ import { escapeRoute } from './escape-routing.js'
 import { prepareDesktopBridge, resolveDesktopBridgeDir } from './desktop-host.js'
 import { migrateDesktopBridgeProfile } from './desktop-bridge-migration.js'
 import { isChineseLocale, localizedShellActions, localizedShellMenus, normalizeShellLocale, shellActionForShortcut, SHELL_ACTIONS, type ShellActionId, type ShellMenuId } from './shell-actions.js'
-import { SHELL_BAR_HEIGHT, SHELL_IPC, type DshNavigationState, type DshShellActionId, type ShellBootstrap, type ShellMenuPopupRequest, type ShellState } from './shell-contract.js'
+import { SHELL_BAR_HEIGHT, SHELL_IPC, type DshNavigationState, type DshShellActionId, type ShellBootstrap, type ShellMenuPopupRequest, type ShellState, type ShellToolId, type ShellToolPopupId } from './shell-contract.js'
 import { mayAccessDesktopUpdates, mayAccessNotificationPreferences, mayCloseDesktopSettings, mayGetShellBootstrap, mayInvokeShellAction, mayPopupShellMenu, mayReportDshBoot, mayReportDshLocale, mayReportDshNotification, mayReportDshState, mayReportDshTheme, mayReportDshSettingsVisibility, type ShellRendererKind } from './shell-ipc-policy.js'
 import { DESKTOP_THEME_PALETTES, normalizeDesktopThemeSnapshot, type DesktopColorScheme, type DesktopThemePreference } from './desktop-theme.js'
 import { DSH_MARKET_STATUS_PATH, waitForDshMarketBatchToSettle } from './dshmarket-batch.js'
@@ -1089,6 +1090,8 @@ function installRecoveryIpc(): void {
 function installShellIpc(): void {
   ipcMain.removeHandler(SHELL_IPC.getBootstrap)
   ipcMain.removeHandler(SHELL_IPC.action)
+  ipcMain.removeHandler(SHELL_IPC.tool)
+  ipcMain.removeHandler(SHELL_IPC.popupTool)
   ipcMain.removeHandler(SHELL_IPC.popupMenu)
   ipcMain.removeHandler(SHELL_IPC.getNotificationPreferences)
   ipcMain.removeHandler(SHELL_IPC.updateNotificationPreferences)
@@ -1106,6 +1109,17 @@ function installShellIpc(): void {
     const actionId = id as ShellActionId
     if (!mayInvokeShellAction(shellRendererKind(event.sender), actionId)) return
     return executeShellAction(actionId)
+  })
+  ipcMain.handle(SHELL_IPC.tool, (event, tool: unknown) => {
+    if (!mayPopupShellMenu(shellRendererKind(event.sender))) return
+    if (tool !== 'terminal') return
+    return runShellTool('terminal')
+  })
+  ipcMain.handle(SHELL_IPC.popupTool, (event, tool: unknown, x: unknown, y: unknown) => {
+    if (!mayPopupShellMenu(shellRendererKind(event.sender))) return
+    if (tool !== 'reload' && tool !== 'developer') return
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
+    return popupShellTool(tool, Math.round(Number(x)), Math.round(Number(y)))
   })
   ipcMain.handle(SHELL_IPC.popupMenu, (event, request: ShellMenuPopupRequest) => {
     if (!mayPopupShellMenu(shellRendererKind(event.sender))) return
@@ -1356,6 +1370,141 @@ async function executeShellAction(id: ShellActionId): Promise<void> {
   else if (id === 'feedback') await shell.openExternal('https://github.com/deepseek-ai/deepseek-harness/issues/new')
   else if (id === 'about') showAboutWindow()
   broadcastShellState()
+}
+
+/** Open the DSH terminal bound to the active profile directory with `dsh` on PATH. */
+function openDshTerminal(): void {
+  try {
+    const profileDir = lastSeedOptions?.profileDir ?? resolveWebProfileDir()
+    // The app launches DSH with DSH_HOME = the `.dsh` root two levels above the
+    // profile dir (see startDsh). Mirror that so `dsh` resolves the same home.
+    const home = lastSeedOptions?.profileDir !== undefined ? resolve(profileDir, '..', '..') : app.getPath('home')
+    const cwd = existsSync(profileDir) ? profileDir : existsSync(home) ? home : app.getPath('temp')
+
+    // Expose the bundled `dsh` CLI as a `dsh` shim on PATH so profile commands
+    // (e.g. `dsh plugin add <pkg>`) work exactly as in the reference terminal.
+    let shimDir: string | undefined
+    let entry: string | undefined
+    const entryCandidates = [
+      lastSeedOptions?.desktopRuntimeDir,
+      profileDir,
+    ].filter((dir): dir is string => dir !== undefined)
+    for (const root of entryCandidates) {
+      const candidate = join(root, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+      if (existsSync(candidate)) { entry = candidate; break }
+    }
+    if (entry !== undefined) {
+      try {
+        const node = resolveNodeExecutable({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath })
+        shimDir = join(app.getPath('userData'), 'dsh-terminal-bin')
+        mkdirSync(shimDir, { recursive: true })
+        if (process.platform === 'win32') {
+          writeFileSync(join(shimDir, 'dsh.cmd'),
+            '@echo off\r\n"' + node + '" "' + entry.replace(/"/g, '""') + '" %*\r\n', 'utf8')
+          writeFileSync(join(shimDir, 'dsh.bat'),
+            '@echo off\r\n"' + node + '" "' + entry.replace(/"/g, '""') + '" %*\r\n', 'utf8')
+        } else {
+          writeFileSync(join(shimDir, 'dsh'),
+            '#!/usr/bin/env sh\nexec "' + node + '" "' + entry + '" "$@"\n', 'utf8')
+          try { spawn('chmod', ['+x', join(shimDir, 'dsh')], { stdio: 'ignore' }).unref() } catch { /* ignore */ }
+        }
+      } catch {
+        shimDir = undefined // Fall through to a plain terminal if the shim cannot be written.
+      }
+    }
+    // Windows exposes the search path as `Path` (case-insensitive); Node only
+    // guarantees it under whichever casing the OS used. Read both and rebuild a
+    // single entry so the original PATH is never dropped when we prepend the shim.
+    const originalPath = process.platform === 'win32'
+      ? (process.env.Path ?? process.env.PATH ?? '')
+      : (process.env.PATH ?? '')
+    const pathVar = process.platform === 'win32' ? 'Path' : 'PATH'
+    const separator = process.platform === 'win32' ? ';' : ':'
+    const extraPath = shimDir === undefined ? [] : [shimDir]
+    const nextPath = [...extraPath, originalPath].join(separator)
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      DSH_HOME: home,
+      [pathVar]: nextPath,
+    }
+    if (process.platform === 'win32' && process.env.PATH !== undefined) delete env.PATH
+
+    if (process.platform === 'win32') {
+      const cmd = process.env.ComSpec ?? 'cmd.exe'
+      // Spawn the console-subsystem child directly and detached so Windows gives
+      // it a brand-new, visible console window that inherits `env` unchanged
+      // (a `start` indirection can drop the PATH we pass, breaking the `dsh`
+      // shim lookup).
+      const child = spawn(cmd, ['/d', '/k', 'cd /d "' + cwd + '"'], {
+        cwd,
+        env,
+        stdio: 'ignore',
+        detached: true,
+        windowsHide: false,
+      })
+      child.unref()
+      return
+    }
+    const shell = process.env.SHELL ?? '/bin/bash'
+    const child = spawn(shell, ['-l'], { cwd, env, stdio: 'ignore', detached: true })
+    child.unref()
+  } catch {
+    // Opening a terminal is best-effort; never take down the host on failure.
+  }
+}
+
+/** Restart the whole desktop application (clean shutdown, then relaunch). */
+async function restartDesktop(): Promise<void> {
+  if (isQuitting) return
+  await shutdownDesktop(() => { app.relaunch(); app.exit() })
+}
+
+/** Enter recovery isolation and restart DSH into the recovery window. */
+async function restartIntoRecoveryFromShell(): Promise<void> {
+  const profileDir = lastSeedOptions?.profileDir
+  const seedOptions = lastSeedOptions
+  if (profileDir === undefined || seedOptions === undefined || lastStartOptions === undefined) return
+  await enterRecoveryMode(profileDir, { force: true })
+  await restartDshInRecoveryMode(profileDir)
+}
+
+/** Toggle DevTools on the DSH renderer (and the shell page when focused). */
+function toggleDeveloperTools(): void {
+  const contents = dshView?.webContents
+  if (contents !== undefined && !contents.isDestroyed()) contents.toggleDevTools()
+}
+
+/** Invoke a non-popup title-bar tool. */
+function runShellTool(tool: ShellToolId): Promise<void> | undefined {
+  if (tool === 'terminal') {
+    openDshTerminal()
+    return
+  }
+  return undefined
+}
+
+/** Popup a native menu for a title-bar tool that exposes a small action menu. */
+async function popupShellTool(tool: ShellToolPopupId, x: number, y: number): Promise<void> {
+  const window = mainWindow
+  if (window === undefined || window.isDestroyed()) return
+  const zh = isChineseLocale(desktopLocale())
+  const items: MenuItemConstructorOptions[] = []
+  const push = (label: string, enabled: boolean, action: () => void): void => {
+    items.push({ label, enabled, click: () => runMainTask(Promise.resolve(action())) })
+  }
+  if (tool === 'reload') {
+    push(zh ? '重载' : 'Reload', isActionEnabled('reload'), () => executeShellAction('reload'))
+    push(zh ? '重启' : 'Restart', !isQuitting, () => restartDesktop())
+    push(zh ? '重启到恢复模式' : 'Restart in Recovery Mode', !isQuitting && lastSeedOptions !== undefined, () => restartIntoRecoveryFromShell())
+  } else {
+    push(zh ? '切换开发者工具' : 'Toggle Developer Tools', true, () => toggleDeveloperTools())
+  }
+  if (items.length === 0) return
+  const menu = Menu.buildFromTemplate(items)
+  let settled = false
+  const close = (): void => { if (!settled) { settled = true } }
+  menu.once('menu-will-close', close)
+  menu.popup({ window, x: Math.round(x), y: Math.round(y), callback: close })
 }
 
 function notificationPreferencesPath(): string {

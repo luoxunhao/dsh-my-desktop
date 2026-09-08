@@ -36,6 +36,16 @@
   DetailPrint "正在解压运行时，请稍候..."
   nsExec::ExecToLog '"$INSTDIR\resources\node\node.exe" "$INSTDIR\resources\extract-runtime.mjs" "$INSTDIR" "$INSTDIR\resources"'
   Pop $0
+  ; 暴露内置 dsh CLI：在 $INSTDIR\bin 生成 dsh.cmd 启动器，并把该目录加进用户 PATH。
+  CreateDirectory "$INSTDIR\bin"
+  FileOpen $0 "$INSTDIR\bin\dsh.cmd" w
+  FileWrite $0 "@echo off$\r$\n"
+  FileWrite $0 '"$INSTDIR\resources\node\node.exe" "$INSTDIR\dsh-runtime\node_modules\@deepseek-ai\dsh\lib\bin.js" %*$\r$\n'
+  FileClose $0
+  DetailPrint "正在把 dsh 添加到用户 PATH..."
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\dsh-path.ps1" add "$INSTDIR\bin"'
+  Pop $0
+  SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment"
 !macroend
 
 ; 只按精确进程名结束主程序。Uninstall DSH My Desktop.exe 包含主程序文件名，
@@ -99,9 +109,14 @@
 
 !macro customUnInstall
   SetShellVarContext current
+  ; 从用户 PATH 移除 $INSTDIR\bin（卸载时清理 dsh 命令入口）。
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\dsh-path.ps1" remove "$INSTDIR\bin"'
+  Pop $0
+  SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment"
   !insertmacro safeKillDesktopProcesses
   RMDir /r "$APPDATA\DSH My Desktop"
   RMDir /r "$LOCALAPPDATA\DSH My Desktop"
+  RMDir "$INSTDIR\bin"
   DeleteRegKey HKCU "Software\${APP_GUID}"
   DeleteRegKey HKLM "Software\${APP_GUID}"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}"
