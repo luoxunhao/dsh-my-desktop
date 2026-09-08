@@ -1,0 +1,27 @@
+# 安装包、运行时和构建输出只保留在本地或 GitHub Release，不提交源码仓库。
+dist/
+release/
+runtime/
+runtime-node/
+runtime-plugins/
+node_modules/
+
+# 开发过程产物仅保留在本地。
+coverage/
+*.log
+artifacts/
+output/
+
+# 项目文档仅在本地维护，不纳入 Git 仓库。
+docs/
+
+runtime-dsh/
+runtime-dsh.tgz
+runtime-dsh.tgz.sha256
+.codegraph/
+_tmp*
+System.Management.Automation.Internal.Host.InternalHost
+
+# 本地构建用固定 Node 运行时（避免每次下载），不入库。
+.build-node/
+

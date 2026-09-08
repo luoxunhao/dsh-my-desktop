@@ -1,0 +1,229 @@
+{
+  "name": "deepseek-harness-desktop",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 原生桌面启动器",
+  "author": "luoxunhao",
+  "desktopName": "DSH Desktop",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": "24.20.0",
+    "pnpm": "11.24.0"
+  },
+  "config": {
+    "bundledNodeVersion": "v24.20.0",
+    "bundledNodeSha256": {
+      "win32-x64": "5C976096E04E5C2C1F091938926234CC9FBEBFE9787DDD149351B3B0ECC707B5",
+      "darwin-arm64": "9D050FD455B56426E25D4D603C7C501CBB2630348E836CF221DCCE748E90588A",
+      "darwin-x64": "BB37F3A05D1104A9CA2488718A32FF07F3D0725B7B7B6A04BB26A5AF7213FE12",
+      "linux-arm64": "23A5637C2470FDE09FCC1ACC77C1B92E04E3D7E3E6E80FF7DF6F5831958D1477",
+      "linux-x64": "89AF8424DD53E560B1933F87BA650D8BF57C83CA5A04600EEFB31F416AABBAE7"
+    },
+    "bundledDshVersion": "0.1.2-rc.1"
+  },
+  "main": "dist/src/main.js",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "pnpm run build && node --test dist/test/*.test.js",
+    "start": "pnpm run build && electron .",
+    "prepare-runtime": "pnpm run build && node dist/scripts/prepare-runtime.js",
+    "pack": "pnpm run prepare-runtime && electron-builder --dir",
+    "dist": "pnpm run prepare-runtime && electron-builder --publish never",
+    "smoke:mac": "pnpm run build && node dist/scripts/smoke-macos-package.mjs",
+    "smoke:linux": "pnpm run build && node dist/scripts/smoke-linux-package.mjs"
+  },
+  "devDependencies": {
+    "@electron/notarize": "3.1.1",
+    "@types/node": "26.4.1",
+    "electron": "44.1.1",
+    "electron-builder": "26.15.7",
+    "typescript": "7.0.2"
+  },
+  "build": {
+    "appId": "ai.micheng.deepseekHarnessDesktop",
+    "productName": "DSH Desktop",
+    "icon": "assets/icon.png",
+    "asar": true,
+    "afterPack": "dist/scripts/adhoc-sign.mjs",
+    "afterSign": "dist/scripts/notarize.mjs",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      {
+        "from": "dist",
+        "to": "dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime-node",
+        "to": "node",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "dist/src/dsh-bootstrap.mjs",
+        "to": "bootstrap.mjs"
+      },
+      {
+        "from": "dist/src/extract-runtime.js",
+        "to": "extract-runtime.mjs"
+      },
+      {
+        "from": "dist/src/runtime-archive.js",
+        "to": "runtime-archive.js"
+      },
+      {
+        "from": "dist/src/process-control.js",
+        "to": "process-control.js"
+      },
+      {
+        "from": "runtime-dsh.tgz",
+        "to": "dsh-runtime.tgz"
+      },
+      {
+        "from": "runtime-dsh.tgz.sha256",
+        "to": "dsh-runtime.tgz.sha256"
+      },
+      {
+        "from": "assets/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "assets/icons/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "assets/icons/notification.ico",
+        "to": "notification.ico"
+      },
+      {
+        "from": "assets/startup.html",
+        "to": "startup.html"
+      },
+      {
+        "from": "assets/recovery.html",
+        "to": "recovery.html"
+      },
+      {
+        "from": "assets/shell.html",
+        "to": "shell.html"
+      },
+      {
+        "from": "assets/shortcuts.html",
+        "to": "shortcuts.html"
+      },
+      {
+        "from": "assets/about.html",
+        "to": "about.html"
+      },
+      {
+        "from": "assets/settings.html",
+        "to": "settings.html"
+      },
+      {
+        "from": "assets/task-badges",
+        "to": "task-badges",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "assets/shell-icons",
+        "to": "shell-icons",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "dist/src",
+        "to": "desktop-bridge",
+        "filter": [
+          "desktop-bridge.mjs",
+          "desktop-bridge-client-source.js",
+          "desktop-host.js",
+          "atomic-file.js",
+          "bundled-plugins.js",
+          "dsh-process.js",
+          "plugin-seed.js",
+          "plugin-toolchain.js",
+          "profile-updates.js",
+          "recovery-mode.js",
+          "process-control.js",
+          "readiness.js",
+          "runtime-archive.js",
+          "runtime-prebuilt.js"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "assets/icons/icon.ico",
+      "extraFiles": [
+        {
+          "from": "assets/icons/icon.ico",
+          "to": "DSH Desktop.ico"
+        }
+      ],
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "artifactName": "dsh-desktop-${version}-win-${arch}.${ext}"
+    },
+    "mac": {
+      "icon": "assets/icons/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "dsh-desktop-${version}-mac-${arch}.${ext}"
+    },
+    "linux": {
+      "category": "Development",
+      "executableName": "dsh-desktop",
+      "maintainer": "luoxunhao <luoxunhao@users.noreply.github.com>",
+      "syncDesktopName": true,
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "artifactName": "dsh-desktop-${version}-linux-${arch}.${ext}"
+    },
+    "nsis": {
+      "perMachine": false,
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icons/icon.ico",
+      "uninstallerIcon": "assets/icons/icon.ico",
+      "installerHeaderIcon": "assets/icons/icon.ico",
+      "include": "build/installer.nsh",
+      "shortcutName": "DSH Desktop",
+      "uninstallDisplayName": "DSH Desktop"
+    },
+    "executableName": "DSH Desktop",
+    "publish": {
+      "provider": "github",
+      "owner": "luoxunhao",
+      "repo": "dsh-my-desktop",
+      "releaseType": "release"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "yaml": "2.9.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luoxunhao/dsh-my-desktop.git"
+  }
+}
