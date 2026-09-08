@@ -5,7 +5,7 @@ import { cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'nod
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { ALLOWED_BUILD_PACKAGES, officialRuntimeDependencies, officialRuntimePnpmConfig, pnpmWorkspaceYaml, STORE_PACKAGES } from '../src/bundled-plugins.js'
+import { ALLOWED_BUILD_PACKAGES, buildRegistry, officialRuntimeDependencies, officialRuntimePnpmConfig, pnpmWorkspaceYaml, STORE_PACKAGES } from '../src/bundled-plugins.js'
 import { extractTarGz, packDirectoryToTarGz, writeFileSha256 } from '../src/runtime-archive.js'
 
 const projectRoot = resolve(import.meta.dirname, '..', '..')
@@ -170,7 +170,7 @@ export async function stageBundledPlugins(destinationRoot: string, nodeRoot: str
     '--fetch-retries=5',
     '--fetch-retry-mintimeout=10000',
     '--fetch-retry-maxtimeout=60000',
-    '--registry=https://registry.npmjs.org/',
+    '--registry=' + buildRegistry(),
   ])
   for (const plugin of stagedPackages) {
     if (!existsSync(join(stagingDir, 'node_modules', ...plugin.packageName.split('/'), 'package.json'))) {
@@ -222,7 +222,7 @@ export function officialRuntimeNpmInstallArgs(destinationRoot: string): string[]
     '--no-audit',
     '--no-fund',
     '--allow-scripts=' + ALLOWED_BUILD_PACKAGES.join(','),
-    '--registry=https://registry.npmjs.org/',
+    '--registry=' + buildRegistry(),
     ...Object.entries(officialRuntimeNpmDependencies()).map(([packageName, version]) => `${packageName}@${version}`),
   ]
 }

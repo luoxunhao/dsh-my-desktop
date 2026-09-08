@@ -9,6 +9,7 @@ import { writeTextFileAtomic, writeTextFileAtomicSync } from './atomic-file.js'
 import { restrictProfileBundlesForRecovery } from './recovery-mode.js'
 import {
   BUNDLED_PLUGINS,
+  buildRegistry,
   OFFICIAL_DSH_VERSION,
   OFFICIAL_LAUNCH_PEERS,
   OFFICIAL_PROFILE_BUNDLES,
@@ -116,7 +117,7 @@ export function buildSeedRemoveArgs(packageNames: readonly string[], targetDir: 
     ...(options.storeDir === undefined ? [] : [`--store-dir=${options.storeDir}`]),
     '--config.node-linker=hoisted',
     '--config.minimumReleaseAge=0',
-    '--registry=https://registry.npmjs.org/',
+    '--registry=' + buildRegistry(),
   ]
 }
 
@@ -132,7 +133,7 @@ export function buildSeedPluginArgs(packages: readonly BundledPlugin[], targetDi
     '--config.node-linker=hoisted',
     '--config.auto-install-peers=' + (options.autoInstallPeers === true ? 'true' : 'false'),
     '--config.minimumReleaseAge=0',
-    '--registry=https://registry.npmjs.org/',
+    '--registry=' + buildRegistry(),
   ]
 }
 
@@ -239,7 +240,7 @@ export function officialRuntimeInstallArgs(runtimeDir: string, storeDir?: string
     '--config.node-linker=hoisted',
     '--config.auto-install-peers=true',
     '--config.minimumReleaseAge=0',
-    '--registry=https://registry.npmjs.org/',
+    '--registry=' + buildRegistry(),
   ]
 }
 

@@ -123,6 +123,16 @@ export function planOfficialRuntimeTarget(input: {
   return undefined
 }
 
+/** 官方 npm registry。可被 DSH_BUILD_REGISTRY 环境变量覆盖（例如指到 npmmirror 以提速/过墙）。 */
+export const OFFICIAL_NPM_REGISTRY = 'https://registry.npmjs.org/'
+export const BUILD_REGISTRY_ENV = 'DSH_BUILD_REGISTRY'
+
+/** 解析打包所用的 npm registry：默认官方源，可用 DSH_BUILD_REGISTRY 覆盖。 */
+export function buildRegistry(env: Record<string, string | undefined> = process.env): string {
+  const configured = env[BUILD_REGISTRY_ENV]?.trim()
+  return configured === undefined || configured === '' ? OFFICIAL_NPM_REGISTRY : configured
+}
+
 /** pnpm 11 默认拦截构建脚本；这些原生/prepare 依赖必须放行，否则装配会以 ERR_PNPM_IGNORED_BUILDS 失败。 */
 export const ALLOWED_BUILD_PACKAGES = [
   '@deepseek-ai/dsh-subprocess-local',

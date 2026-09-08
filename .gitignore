@@ -25,3 +25,6 @@ System.Management.Automation.Internal.Host.InternalHost
 # 本地构建用固定 Node 运行时（避免每次下载），不入库。
 .build-node/
 
+# pnpm 本地内容寻址存储（本机缓存，不入库）。
+.pnpm-store/
+
