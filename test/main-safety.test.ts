@@ -210,7 +210,7 @@ test('桌面通知和更新设置使用独立窗口并进入打包资源', async
 
 test('shell 在 macOS 为交通灯预留空间且状态早到不会读取空 bootstrap', async () => {
   const shell = await readFile(new URL('../../assets/shell.html', import.meta.url), 'utf8')
-  assert.match(shell, /data-platform="darwin"[^}]*padding-left:78px/)
+  assert.match(shell, /data-platform="darwin"[^}]*padding-left:80px/)
   assert.ok(shell.indexOf('document.documentElement.dataset.platform=window.dshShell.platform') < shell.indexOf('<style>'))
   assert.match(shell, /bootstrap\?\.locale/)
   assert.match(shell, /state\?\?value\.state/)
@@ -223,7 +223,7 @@ test('原生菜单关闭后才清理外壳菜单的选中状态', async () => {
   assert.match(main, /menu\.once\('menu-will-close', close\)/)
   assert.match(main, /callback: close/)
   assert.match(shell, /function clearOpenMenu\(button=openMenu\)/)
-  assert.match(shell, /try\{await api\.popupMenu\([\s\S]*?\)\}finally\{clearOpenMenu\(button\)\}/)
+  assert.match(shell, /try\{await api\.popupTool\([\s\S]*?\)\}finally\{clearOpenMenu\(button\)\}/)
   assert.match(shell, /document\.addEventListener\('pointerdown',[\s\S]*?clearOpenMenu\(\)/)
   assert.doesNotMatch(shell, /:root\[data-color-scheme="light"\] \.menu:hover,:root\[data-color-scheme="light"\] \.menu\[aria-expanded="true"\]\{background/)
 })
@@ -242,8 +242,8 @@ test('DSH 主题变化同步到桌面外壳、原生菜单和辅助窗口', asyn
   assert.match(dshPreload, /attributeFilter: \['style'\]/)
   assert.match(main, /nativeTheme\.themeSource = preference/)
   assert.match(main, /setTitleBarOverlay/)
-  assert.match(shell, /linear-gradient\(90deg,#1f2121 0%,#1e2120 16%,#1c2221 29%,#1b2223 48%,#1b2222 61%,#1e2120 79%,#1f2020 100%\)/)
-  assert.match(shell, /linear-gradient\(105deg,#eff5f3/)
+  assert.match(shell, /linear-gradient\(180deg,#222423 0%,#1d201e 100%\)/)
+  assert.match(shell, /linear-gradient\(180deg,#ffffff 0%,#f6f7f6 100%\)/)
   for (const source of [shell, settings, shortcuts, about, startup]) {
     assert.match(source, /data-color-scheme="light"/)
   }
