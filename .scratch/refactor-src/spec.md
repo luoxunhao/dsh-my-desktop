@@ -21,7 +21,11 @@ Status: ready-for-agent
 
 把 `src/` 重构为按**层**划分的目录结构，并把 `main.ts` 拆分为职责单一的模块：
 
-- `main.ts` 退化为「进程入口 + 启动编排」，目标 < 300 行。
+- `main.ts` 退化为「进程入口 + 启动编排」。
+  **（修正）** 原文写「目标 < 300 行」，但该数字从未做过行数预算，实测不可达：补完全部 ticket
+  后预计仍有约 725 行，且残留是 `startApplication`(172 行) 等**有意义的编排步骤**，不是可清理
+  的杂波。已改为「不承载任何具体功能域的实现」，不再以某个数字为验收条件。
+  详见 `.scratch/refactor-src/REVIEW-before-06.md`。
 - 39 个模块级可变变量收进一个显式的**可变状态 store**，各模块通过**窄接口签名**只声明自己
   实际需要的字段。
 - 目录按层组织（`app/` `infra/` `runtime/` `profiles/` `bridge/` `desktop/` `recovery/`），
