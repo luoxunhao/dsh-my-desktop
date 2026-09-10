@@ -74,6 +74,8 @@ export interface RecoveryDeps {
   navigate: (view: { webContents: Electron.WebContents }, load: () => Promise<void>) => Promise<unknown>
   /** Load a file into a webContents with query parameters. */
   loadFile: (contents: Electron.WebContents, path: string, query: Record<string, string>) => Promise<void>
+  /** Load an HTTP(S) URL — the workbench is a live server, NOT a file on disk. */
+  loadURL: (contents: Electron.WebContents, url: string) => Promise<void>
   /** Resolve the built recovery page, or undefined when it was never built. */
   resolveRecoveryHtml: () => string | undefined
   /** Current shell colour scheme and locale, read at open time. */
@@ -147,7 +149,7 @@ export function createRecoveryService(deps: RecoveryDeps) {
       deps.startRendererHealthTimer(profileDir)
     }
     deps.adoptServer(running)
-    await deps.navigate(view, () => deps.loadFile(view.webContents, running.url, {}))
+    await deps.navigate(view, () => deps.loadURL(view.webContents, running.url))
     deps.showDshContentView()
     const window = deps.mainWindow()
     window?.maximize()

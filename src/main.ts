@@ -404,6 +404,7 @@ async function startApplication(): Promise<void> {
     showRecoveryContentView,
     navigate: (view, load) => windowNavigation.navigate(view, load),
     loadFile: (contents, filePath, query) => contents.loadFile(filePath, { query }),
+    loadURL: (contents, url) => contents.loadURL(url),
     resolveRecoveryHtml: resolveRecoveryUiHtml,
     theme: () => ({ colorScheme: state.shell.colorScheme, locale: desktopLocale() }),
     recoveryRequested: () => state.launch.recoveryRequested,
