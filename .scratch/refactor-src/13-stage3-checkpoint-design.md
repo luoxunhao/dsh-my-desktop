@@ -270,3 +270,85 @@ return filePath(profileDir, name)
 2. **`completeDependencyMaterialization` 的调用顺序写反**：`captureHealthy` 会
    **消费** marker，所以必须**先**完成物化、**后**让启动消费。写反后实现正确地
    拒绝了调用（"does not match the active restore"）——是测试错、实现对。
+---
+
+## 八、评审修复（双轴评审发现的问题）
+
+对阶段 3 做了 Standards + Spec 双轴并行评审。**两个轴独立地抓到同一个严重缺陷**，
+另有若干部分缺口。全部已修并补测。
+
+### 8.1 【严重】一个槽损坏会永久禁用整个快照机制
+
+原 `readSnapshot` 直接 `JSON.parse` 后 `throw`。后果实测：
+
+```
+listSlots THREW: Expected property name or '}' in JSON ...
+captureHealthy THREW: Expected property name or '}' ...
+  ← 一个损坏的槽阻断了所有快照
+```
+
+因为**每次健康启动都会拍快照**，所以一个字节坏掉 → `listSlots()` 抛错 →
+`captureHealthy()` 抛错 → **整个快照功能永久失效**，连健康的槽也一起废掉。
+这正好违背三个槽"互为独立恢复点"的设计意图。
+
+参考实现在这点上是**刻意宽容**的（其注释：
+"Browseable checkpoint metadata must not make a restorable slot disappear"），
+阶段 2 的 `safe-mode.ts` 也是返回 false 而非抛出 —— 只有阶段 3 写成了抛错。
+
+**修复**：`readSnapshot` 对 manifest 坏 JSON / 版本不符 / 文件数不符 / `capturedAt`
+不合法 / 目录不可读，一律**返回 `undefined`（视为空槽）**，绝不外抛。
+未知版本（如降级后遇到 v5）同样视为空槽，且**不会被静默改写成 v4**——
+只是被后续捕获当作空槽回收。
+
+**反向验证**：恢复成抛错后，两条新测试立即失败。
+
+### 8.2 崩溃残留的 staging 目录从不清理
+
+`recoverOrphanedSlots` 只处理 `<slot>.old-*`，**从不处理 `.staging-*`**。
+实测：植入 `slot-1.staging-999-deadbeef/` 后跑 `captureHealthy()`，目录**存活**。
+进程内 `catch` 只能覆盖正常展开的失败，**硬崩溃会永久泄漏**，且没有任何其它清理者。
+
+**修复**：同时清理 `.staging-*`（丢弃半成品）并恢复 `.old-*`（它是完整快照，
+是有效的恢复点，必须放回）。两种残留语义不同，注释里写明。
+
+### 8.3 目录权限 0700 未实现
+
+设计 §2.6 要求文件 `0600`、目录 `0700`。原 `ensureDirectory` 是裸 `mkdirSync`，
+POSIX 下目录会拿到 umask 默认的 **0755**，把文件哈希与结构暴露给同机其它用户。
+
+**修复**：新增 `DIRECTORY_MODE = 0o700` 与 `CHECK_POSIX_MODE`（Windows 跳过），
+`ensureDirectory` 显式 chmod（`mkdirSync` 的 mode 会被 umask 掩掉，故必须 chmod）。
+同时补上**父目录 fsync**（原地重命名后父目录不 fsync，掉电可能丢失该条目）。
+
+### 8.4 `clearDesktopProfileCheckpoint` 未导出
+
+设计 §5.1/§4.2 要求它作为独立入口（参考实现的 profile 删除路径要用），
+原实现只有实例方法 `clear()`。已补导出。
+
+### 8.5 两条测试是弱/同义反复（已修）
+
+- **「三槽全满后替换最早的」的 `now` 覆盖是死的**：ISO 字符串截断到毫秒，
+  `clock++` 产生的三个时间戳**完全相同**，于是实际走的是 slotId 兜底分支，
+  而**名字里写的"时间戳分支"从未被测到**。改为每次前进 1 分钟。
+  并**拆成两条测试**：一条测时间戳分支，一条测相同时间戳下的 slotId 兜底。
+- 删除两处同义反复断言：`deepEqual([...SLOT_IDS], [...])`（与常量自身比较）、
+  `captured.includes('slot-1')`（循环上限为 3 且槽位互异，恒真）。
+
+### 8.6 评审确认无问题、且经反向验证的部分
+
+- **§3.4 的三层路径映射防御全部到位**，反向验证：去掉 `home/*` 分支后三条测试同时失败
+- §2.2 空槽优先 + 最早时间戳 + slotId 兜底，与设计逐条一致
+- §2.3 marker 确实被消费（`unlinkSync`）
+- §2.4 marker 先于任何文件修改落盘，`dependencyMaterializationPending` 语义正确
+- §2.5 `replaceSlot` 两个分支都真正原子，四次捕获后无残留
+- §2.1 超限文件**抛错而非静默截断**，上限与设计一致
+- 恢复时的哈希复验（"checkpoint changed during restore"）与符号链接拒绝**均忠实移植**
+
+### 8.7 保留的分歧与遗留（`assertTargetParent`）
+
+设计 §7.4 以"路径只来自两个固定根，profileDir 不可能被换成链接"为由未移植
+`assertTargetParent`。Spec 轴评审**不认同这个前提**：`DSH_HOME` 是环境变量，
+而 `safe-mode.ts` 自己就会覆写它，所以"非攻击者可控"的说法比 §7.4 声称的弱。
+
+**接受这条意见**，但维持**本阶段不移植**：本阶段模块测试外零引用方，没有真实调用路径；
+待阶段 5 接入启动流程、这些路径真正获得调用方时补上。已在 §7.4 与本节记录。

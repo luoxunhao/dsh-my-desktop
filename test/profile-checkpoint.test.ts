@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import test from 'node:test'
 
 import {
   checkpointFiles,
+  clearDesktopProfileCheckpoint,
   createDesktopProfileCheckpoint,
   resolveCheckpointTarget,
   DESKTOP_PROFILE_CHECKPOINT_FILES,
@@ -63,6 +64,11 @@ function checkpointFor(f: Fixture, overrides: Record<string, unknown> = {}) {
     appVersion: '0.1.4',
     ...overrides,
   })
+}
+
+/** Whether any snapshot directory exists for the fixture's profile. */
+function desktopCheckpointExists(f: Fixture): boolean {
+  return existsSync(join(f.userDataDir, 'health-snapshots', 'web'))
 }
 
 test('home/* 解析到 homeDir，其余解析到 profileDir（路径映射的单一真相）', () => {
@@ -153,11 +159,10 @@ test('往返：profile 文件同样被还原', () => {
   }
 })
 
-test('三个固定槽位，空槽优先', () => {
+test('三个槽位，空槽优先', () => {
   const f = fixture()
   try {
     const checkpoint = checkpointFor(f)
-    assert.deepEqual([...DESKTOP_PROFILE_CHECKPOINT_SLOT_IDS], ['slot-1', 'slot-2', 'slot-3'])
     assert.equal(checkpoint.listSlots().length, 3)
     assert.equal(checkpoint.listSlots().every(slot => !slot.snapshotExists), true)
 
@@ -166,26 +171,56 @@ test('三个固定槽位，空槽优先', () => {
     const second = checkpoint.captureHealthy()
     assert.equal(second.status, 'captured')
     // Empty slots are consumed before any is recycled.
-    assert.notEqual((first as { slotId: string }).slotId, (second as { slotId: string }).slotId)
+    assert.notEqual(
+      (first as { slotId: string }).slotId,
+      (second as { slotId: string }).slotId,
+    )
   } finally {
     f.cleanup()
   }
 })
 
-test('三槽全满后替换 capturedAt 最早的', () => {
+test('三槽全满后替换 capturedAt 最早的（时间戳分支）', () => {
   const f = fixture()
   try {
-    let clock = 0
-    const checkpoint = checkpointFor(f, { now: () => new Date(Date.UTC(2026, 0, 1, 0, 0, clock++)).getTime() })
-    const captured: string[] = []
-    for (let i = 0; i < 3; i++) {
-      const result = checkpoint.captureHealthy()
-      captured.push((result as { slotId: string }).slotId)
-    }
-    // All three are now full; the next capture must recycle the OLDEST (slot-1).
+    // Advance by a full MINUTE per capture. ISO strings truncate to milliseconds,
+    // so a naive `clock++` would make all three timestamps identical and the test
+    // would silently exercise the slotId tie-break instead of the age comparison —
+    // passing while the branch it names goes untested.
+    let tick = 0
+    const checkpoint = checkpointFor(f, {
+      now: () => Date.UTC(2026, 0, 1, 0, tick++),
+    })
+    const captured = [
+      checkpoint.captureHealthy(),
+      checkpoint.captureHealthy(),
+      checkpoint.captureHealthy(),
+    ].map(result => (result as { slotId: string }).slotId)
+
+    // All three are full. The oldest is whichever went first, so it must be the one
+    // recycled — by AGE, not by slot name.
+    const fourth = checkpoint.captureHealthy()
+    assert.equal((fourth as { slotId: string }).slotId, captured[0], '应回收最早捕获的槽（按时间，非按槽名）')
+  } finally {
+    f.cleanup()
+  }
+})
+
+test('时间戳相同时按 slotId 兜底，保证确定性', () => {
+  const f = fixture()
+  try {
+    const frozen = Date.UTC(2026, 0, 1)
+    const checkpoint = checkpointFor(f, { now: () => frozen })
+    const captured = [
+      checkpoint.captureHealthy(),
+      checkpoint.captureHealthy(),
+      checkpoint.captureHealthy(),
+    ].map(result => (result as { slotId: string }).slotId)
+
+    // With identical timestamps the tie-break must still be deterministic.
     const fourth = checkpoint.captureHealthy()
     assert.equal((fourth as { slotId: string }).slotId, 'slot-1')
-    assert.equal(captured.includes('slot-1'), true)
+    assert.deepEqual(captured, ['slot-1', 'slot-2', 'slot-3'])
   } finally {
     f.cleanup()
   }
@@ -291,10 +326,16 @@ test('inspectSlot 报告差异文件', () => {
 })
 
 test('文件清单含 7 项，且两种根都覆盖到', () => {
-  assert.equal(DESKTOP_PROFILE_CHECKPOINT_FILES.length, 7)
+  // The two home/* entries encode the two-root contract; that count is the part
+  // worth pinning (the total is just a restatement of the constant).
   assert.equal(DESKTOP_PROFILE_CHECKPOINT_FILES.filter(name => name.startsWith('home/')).length, 2)
-  // v4 is the only manifest version we emit; there is no legacy data to read.
-  assert.equal(checkpointFiles(4).length, 7)
+  assert.equal(checkpointFiles(4).length, DESKTOP_PROFILE_CHECKPOINT_FILES.length)
+})
+
+test('非 v4 的 manifest 版本被拒绝（我们没有历史数据可读）', () => {
+  for (const version of [2, 3, 5]) {
+    assert.throws(() => checkpointFiles(version), `v${version} 应被拒绝`)
+  }
 })
 
 test('超过单文件上限时捕获失败而不是静默截断', () => {
@@ -316,6 +357,100 @@ test('清空 checkpoint 后槽位全空', () => {
     assert.equal(checkpoint.listSlots().some(slot => slot.snapshotExists), true)
     checkpoint.clear()
     assert.equal(checkpoint.listSlots().every(slot => !slot.snapshotExists), true)
+  } finally {
+    f.cleanup()
+  }
+})
+
+test('独立的 clearDesktopProfileCheckpoint 可清空指定 profile 的所有槽', () => {
+  const f = fixture()
+  try {
+    const checkpoint = checkpointFor(f)
+    checkpoint.captureHealthy()
+    assert.equal(desktopCheckpointExists(f), true)
+    // The profile-deletion caller has no checkpoint instance, so this must work
+    // standalone.
+    clearDesktopProfileCheckpoint(f.userDataDir, 'web')
+    assert.equal(desktopCheckpointExists(f), false)
+  } finally {
+    f.cleanup()
+  }
+})
+
+test('单个槽的 manifest 损坏不影响其它槽（否则一坏就再也存不了快照）', () => {
+  const f = fixture()
+  try {
+    const checkpoint = checkpointFor(f)
+    checkpoint.captureHealthy()   // slot-1
+    checkpoint.captureHealthy()   // slot-2
+
+    // Corrupt ONLY slot-1. A snapshot is taken on every healthy startup, so if a
+    // single bad manifest propagated, one bad byte would permanently disable
+    // checkpointing — including for the healthy slots.
+    writeFileSync(join(checkpoint.snapshotRoot, 'slot-1', 'manifest.json'), '{ not json')
+
+    const slots = checkpoint.listSlots()
+    assert.equal(slots.length, 3, 'listSlots 不应因单个槽损坏而抛错')
+    assert.equal(slots.find(slot => slot.slotId === 'slot-1')?.snapshotExists, false, '损坏的槽应视为空')
+    assert.equal(slots.find(slot => slot.slotId === 'slot-2')?.snapshotExists, true, '健康槽必须仍可见')
+
+    // The critical consequence: capture must still work.
+    assert.equal(checkpoint.captureHealthy().status, 'captured')
+  } finally {
+    f.cleanup()
+  }
+})
+
+test('未知版本的 manifest 视为空槽而不是致命错误（降级后仍可用）', () => {
+  const f = fixture()
+  try {
+    const checkpoint = checkpointFor(f)
+    checkpoint.captureHealthy()
+    // Simulate a manifest written by a NEWER build, then a downgrade.
+    const manifestPath = join(checkpoint.snapshotRoot, 'slot-1', 'manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>
+    writeFileSync(manifestPath, JSON.stringify({ ...manifest, version: 5 }))
+
+    assert.equal(checkpoint.listSlots().find(slot => slot.slotId === 'slot-1')?.snapshotExists, false)
+    assert.equal(checkpoint.captureHealthy().status, 'captured')
+  } finally {
+    f.cleanup()
+  }
+})
+
+test('崩溃残留的 staging 目录会被清理，.old-* 会被恢复回槽位', () => {
+  const f = fixture()
+  try {
+    const checkpoint = checkpointFor(f)
+    checkpoint.captureHealthy()
+    const slotDir = join(checkpoint.snapshotRoot, 'slot-1')
+    const orphan = `${slotDir}.old-crashed`
+    const staging = `${slotDir}.staging-999-deadbeef`
+    // Simulate a crash mid-replacement: the slot was renamed away, and a half-built
+    // staging directory was left behind.
+    renameSync(slotDir, orphan)
+    mkdirSync(staging, { recursive: true })
+    writeFileSync(join(staging, 'junk'), 'incomplete snapshot')
+
+    checkpoint.captureHealthy()
+
+    assert.equal(existsSync(orphan), false, '.old-* 未恢复')
+    assert.equal(existsSync(staging), false, 'staging 残留未清理（会随每次崩溃累积）')
+    // The orphaned snapshot is a complete recovery point, so it must come BACK.
+    assert.equal(checkpoint.listSlots().find(slot => slot.slotId === 'slot-1')?.snapshotExists, true)
+  } finally {
+    f.cleanup()
+  }
+})
+
+test('inspectSlot 对空槽返回空结果而不抛错', () => {
+  const f = fixture()
+  try {
+    const checkpoint = checkpointFor(f)
+    const inspection = checkpoint.inspectSlot('slot-2')
+    assert.equal(inspection.snapshotExists, false)
+    assert.equal(inspection.currentDiffers, false)
+    assert.deepEqual([...inspection.changedFiles], [])
   } finally {
     f.cleanup()
   }

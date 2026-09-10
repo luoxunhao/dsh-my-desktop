@@ -35,6 +35,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto'
 import {
+  chmodSync,
   closeSync,
   existsSync,
   fsyncSync,
@@ -56,6 +57,10 @@ const SNAPSHOT_ROOT = 'health-snapshots'
 const MANIFEST_FILENAME = 'manifest.json'
 const SKIP_MARKER_FILENAME = 'skip-next-healthy.json'
 const FILE_MODE = 0o600
+/** Snapshot directories hold file hashes and structure, so keep them private. */
+const DIRECTORY_MODE = 0o700
+/** POSIX permission bits are meaningless on Windows; skip the checks there. */
+const CHECK_POSIX_MODE = process.platform !== 'win32'
 
 /** The seven declarative files a checkpoint covers. */
 export const DESKTOP_PROFILE_CHECKPOINT_FILES = [
@@ -189,7 +194,7 @@ function assertSlotId(value: string): DesktopProfileCheckpointSlotId {
 
 /** Write a file and flush it, so a crash cannot leave a half-written checkpoint. */
 function writeDurable(path: string, bytes: Buffer, mode = FILE_MODE): void {
-  mkdirSync(dirname(path), { recursive: true })
+  ensureDirectory(dirname(path))
   const descriptor = openSync(path, 'w', mode)
   try {
     writeSync(descriptor, bytes)
@@ -199,8 +204,36 @@ function writeDurable(path: string, bytes: Buffer, mode = FILE_MODE): void {
   }
 }
 
+/**
+ * Create a directory with restrictive permissions and flush the parent, so the
+ * entry itself survives a power failure.
+ *
+ * `mkdirSync`'s mode argument is masked by the process umask, so on POSIX we chmod
+ * explicitly — a snapshot directory holding file hashes should not be world
+ * readable at the umask default.
+ */
 function ensureDirectory(dir: string): void {
-  mkdirSync(dir, { recursive: true })
+  const parent = dirname(dir)
+  mkdirSync(dir, { recursive: true, mode: DIRECTORY_MODE })
+  if (CHECK_POSIX_MODE) {
+    try {
+      chmodSync(dir, DIRECTORY_MODE)
+    } catch {
+      // Best effort: a pre-existing directory owned by someone else must not
+      // abort an otherwise valid capture.
+    }
+  }
+  try {
+    const descriptor = openSync(parent, 'r')
+    try {
+      fsyncSync(descriptor)
+    } finally {
+      closeSync(descriptor)
+    }
+  } catch {
+    // Directory fsync is not portable (notably on Windows); its absence only
+    // weakens durability, so it must never fail the operation.
+  }
 }
 
 /** Refuse to snapshot or restore through a symlink or non-regular file. */
@@ -255,6 +288,23 @@ export function createDesktopProfileCheckpoint(options: ProfileCheckpointOptions
     })
   }
 
+  /**
+   * Load one slot's manifest, treating ANY unreadable or malformed state as
+   * "this slot is empty" rather than as a fatal error.
+   *
+   * WHY THIS IS TOLERANT
+   * --------------------
+   * The three slots exist to be INDEPENDENT recovery points, and a snapshot is
+   * taken on every healthy startup. If a single corrupt manifest propagated, then
+   * `listSlots()` (used by the slot-selection logic inside `captureHealthy`) would
+   * throw and **every future capture would be blocked** — one bad byte anywhere
+   * would permanently disable checkpointing, including for the healthy slots.
+   *
+   * A manifest from a newer build (say v5, after a downgrade) is treated the same
+   * way: unknown, so unusable by this version, but not a reason to fail the whole
+   * mechanism. It also must not be silently rewritten as v4 — `snapshotExists` is
+   * reported false so the slot is simply recycled by a later capture.
+   */
   function readSnapshot(directory: string): LoadedSnapshot | undefined {
     const manifestPath = join(directory, MANIFEST_FILENAME)
     let raw: string
@@ -262,14 +312,23 @@ export function createDesktopProfileCheckpoint(options: ProfileCheckpointOptions
       raw = readFileSync(manifestPath, 'utf8')
     } catch (cause) {
       if (isENOENT(cause)) return undefined
-      throw cause
+      // A directory where the manifest should be, or unreadable permissions:
+      // degrade to "empty slot" for the same reason as above.
+      return undefined
     }
-    const manifest = JSON.parse(raw) as ProfileCheckpointManifest
-    if (manifest.version !== MANIFEST_VERSION) throw new Error(`unsupported checkpoint manifest version: ${manifest.version}`)
-    if (manifest.files.length !== checkpointFiles(manifest.version).length) {
-      throw new Error('checkpoint manifest is invalid')
+    try {
+      const manifest = JSON.parse(raw) as ProfileCheckpointManifest
+      if (manifest.version !== MANIFEST_VERSION) return undefined
+      if (!Array.isArray(manifest.files) || manifest.files.length !== checkpointFiles(manifest.version).length) {
+        return undefined
+      }
+      if (typeof manifest.capturedAt !== 'string' || !Number.isFinite(Date.parse(manifest.capturedAt))) {
+        return undefined
+      }
+      return { directory, manifest }
+    } catch {
+      return undefined
     }
-    return { directory, manifest }
   }
 
   function readSkipMarker(): SkipHealthyMarker | undefined {
@@ -303,21 +362,40 @@ export function createDesktopProfileCheckpoint(options: ProfileCheckpointOptions
     rmSync(old, { recursive: true, force: true })
   }
 
-  /** A crash between the two renames leaves `<slot>.old-*`; put it back. */
+  /**
+   * Recover from a crash during a slot replacement.
+   *
+   * Two distinct kinds of debris can be left behind:
+   *
+   *   - `<slot>.old-*` — the previous snapshot after the first rename but before
+   *     the second. It is put BACK, because it is a complete, valid snapshot and
+   *     losing it would silently destroy a recovery point.
+   *   - `<slot>.staging-*` — a half-built snapshot. It is REMOVED, because an
+   *     incomplete staging directory is worthless and, left alone, would
+   *     accumulate on every crash. The in-process `catch` only covers failures
+   *     that unwind normally; a hard crash leaks them, and nothing else cleans up.
+   */
   function recoverOrphanedSlots(): void {
     for (const slotId of DESKTOP_PROFILE_CHECKPOINT_SLOT_IDS) {
       const target = slotDirectory(slotId)
-      if (existsSync(target)) continue
-      let candidates: string[]
+      let entries: string[]
       try {
-        candidates = readdirSync(snapshotRoot)
-          .filter(name => name.startsWith(`${slotId}.old-`))
-          .sort()
-          .reverse()
+        entries = readdirSync(snapshotRoot)
       } catch (cause) {
-        if (isENOENT(cause)) continue
+        if (isENOENT(cause)) return
         throw cause
       }
+
+      // Discard incomplete staging directories for this slot.
+      for (const name of entries.filter(entry => entry.startsWith(`${slotId}.staging-`))) {
+        rmSync(join(snapshotRoot, name), { recursive: true, force: true })
+      }
+
+      if (existsSync(target)) continue
+      const candidates = entries
+        .filter(name => name.startsWith(`${slotId}.old-`))
+        .sort()
+        .reverse()
       for (const name of candidates) {
         const candidate = join(snapshotRoot, name)
         try {
@@ -494,3 +572,14 @@ export function createDesktopProfileCheckpoint(options: ProfileCheckpointOptions
 }
 
 export type DesktopProfileCheckpoint = ReturnType<typeof createDesktopProfileCheckpoint>
+
+/**
+ * Remove every checkpoint for a profile.
+ *
+ * A standalone entry point (rather than only an instance method) because the caller
+ * that needs it — deleting a profile — has no checkpoint instance, and should not
+ * have to construct one just to clear its state.
+ */
+export function clearDesktopProfileCheckpoint(userDataDir: string, profileName: string): void {
+  rmSync(join(userDataDir, SNAPSHOT_ROOT, profileName), { recursive: true, force: true })
+}
