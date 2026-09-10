@@ -41,6 +41,7 @@ import { createNotificationService, type NotificationService } from './desktop/n
 import { notificationPreferencesPath, updatePreferencesPath } from './desktop/preference-paths.js'
 import { createUpdateService, type UpdateService } from './desktop/update-service.js'
 import { createTrayService, type TrayService } from './desktop/tray-service.js'
+import { createShellIpcRegistrar, type ShellIpcRegistrar } from './desktop/shell-ipc-registrar.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -218,6 +219,28 @@ async function startApplication(): Promise<void> {
   // notification service, so they must run AFTER the services above are created.
   ensureWindowsNotificationIdentity()
   installWindowsNotificationActivationHandler()
+  // The shell IPC registrar needs every service above (it dispatches into them),
+  // so it is created last of the group — before any channel is registered.
+  shellIpcRegistrar = createShellIpcRegistrar({
+    state,
+    rendererKind: shellRendererKind,
+    bootstrap: shellBootstrap,
+    broadcastShellState,
+    broadcastShellBootstrap,
+    executeShellAction,
+    runShellTool,
+    popupShellTool,
+    popupShellMenu,
+    saveNotificationPreferences: value => saveNotificationPreferences(notificationPreferencesPath(), value),
+    saveUpdatePreferences: value => saveUpdatePreferences(updatePreferencesPath(), value),
+    updateSnapshot: desktopUpdateSnapshot,
+    handleUpdateAction: handleDesktopUpdateSettingsAction,
+    applyTheme: applyDesktopTheme,
+    reportRendererBoot: handleRendererBootReport,
+    updateUnreadBadge: updateUnreadCompletionBadge,
+    handleBridgeNotification: handleBridgeNotificationEvent,
+    runTask: runMainTask,
+  })
   installShellIpc()
   installRecoveryIpc()
   installDesktopFaviconReplacement()
@@ -891,6 +914,13 @@ function requireTrayService(): TrayService {
   return trayService
 }
 
+let shellIpcRegistrar: ShellIpcRegistrar | undefined
+
+function requireShellIpcRegistrar(): ShellIpcRegistrar {
+  if (shellIpcRegistrar === undefined) throw new Error('外壳 IPC 注册器尚未初始化。')
+  return shellIpcRegistrar
+}
+
 function requireDshView(): WebContentsView {
   return requireWindowRegistry().requireDshView()
 }
@@ -1112,141 +1142,8 @@ function installRecoveryIpc(): void {
 }
 
 function installShellIpc(): void {
-  ipcMain.removeHandler(SHELL_IPC.getBootstrap)
-  ipcMain.removeHandler(SHELL_IPC.action)
-  ipcMain.removeHandler(SHELL_IPC.tool)
-  ipcMain.removeHandler(SHELL_IPC.popupTool)
-  ipcMain.removeHandler(SHELL_IPC.popupMenu)
-  ipcMain.removeHandler(SHELL_IPC.getNotificationPreferences)
-  ipcMain.removeHandler(SHELL_IPC.updateNotificationPreferences)
-  ipcMain.removeHandler(SHELL_IPC.getUpdatePreferences)
-  ipcMain.removeHandler(SHELL_IPC.updateUpdatePreferences)
-  ipcMain.removeHandler(SHELL_IPC.getDesktopUpdateState)
-  ipcMain.removeHandler(SHELL_IPC.desktopUpdateAction)
-  ipcMain.removeHandler(SHELL_IPC.closeDesktopSettings)
-  ipcMain.handle(SHELL_IPC.getBootstrap, event => {
-    if (!mayGetShellBootstrap(shellRendererKind(event.sender))) return
-    return shellBootstrap()
-  })
-  ipcMain.handle(SHELL_IPC.action, (event, id: unknown) => {
-    if (typeof id !== 'string' || !shellActionIds.has(id)) return
-    const actionId = id as ShellActionId
-    if (!mayInvokeShellAction(shellRendererKind(event.sender), actionId)) return
-    return executeShellAction(actionId)
-  })
-  ipcMain.handle(SHELL_IPC.tool, (event, tool: unknown) => {
-    if (!mayPopupShellMenu(shellRendererKind(event.sender))) return
-    if (tool !== 'terminal') return
-    return runShellTool('terminal')
-  })
-  ipcMain.handle(SHELL_IPC.popupTool, (event, tool: unknown, x: unknown, y: unknown) => {
-    if (!mayPopupShellMenu(shellRendererKind(event.sender))) return
-    if (tool !== 'reload' && tool !== 'developer') return
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return
-    return popupShellTool(tool, Math.round(Number(x)), Math.round(Number(y)))
-  })
-  ipcMain.handle(SHELL_IPC.popupMenu, (event, request: ShellMenuPopupRequest) => {
-    if (!mayPopupShellMenu(shellRendererKind(event.sender))) return
-    return popupShellMenu(request)
-  })
-  ipcMain.handle(SHELL_IPC.getNotificationPreferences, event => {
-    if (!mayAccessNotificationPreferences(shellRendererKind(event.sender))) return
-    return state.notifications.preferences
-  })
-  ipcMain.handle(SHELL_IPC.updateNotificationPreferences, async (event, value: unknown) => {
-    if (!mayAccessNotificationPreferences(shellRendererKind(event.sender))) return
-    state.notifications.preferences = await saveNotificationPreferences(notificationPreferencesPath(), value)
-    return state.notifications.preferences
-  })
-  ipcMain.handle(SHELL_IPC.getUpdatePreferences, event => {
-    if (!mayAccessDesktopUpdates(shellRendererKind(event.sender))) return
-    return state.update.preferences
-  })
-  ipcMain.handle(SHELL_IPC.updateUpdatePreferences, async (event, value: unknown) => {
-    if (!mayAccessDesktopUpdates(shellRendererKind(event.sender))) return
-    state.update.preferences = await saveUpdatePreferences(updatePreferencesPath(), value)
-    if (shouldDownloadUpdateAutomatically(state.update.preferences) && state.update.status.kind === 'available') {
-      runMainTask(downloadDesktopUpdate('settings'))
-    }
-    return state.update.preferences
-  })
-  ipcMain.handle(SHELL_IPC.getDesktopUpdateState, event => {
-    if (!mayAccessDesktopUpdates(shellRendererKind(event.sender))) return
-    return desktopUpdateSnapshot()
-  })
-  ipcMain.handle(SHELL_IPC.desktopUpdateAction, async (event, value: unknown) => {
-    if (!mayAccessDesktopUpdates(shellRendererKind(event.sender))) return
-    if (value !== 'check' && value !== 'download' && value !== 'install') return
-    await handleDesktopUpdateSettingsAction(value)
-    return desktopUpdateSnapshot()
-  })
-  ipcMain.handle(SHELL_IPC.closeDesktopSettings, event => {
-    if (!mayCloseDesktopSettings(shellRendererKind(event.sender))) return
-    state.windows.settingsWindow?.close()
-  })
-  ipcMain.removeAllListeners(SHELL_IPC.dshState)
-  ipcMain.on(SHELL_IPC.dshState, (event, navigation: Partial<DshNavigationState>) => {
-    if (!mayReportDshState(shellRendererKind(event.sender))) return
-    if (typeof navigation !== 'object' || navigation === null) return
-    state.shell.navigationState = {
-      canBack: navigation.canBack === true,
-      canForward: navigation.canForward === true,
-      canNextChat: navigation.canNextChat === true,
-      canPreviousChat: navigation.canPreviousChat === true,
-    }
-    broadcastShellState()
-  })
-  ipcMain.removeAllListeners(SHELL_IPC.dshBoot)
-  ipcMain.on(SHELL_IPC.dshBoot, (event, value: unknown) => {
-    if (!mayReportDshBoot(shellRendererKind(event.sender))) return
-    runMainTask(handleRendererBootReport(value))
-  })
-  ipcMain.removeAllListeners(SHELL_IPC.dshLocale)
-  ipcMain.on(SHELL_IPC.dshLocale, (event, value: unknown) => {
-    if (!mayReportDshLocale(shellRendererKind(event.sender))) return
-    const locale = normalizeShellLocale(value)
-    if (locale === undefined || locale === state.shell.locale) return
-    state.shell.locale = locale
-    broadcastShellBootstrap()
-    updateUnreadCompletionBadge(state.notifications.unreadCompletionCount)
-  })
-  ipcMain.removeAllListeners(SHELL_IPC.dshTheme)
-  ipcMain.on(SHELL_IPC.dshTheme, (event, value: unknown) => {
-    if (!mayReportDshTheme(shellRendererKind(event.sender))) return
-    const snapshot = normalizeDesktopThemeSnapshot(value)
-    if (snapshot === undefined) return
-    const colorSchemeChanged = snapshot.colorScheme !== state.shell.colorScheme
-    const preferenceChanged = snapshot.preference !== undefined && snapshot.preference !== state.shell.themePreference
-    if (!colorSchemeChanged && !preferenceChanged) return
-    applyDesktopTheme(snapshot.colorScheme, snapshot.preference)
-    if (colorSchemeChanged) broadcastShellBootstrap()
-  })
-  ipcMain.removeAllListeners(SHELL_IPC.dshSettingsVisibility)
-  ipcMain.on(SHELL_IPC.dshSettingsVisibility, (event, value: unknown) => {
-    if (!mayReportDshSettingsVisibility(shellRendererKind(event.sender))) return
-    state.shell.settingsDialogVisible = value === true
-  })
-  ipcMain.removeAllListeners(SHELL_IPC.dshNotification)
-  ipcMain.on(SHELL_IPC.dshNotification, (event, value: unknown) => {
-    if (!mayReportDshNotification(shellRendererKind(event.sender))) return
-    const notificationEvent = parseDesktopNotificationBridgeEvent(value)
-    if (notificationEvent === undefined) return
-    if (notificationEvent.type === 'badge') {
-      updateUnreadCompletionBadge(notificationEvent.count)
-      return
-    }
-    if (notificationEvent.type === 'dismiss') {
-      dismissNotificationsForSession(notificationEvent.sessionId)
-      return
-    }
-    if (notificationEvent.type === 'reply-error') {
-      showNotificationReplyError(notificationEvent.sessionId)
-      return
-    }
-    showDesktopNotification(notificationEvent)
-  })
+  requireShellIpcRegistrar().installShellIpc()
 }
-
 function shellRendererKind(sender: WebContents): ShellRendererKind {
   if (sender === state.windows.mainWindow?.webContents) return 'main'
   if (sender === state.windows.shortcutsWindow?.webContents) return 'shortcuts'
@@ -1730,6 +1627,32 @@ function showNotificationReplyError(sessionId: string): void {
 
 function showDesktopNotification(event: DesktopNotificationEvent): void {
   requireNotificationService().showDesktopNotification(event)
+}
+
+/**
+ * Dispatch a validated notification-bridge event to the right handler.
+ *
+ * Lives in main.ts rather than the notification service because the `badge` and
+ * `dismiss` cases fan out to the service, while `reply-error` and full notifications
+ * are the service's own concern — keeping the routing here preserves the original
+ * single dispatch point that the IPC registrar calls into.
+ */
+function handleBridgeNotificationEvent(payload: unknown): void {
+  const notificationEvent = parseDesktopNotificationBridgeEvent(payload)
+  if (notificationEvent === undefined) return
+  if (notificationEvent.type === 'badge') {
+    updateUnreadCompletionBadge(notificationEvent.count)
+    return
+  }
+  if (notificationEvent.type === 'dismiss') {
+    dismissNotificationsForSession(notificationEvent.sessionId)
+    return
+  }
+  if (notificationEvent.type === 'reply-error') {
+    showNotificationReplyError(notificationEvent.sessionId)
+    return
+  }
+  showDesktopNotification(notificationEvent)
 }
 
 type DesktopSettingsSection = 'notifications' | 'updates'

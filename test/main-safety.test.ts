@@ -212,7 +212,9 @@ test('桌面通知和更新设置使用独立窗口并进入打包资源', async
   assert.match(settings, /api\.updateUpdatePreferences/)
   assert.match(settings, /api\.desktopUpdateAction/)
   assert.match(settings, /api\.closeDesktopSettings/)
-  assert.match(main, /SHELL_IPC\.closeDesktopSettings/)
+  // The close-desktop-settings channel is registered by the shell IPC registrar.
+  const shellIpc = await readFile(new URL('../../src/desktop/shell-ipc-registrar.ts', import.meta.url), 'utf8')
+  assert.match(shellIpc, /SHELL_IPC\.closeDesktopSettings/)
   assert.match(settings, /api\.onDesktopUpdateState/)
   assert.match(settings, /安装前始终由你确认/)
   assert.match(settings, /Installation always requires your confirmation/)
