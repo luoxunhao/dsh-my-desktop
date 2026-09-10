@@ -30,7 +30,7 @@ export function ProfilesPanel({ profiles }: {
   }
 
   return (
-    <div className="space-y-4 overflow-auto p-1 pt-4">
+    <div className="h-full space-y-4 overflow-auto p-1 pt-4">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Users className="size-5" />Profile</CardTitle>

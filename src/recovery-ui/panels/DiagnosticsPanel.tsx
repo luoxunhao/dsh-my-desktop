@@ -16,7 +16,7 @@ export function DiagnosticsPanel({ startupLog }: {
   const empty = startupLog === undefined || startupLog.trim() === ''
 
   return (
-    <div className="space-y-4 overflow-auto p-1 pt-4">
+    <div className="h-full space-y-4 overflow-auto p-1 pt-4">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

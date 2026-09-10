@@ -47,7 +47,7 @@ export function RollbackPanel({ slots, inspections, locale, busy, onInspect, onR
   const anyAvailable = slots.some(slot => slot.status === 'available')
 
   return (
-    <div className="space-y-4 overflow-auto p-1 pt-4">
+    <div className="h-full space-y-4 overflow-auto p-1 pt-4">
       {anyAvailable
         ? null
         : (

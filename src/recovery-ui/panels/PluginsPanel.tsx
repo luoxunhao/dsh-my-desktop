@@ -23,7 +23,7 @@ export function PluginsPanel({ status, busy, onUninstall, onRestore, onKeepIsola
   const candidates = status?.candidates ?? []
 
   return (
-    <div className="space-y-4 overflow-auto p-1 pt-4">
+    <div className="h-full space-y-4 overflow-auto p-1 pt-4">
       <Card>
         <CardHeader>
           <CardTitle>隔离的插件</CardTitle>
