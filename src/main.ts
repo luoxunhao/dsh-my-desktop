@@ -327,6 +327,9 @@ async function startApplication(): Promise<void> {
   // cannot boot at all, so the host is never launched and we return from here.
   const launch = resolveLaunchDecision(process.argv)
   if (!launch.startsHost) {
+    // Record WHY we are here: the page's reason card differs between "the user asked
+    // for recovery" and "startup failed", and only the launcher knows which.
+    state.launch.recoveryRequested = true
     await runRecoveryLaunch(launch.mode === 'safe-mode' ? 'safe-mode' : 'recovery')
     return
   }
@@ -478,24 +481,15 @@ function resolveStartupHtml(): string | undefined {
   return undefined
 }
 
-function resolveRecoveryHtml(): string | undefined {
-  const packaged = join(process.resourcesPath, 'recovery.html')
-  const development = join(app.getAppPath(), 'assets', 'recovery.html')
-  if (existsSync(packaged)) return packaged
-  if (existsSync(development)) return development
-  return undefined
-}
-
 /**
  * The Vite-built recovery page.
  *
- * Separate from `resolveRecoveryHtml` because the two live in different places and
- * have different shapes: the legacy page is a single HTML file under `assets/`,
- * while this one is a DIRECTORY (HTML + hashed JS/CSS) produced by `vite build`.
+ * It is a DIRECTORY (HTML + hashed JS/CSS) produced by `vite build`, not a single
+ * HTML file — which is why it resolves differently from the other shell assets.
  *
- * Both paths are checked in the packaged-first order the other resolvers use. The
- * dev path points at the build output rather than the source, because the sources
- * are TSX and only the built bundle is loadable — which is why `build:all` includes
+ * Both paths are checked in the packaged-first order the other resolvers use. The dev
+ * path points at the BUILD OUTPUT rather than the source, because the sources are TSX
+ * and only the built bundle is loadable; that is why `build:all` includes
  * `build:recovery-ui`.
  */
 function resolveRecoveryUiHtml(): string | undefined {
@@ -781,9 +775,19 @@ async function showRecoveryWindow(profileDir: string, failure?: { failureMessage
     state.recovery.failurePlugin = failure.failurePlugins[0]
   }
   showRecoveryContentView()
-  const html = resolveRecoveryHtml()
-  if (html === undefined) throw new Error('恢复页面资源缺失。')
-  await windowNavigation.navigate(view, () => view.webContents.loadFile(html))
+  const html = resolveRecoveryUiHtml()
+  if (html === undefined) {
+    // The built page is produced by `build:recovery-ui`, which `build:all` runs. A
+    // missing artifact means the build step was skipped, so say that rather than
+    // reporting a generic missing-resource error.
+    throw new Error('恢复页面资源缺失，请先运行 pnpm run build:recovery-ui。')
+  }
+  // `requested` distinguishes "the user asked for recovery" from "startup failed";
+  // the page renders a different reason card for each. Without it every entry would
+  // look like a crash.
+  const requested = state.launch.recoveryRequested === true ? '1' : '0'
+  const query = { theme: state.shell.colorScheme, locale: desktopLocale(), requested }
+  await windowNavigation.navigate(view, () => view.webContents.loadFile(html, { query }))
 }
 
 async function startupRecoveryCandidates(profileDir: string, message: string, plugins: readonly string[] = []): Promise<string[]> {

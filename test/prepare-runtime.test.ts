@@ -199,7 +199,7 @@ test('打包配置包含恢复页及其运行依赖', async () => {
     build?: { extraResources?: Array<{ from?: string; to?: string; filter?: string[] }> }
   }
   const resources = manifest.build?.extraResources ?? []
-  assert.ok(resources.some(resource => resource.from === 'assets/recovery.html' && resource.to === 'recovery.html'))
+  assert.ok(resources.some(resource => resource.from === 'dist/recovery-ui' && resource.to === 'recovery-ui'))
   const bridge = resources.filter(resource => resource.to?.startsWith('desktop-bridge/'))
   assert.ok(bridge.some(resource => resource.to === 'desktop-bridge/recovery-mode.js'))
 })

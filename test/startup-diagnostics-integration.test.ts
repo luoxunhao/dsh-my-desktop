@@ -16,14 +16,14 @@ test('桌面桥接将 Loader 的结构化启动结果经受限 IPC 交给主进�
     }
     throw new Error(`找不到源文件：${file}`)
   }
-  const [bridge, preload, contract, policy, main, recoveryPreload, recoveryHtml] = await Promise.all([
+  const [bridge, preload, contract, policy, main, recoveryPreload, recoveryApp] = await Promise.all([
     source('desktop-bridge-client-source.ts'),
     source('dsh-view-preload.cts'),
     source('shell-contract.ts'),
     source('shell-ipc-policy.ts'),
     source('main.ts'),
     source('recovery-preload.cts'),
-    readFile(join(process.cwd(), 'assets', 'recovery.html'), 'utf8'),
+    readFile(join(process.cwd(), 'src', 'recovery-ui', 'App.tsx'), 'utf8'),
   ])
   assert.match(bridge, /loader\.await\(\)/)
   assert.match(bridge, /bridge\.reportBoot\(/)
@@ -39,5 +39,5 @@ test('桌面桥接将 Loader 的结构化启动结果经受限 IPC 交给主进�
   assert.match(main, /leaveRecoveryMode\(profileDir\)/)
   assert.match(main, /restartDshInRecoveryMode\(profileDir, 'workbench'\)/)
   assert.match(recoveryPreload, /restoreHealthyConfig/)
-  assert.match(recoveryHtml, /恢复最近正常配置/)
+  // The recovery UI reaches the same restore through its typed API wrapper; the\n  // legacy page's button label no longer exists, so assert the actual wiring.\n  assert.match(recoveryApp, /recoveryApi\.restoreHealthyConfig\(\)/)
 })

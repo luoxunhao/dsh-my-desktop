@@ -134,10 +134,6 @@
         "to": "startup.html"
       },
       {
-        "from": "assets/recovery.html",
-        "to": "recovery.html"
-      },
-      {
         "from": "assets/shell.html",
         "to": "shell.html"
       },

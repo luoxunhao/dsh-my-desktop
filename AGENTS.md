@@ -99,7 +99,9 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
 
 - `build` = `tsc`（只编译启动器到 `dist/`）；`check` = `tsc --noEmit`
 - `build:plugin` = `pnpm --dir plugins/dsh-my-desktop-settings run build`；`check:plugin` = 同目录 `typecheck`
-- **`build:all` = 插件 → 启动器**（一体化的默认构建入口）；`check:all` = 两侧一起 typecheck
+- **`build:all` = 插件 → 启动器 → 恢复页 → 扁平发布单元**（一体化的默认构建入口）；
+  `check:all` = 插件 + 启动器 + 恢复页 三处一起 typecheck
+- `build:recovery-ui` = `vite build`（恢复页前端）；`check:recovery-ui` = `tsc -p tsconfig.recovery-ui.json`
 - `start` = `build:all && electron .`（开发运行，不打包）
 - `prepare-runtime` = `build:all && node dist/scripts/prepare-runtime.js`
 - `dist` = `prepare-runtime && electron-builder --publish never`（经 build.ps1 跑，pnpm 已由脚本定位正确）
@@ -186,6 +188,17 @@ select 近乎瞬时，所以超时按操作类型分别设置，且**永不挂�
 
 - `assets/shell.html` —— 主窗口顶部 `.bar`（浅/深两套样式、终端/重启/开发者图标、居中标题）。
   改它不需 `tsc`，dev 从 `assets/` 直接读，重启即生效。
+- **`src/recovery-ui/`** —— 恢复页前端（React + Vite + Tailwind + `@base-ui/react`）。
+  **这是启动器里唯一需要前端构建链的部分**，改后必须跑 `pnpm run build:recovery-ui`
+  （`build:all` 已含此步）。三个必须知道的约束：
+  1. **产物是经典脚本（IIFE），不是 ES module**。恢复页用 `loadFile` 以 `file://` 加载，
+     而浏览器拒绝从 `file://` 文档执行 module 脚本——症状是**窗口一片空白、控制台无报错**。
+     Vite 配置里 `format: 'iife'` 与构建后插件（去掉 `type="module"`/`crossorigin`）正是为此。
+  2. **挂载必须等 DOM 就绪**。经典脚本在 `<head>` 中会早于 `<body>` 执行，
+     裸的 `getElementById('root')` 会返回 null 并抛错。这个坑已被踩过两次。
+  3. **tsconfig 用 `moduleResolution: 'bundler'`**（主 tsconfig 是 NodeNext），
+     因此组件里的 import **不带扩展名**。
+  改完记得 `pnpm run check:recovery-ui`（已含在 `check:all` 里）。
 - `src/shell-contract.ts`、`src/shell-preload.cts`、`src/main.ts` —— 顶栏按钮 IPC
   （`dsh-shell:tool` / `dsh-shell:popup-tool`）与 `openDshTerminal` 等实现，改后需 `tsc`。
 - `build/installer.nsh` —— NSIS 安装脚本。安装/卸载阶段**不**做任何同步子进程或改用户 PATH
@@ -220,4 +233,4 @@ Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','By
 导致的已知缺口，不是被测代码的问题。若需要这些 CI 相关用例通过，需补 `.github/workflows/desktop-package.yml`。
 
 另有 1 条与 `.github` 无关的既有失败：`profile-repair.test.ts` 的「官方 Web bundle 缺失时…」。
-当前基线是 **330 项 / 324 通过 / 5 失败**（全部为上述已知项）。
+当前基线是 **486 项 / 480 通过 / 5 失败**（全部为上述已知项）。

@@ -100,6 +100,15 @@ export interface RuntimeState {
 export interface LaunchState {
   lastStartOptions: RetainedStartOptions | undefined
   lastSeedOptions: RetainedSeedOptions | undefined
+  /**
+   * Whether this launch entered recovery because the USER asked for it, rather than
+   * because startup failed.
+   *
+   * The recovery page renders a different reason card for each. Without this the page
+   * cannot tell them apart, and every entry looks like a crash. Set once at startup
+   * from the launch decision.
+   */
+  recoveryRequested: boolean
   profileWatcher: { stop: () => void, sync: () => void } | undefined
   profileActivationRecyclePending: boolean
   profileActivationRecycleTask: Promise<void> | undefined
@@ -201,6 +210,8 @@ export function createDesktopState(options: {
     launch: {
       lastStartOptions: undefined,
       lastSeedOptions: undefined,
+      // Set from the launch decision during startup; defaults to a failure entry.
+      recoveryRequested: false,
       profileWatcher: undefined,
       profileActivationRecyclePending: false,
       profileActivationRecycleTask: undefined,

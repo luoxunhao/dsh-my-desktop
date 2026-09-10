@@ -52,7 +52,6 @@ test('桌面壳与 DSH 内容分层并复用托盘重载实现', async () => {
 
 test('插件恢复页使用独立内容视图和受限 preload，不复用 DSH 侧栏', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  const recovery = await readFile(new URL('../../assets/recovery.html', import.meta.url), 'utf8')
   // The recovery view is declared on the state store (it is shared mutable state),
   // so assert the declaration there rather than in main.ts.
   const stateSource = await readFile(new URL('../../src/desktop/desktop-state.ts', import.meta.url), 'utf8')
@@ -63,15 +62,29 @@ test('插件恢复页使用独立内容视图和受限 preload，不复用 DSH �
   assert.match(main, /function showRecoveryWindow/)
   assert.match(main, /window\.unmaximize\(\)\s+window\.setSize\(920, 680\)/)
   assert.match(registry, /state\.windows\.dshView\?\.setVisible\(false\)/)
-  assert.match(recovery, /恢复模式/)
-  assert.doesNotMatch(recovery, /dshShell/)
-  assert.doesNotMatch(recovery, /class="titlebar"/)
-  assert.doesNotMatch(recovery, /class="steps"/)
-  assert.match(recovery, /进入工作台/)
-  assert.match(recovery, /检测到可能导致启动失败的插件/)
-  assert.match(recovery, /显示完整启动日志/)
-  assert.match(recovery, /正在重新启动 DSH，最长等待 45 秒。/)
-  assert.match(recovery, /--danger-fill/)
+})
+
+test('恢复页是 Vite 构建产物，且不携带外壳的侧栏/标题栏结构', async () => {
+  // The page moved from a hand-written `assets/recovery.html` to a built bundle. It
+  // must still be a SEPARATE document from the shell: it is loaded into its own
+  // WebContentsView with the restricted recovery preload, so it must not pull in the
+  // shell's chrome (side bar, title bar, step indicator).
+  const app = await readFile(new URL('../../src/recovery-ui/App.tsx', import.meta.url), 'utf8')
+  const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
+  assert.match(main, /resolveRecoveryUiHtml\(\)/, '恢复窗口应加载构建产物')
+  assert.match(main, /resourcesPath, 'recovery-ui', 'index\.html'/, '打包路径应指向 recovery-ui')
+  assert.doesNotMatch(app, /dshShell/)
+  assert.doesNotMatch(app, /class="titlebar"/)
+  assert.doesNotMatch(app, /class="steps"/)
+})
+
+test('恢复页在服务未就绪时不提供「返回工作台」', async () => {
+  // The main process refuses the call when the server is not up ("DSH 尚未成功启动"),
+  // so this is an affordance rather than the protection — but offering a button that
+  // always fails is worse than disabling it. The legacy page gated the same way.
+  const app = await readFile(new URL('../../src/recovery-ui/App.tsx', import.meta.url), 'utf8')
+  assert.match(app, /status\?\.running !== true/, '未就绪时应禁用返回工作台')
+  assert.match(app, /DSH 尚未成功启动/, '应说明为何不可用')
 })
 
 test('恢复页返回工作台会先确认 DSH 页面可用再切换视图', async () => {
@@ -110,25 +123,25 @@ test('恢复模式中的健康启动不会覆盖最近正常配置检查点', as
   assert.match(main, /beginStartupDiagnostic\(startupDiagnosticPath\(profileDir\), state\.diagnostics\.stage, \{\s+mode: isRecoveryModeActive\(profileDir\) \? 'recovery' : 'normal',?\s+\}\)/)
 })
 
-test('恢复页只有在 DSH 服务就绪后才显示进入工作台操作', async () => {
+test('启动失败会被记录到 profile 的日志文件（恢复页据此展示）', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  const recovery = await readFile(new URL('../../assets/recovery.html', import.meta.url), 'utf8')
-  assert.match(recovery, /state\.active && state\.running/)
-  assert.match(recovery, /const hasFailure = typeof state\.failureMessage === 'string'/)
-  assert.match(recovery, /showLog\.hidden = !hasFailure/)
   assert.match(main, /await reportStartupFailure\(error, profileDir\)/)
   assert.match(main, /join\(profileDir, '\.dsh-desktop-startup-error\.log'\)/)
+  // The new UI reads that file through the typed API rather than the page reading it
+  // directly — the renderer is sandboxed and has no filesystem access.
+  const app = await readFile(new URL('../../src/recovery-ui/App.tsx', import.meta.url), 'utf8')
+  assert.match(app, /recoveryApi\.getStartupLog\(\)/)
 })
 
-test('恢复页使用单页诊断布局并跟随系统颜色模式', async () => {
-  const recovery = await readFile(new URL('../../assets/recovery.html', import.meta.url), 'utf8')
-  assert.match(recovery, /当前配置：web/)
-  assert.match(recovery, /启动错误/)
-  assert.match(recovery, /恢复操作/)
-  assert.match(recovery, /matchMedia\('\(prefers-color-scheme: dark\)'\)/)
-  assert.match(recovery, /\.dialog-actions button\{min-height:32px;padding:0 10px;font-size:13px\}/)
-  assert.match(recovery, /\.dialog-actions \.primary\{min-width:0\}/)
-  assert.doesNotMatch(recovery, /class="steps"/)
+test('恢复页的配色跟随 DSH 主题，而不是操作系统颜色模式', async () => {
+  const styles = await readFile(new URL('../../src/recovery-ui/styles.css', import.meta.url), 'utf8')
+  const withoutComments = styles.replace(/\/\*[\s\S]*?\*\//g, '')
+  // THE deliberate difference from the reference implementation. The app follows the
+  // user's DSH theme, which can disagree with the OS; the legacy page used
+  // `prefers-color-scheme` and would now disagree with the rest of the app.
+  assert.match(withoutComments, /\[data-color-scheme='dark'\]/)
+  assert.doesNotMatch(withoutComments, /@media[^{]*prefers-color-scheme/)
+  assert.doesNotMatch(styles, /--danger-fill/, '旧页面的手写变量不应残留')
 })
 
 test('桌面壳预加载脚本被编译并提供 DSH 动作兜底', async () => {

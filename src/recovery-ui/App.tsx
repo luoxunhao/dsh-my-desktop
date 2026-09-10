@@ -187,9 +187,14 @@ export function App(): React.JSX.Element {
       </Tabs>
 
       <footer className="flex shrink-0 items-center justify-end gap-2 border-t pt-4">
+        {/* "Return to workbench" is only offered once the DSH server is actually
+            running. The main process refuses the call otherwise ("DSH 尚未成功启动"),
+            so this is a UX affordance rather than the protection — but offering a
+            button that always fails is worse than disabling it. */}
         <Button
           variant="outline"
-          disabled={busy}
+          disabled={busy || status?.running !== true}
+          title={status?.running === true ? undefined : 'DSH 尚未成功启动'}
           onClick={() => { void run('返回工作台', async () => { await recoveryApi.returnToWorkbench() }) }}
         >
           <RotateCcw />
