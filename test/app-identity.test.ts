@@ -7,7 +7,7 @@ import { DESKTOP_APP_NAME, DESKTOP_APP_USER_MODEL_ID, DESKTOP_TOAST_ACTIVATOR_CL
 test('展示名、进程安装目录和用户数据目录都使用 DSH My Desktop', () => {
   assert.equal(DESKTOP_APP_NAME, 'DSH My Desktop')
   assert.equal(DESKTOP_USER_DATA_DIR, 'DSH My Desktop')
-  assert.equal(DESKTOP_APP_USER_MODEL_ID, 'ai.micheng.deepseekHarnessDesktop')
+  assert.equal(DESKTOP_APP_USER_MODEL_ID, 'ai.micheng.dshMyDesktop')
   assert.match(DESKTOP_TOAST_ACTIVATOR_CLSID, /^\{[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}\}$/)
   assert.equal(resolveDesktopUserDataDir('C:\\Users\\demo\\AppData\\Roaming'), join('C:\\Users\\demo\\AppData\\Roaming', 'DSH My Desktop'))
 })

@@ -1,9 +1,9 @@
 import { app, BrowserWindow, Menu, Notification, Tray, WebContentsView, dialog, ipcMain, nativeImage, nativeTheme, net, protocol, session, shell, type Input, type MenuItemConstructorOptions, type WebContents } from 'electron'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile as writeTextFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { DESKTOP_APP_NAME, DESKTOP_APP_USER_MODEL_ID, DESKTOP_TOAST_ACTIVATOR_CLSID, resolveDesktopRuntimeDir, resolveDesktopUserDataDir } from './app-identity.js'
@@ -13,7 +13,19 @@ import { WINDOW_ICON_PIXEL_SIZES, isLoopbackFaviconRequest } from './window-icon
 import { quitDesktopApp, shouldHideInsteadOfClose } from './app-lifecycle.js'
 import type { DshServer, StartDshOptions } from './dsh-process.js'
 import { isExternalOpenUrl, isSameOrigin } from './navigation.js'
-import { applyPendingProfileUpdates, resolvePnpmStoreDir, seedBundledPlugins, resolveWebProfileDir } from './plugin-seed.js'
+import { resolveWebProfileDir } from './plugin-seed.js'
+import { applyPendingProfileUpdates, resolvePnpmStoreDir, seedBundledPlugins } from './plugin-seed.js'
+import {
+  assertProfileName,
+  createProfileDirectory,
+  deleteProfileDirectory,
+  isSafeProfileName,
+  listProfiles,
+  profileDirFor,
+  readActiveProfile,
+  resolveProfileRoots,
+  writeActiveProfile,
+} from './profiles.js'
 import { parseUnresolvedBundleError, removeProfileBundle, startAfterPluginUpdates, startWithProfileSelfRepair } from './profile-repair.js'
 import { confirmRecoveryStartup, enterRecoveryMode, getRecoveryStatus, isRecoveryModeActive, leaveRecoveryMode, restoreRecoveryPlugin, tryAutoLeaveRecoveryMode, uninstallRecoveryPlugin } from './recovery-mode.js'
 import { findRecoveryCandidates, trimStartupLogForRecovery } from './recovery-diagnostics.js'
@@ -21,13 +33,15 @@ import { advanceStartupDiagnostic, beginStartupDiagnostic, completeStartupDiagno
 import { captureProfileHealthCheckpoint, readProfileHealthCheckpoint, restoreProfileHealthCheckpoint } from './profile-health-checkpoint.js'
 import { resolveBundledPluginStore, resolvePluginBinDir } from './plugin-toolchain.js'
 import { resolveDshBootstrap, resolveDshRuntime, resolveNodeExecutable } from './runtime.js'
+import { renderTerminalEntry } from './dsh-term.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime-prebuilt.js'
 import { applyInitialWindowState } from './window-state.js'
 import { WindowNavigationCoordinator } from './window-navigation.js'
 import { escapeRoute } from './escape-routing.js'
-import { prepareDesktopBridge, resolveDesktopBridgeDir } from './desktop-host.js'
+import { isDesktopActionMessage, isDesktopHostMessage, isDesktopProfileActionMessage, prepareDesktopBridge, resolveDesktopBridgeDir } from './desktop-host.js'
 import { migrateDesktopBridgeProfile } from './desktop-bridge-migration.js'
+import { prepareDesktopSettings, resolveDesktopSettingsDir } from './desktop-settings-plugin.js'
 import { isChineseLocale, localizedShellActions, localizedShellMenus, normalizeShellLocale, shellActionForShortcut, SHELL_ACTIONS, type ShellActionId, type ShellMenuId } from './shell-actions.js'
 import { SHELL_BAR_HEIGHT, SHELL_IPC, type DshNavigationState, type DshShellActionId, type ShellBootstrap, type ShellMenuPopupRequest, type ShellState, type ShellToolId, type ShellToolPopupId } from './shell-contract.js'
 import { mayAccessDesktopUpdates, mayAccessNotificationPreferences, mayCloseDesktopSettings, mayGetShellBootstrap, mayInvokeShellAction, mayPopupShellMenu, mayReportDshBoot, mayReportDshLocale, mayReportDshNotification, mayReportDshState, mayReportDshTheme, mayReportDshSettingsVisibility, type ShellRendererKind } from './shell-ipc-policy.js'
@@ -181,7 +195,10 @@ async function startApplication(): Promise<void> {
     }
     const pathPrefix = resolvePluginBinDir(runtimeOptions)
     const pnpmEntry = pathPrefix === undefined ? process.env.npm_execpath : join(pathPrefix, 'pnpm-package', 'bin', 'pnpm.cjs')
-    const profileDir = resolveWebProfileDir()
+    // Launch the persisted active profile (defaults to the legacy "web").
+    const profileRoots = resolveProfileRoots({ stateDir: app.getPath('userData') })
+    const activeProfileName = readActiveProfile(profileRoots)
+    const profileDir = profileDirFor(profileRoots.home, activeProfileName)
     const desktopRuntimeDir = resolveDesktopRuntimeDir(app.getPath('userData'), {
       isPackaged: app.isPackaged,
       execPath: process.execPath,
@@ -217,6 +234,13 @@ async function startApplication(): Promise<void> {
     }
     const desktopBridgePatch = prepareDesktopBridge(join(app.getPath('userData'), 'desktop-bridge'), resolveDesktopBridgeDir(runtimeOptions))
     migrateDesktopBridgeProfile(profileDir)
+    // Bundled private desktop-settings plugin (host+client), injected as a
+    // `--patch` overlay just like the desktop bridge. Dev override via env
+    // DSH_DESKTOP_SETTINGS_DIR; packaged reads the shipped extraResource.
+    const desktopSettingsPatch = prepareDesktopSettings(
+      join(app.getPath('userData'), 'desktop-settings-plugin'),
+      resolveDesktopSettingsDir({ ...runtimeOptions, pluginDevDir: process.env.DSH_DESKTOP_SETTINGS_DIR }),
+    )
     const pluginStoreDir = resolveBundledPluginStore({
       ...runtimeOptions,
       ...(extractedStoreDir === undefined ? {} : { extractedStoreDir }),
@@ -251,14 +275,20 @@ async function startApplication(): Promise<void> {
     const runtime = resolveDshRuntime({ ...runtimeOptions, profileDir, desktopRuntimeDir })
     const startOptions = {
       bootstrapPath: resolveDshBootstrap(runtimeOptions),
-      desktopBridgePatch,
+      // Boot the persisted active profile explicitly (`--profile <name>`); the
+      // bare `web` subcommand is hardcoded to `--profile web` and would ignore it.
+      profileName: activeProfileName,
+      patches: desktopSettingsPatch === undefined
+        ? [desktopBridgePatch]
+        : [desktopBridgePatch, desktopSettingsPatch],
       ...(pathPrefix === undefined ? {} : { pathPrefix }),
       runtime,
       nodeExecutable,
       environment: {
         DSH_HOME: resolve(profileDir, '..', '..'),
         DSH_PROFILE_DIR: profileDir,
-        DSH_PROFILE_NAME: 'web',
+        DSH_PROFILE_NAME: activeProfileName,
+        DSH_PROFILE_SELECTION_DIR: app.getPath('userData'),
         DSH_RUNTIME_DIR: desktopRuntimeDir,
         ...(pnpmEntry === undefined ? {} : { DSH_PNPM_ENTRY: pnpmEntry }),
         ...(profileStoreDir === undefined ? {} : { DSH_PNPM_STORE_DIR: profileStoreDir }),
@@ -619,11 +649,37 @@ function runMainTask(task: Promise<unknown>): void {
 
 
 function handleDshIpc(message: unknown): void {
-  if (!isApplyPluginUpdatesIpc(message)) return
-  // A client plugin may emit this IPC after running its own update-all flow.
-  // It has the same contract as a profile mutation, so letting it bypass the
-  // market queue would still interrupt a batch after its first item.
-  scheduleProfileActivationRecycle()
+  if (isApplyPluginUpdatesIpc(message)) {
+    // A client plugin may emit this IPC after running its own update-all flow.
+    // It has the same contract as a profile mutation, so letting it bypass the
+    // market queue would still interrupt a batch after its first item.
+    scheduleProfileActivationRecycle()
+    return
+  }
+  if (!isDesktopHostMessage(message)) return
+  if (isDesktopActionMessage(message)) {
+    // Launcher-native side effect requested by the settings plugin.
+    if (message.type === 'desktop/action/restart') {
+      runMainTask(restartDesktop())
+    } else if (message.type === 'desktop/action/terminal/open') {
+      openDshTerminal()
+    } else if (message.type === 'desktop/action/devtools/toggle') {
+      toggleDeveloperTools()
+    }
+    return
+  }
+  // Profile create/select/delete requested by the in-profile settings section.
+  runMainTask((async () => {
+    if (message.type === 'desktop/profile/create') {
+      await createWebProfile(message.name)
+      console.log(`已创建 profile：${message.name}`)
+    } else if (message.type === 'desktop/profile/select') {
+      await switchWebProfile(message.name)
+    } else if (message.type === 'desktop/profile/delete') {
+      deleteWebProfile(message.name)
+      console.log(`已删除 profile：${message.name}`)
+    }
+  })())
 }
 
 const DSH_MARKET_BATCH_POLL_MS = 750
@@ -1380,10 +1436,20 @@ function openDshTerminal(): void {
     // profile dir (see startDsh). Mirror that so `dsh` resolves the same home.
     const home = lastSeedOptions?.profileDir !== undefined ? resolve(profileDir, '..', '..') : app.getPath('home')
     const cwd = existsSync(profileDir) ? profileDir : existsSync(home) ? home : app.getPath('temp')
+    // dsh CLI operates on the currently launched profile (the active profile).
+    const profileName = lastSeedOptions?.profileDir !== undefined
+      ? basename(lastSeedOptions.profileDir)
+      : readActiveProfile(launcherProfileRoots())
+    const zh = isChineseLocale(desktopLocale())
 
     // Expose the bundled `dsh` CLI as a `dsh` shim on PATH so profile commands
-    // (e.g. `dsh plugin add <pkg>`) work exactly as in the reference terminal.
-    let shimDir: string | undefined
+    // (e.g. `dsh plugin add <pkg>`) work exactly as in a native DSH terminal.
+    // The official CLI requires `--profile <name>`. A thin wrapper rewrites argv
+    // (see dsh-term.ts) so a bare `dsh`, `dsh web`, `dsh --dump-config` and
+    // `dsh plugin …` all act on the active profile — placing the flag on the
+    // `plugin`/`web` subcommand, never the parent, so plugin management works.
+    const node = resolveNodeExecutable({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath })
+    const nodeBinDir = dirname(node)
     let entry: string | undefined
     const entryCandidates = [
       lastSeedOptions?.desktopRuntimeDir,
@@ -1393,35 +1459,81 @@ function openDshTerminal(): void {
       const candidate = join(root, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
       if (existsSync(candidate)) { entry = candidate; break }
     }
+
+    let shimDir: string | undefined
+    let welcomePath: string | undefined
     if (entry !== undefined) {
       try {
-        const node = resolveNodeExecutable({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath })
-        shimDir = join(app.getPath('userData'), 'dsh-terminal-bin')
+        // Per-profile private state dir (stable, hashed), mirroring the reference
+        // desktop-terminal state layout so a stale partial shim is never reused.
+        const identity = createHash('sha256').update(profileName, 'utf8').digest('hex')
+        const stateDir = join(app.getPath('userData'), 'cli', identity)
+        shimDir = join(stateDir, 'bin')
         mkdirSync(shimDir, { recursive: true })
+        // The official CLI requires `--profile <name>`, but its `plugin` (and
+        // `web`) subcommand rejects a *parent-level* --profile. Prepending the
+        // flag therefore breaks `dsh plugin add <pkg>` (see dsh-term.ts). Run a
+        // thin self-contained wrapper that rewrites argv so `--profile web` lands
+        // on the `plugin` subcommand itself, then boots the official entry.
+        writeFileSync(join(shimDir, 'dsh-term.mjs'), renderTerminalEntry(profileName, entry), 'utf8')
+        const termQuoted = join(shimDir, 'dsh-term.mjs').replace(/"/g, '""')
+        const nodeQuoted = node.replace(/"/g, '""')
         if (process.platform === 'win32') {
-          writeFileSync(join(shimDir, 'dsh.cmd'),
-            '@echo off\r\n"' + node + '" "' + entry.replace(/"/g, '""') + '" %*\r\n', 'utf8')
-          writeFileSync(join(shimDir, 'dsh.bat'),
-            '@echo off\r\n"' + node + '" "' + entry.replace(/"/g, '""') + '" %*\r\n', 'utf8')
+          const shim = '@echo off\r\n"' + nodeQuoted + '" "' + termQuoted + '" %*\r\n'
+          writeFileSync(join(shimDir, 'dsh.cmd'), shim, 'utf8')
+          writeFileSync(join(shimDir, 'dsh.bat'), shim, 'utf8')
+          // Welcome banner: cd into the profile and print the environment + hints.
+          const profileDirCmd = profileDir.replace(/"/g, '""')
+          const product = app.getVersion()
+          const line = (text: string): string => '@echo ' + text.replace(/[<>&|^()%]/g, (m) => '^' + m) + '\r\n'
+          const welcome = [
+            '@echo off',
+            // welcome.cmd is written as UTF-8 but cmd reads batch with the console
+            // ANSI codepage, mojibaking the CJK banner. Switch to UTF-8 (65001)
+            // before any non-ASCII echo so the banner renders; pure-ASCII lines
+            // above it parse fine under any codepage.
+            'chcp 65001 >nul',
+            'cd /d "' + profileDirCmd + '"',
+            line(''),
+            line((zh ? 'DSH My Desktop ' : 'DSH My Desktop ') + product + (zh ? ' 终端' : ' terminal')),
+            line(zh ? 'Profile: ' + profileName : 'Profile: ' + profileName),
+            line(zh ? 'Profile directory: ' + profileDir : 'Profile directory: ' + profileDir),
+            line(zh ? 'Harness home: ' + home : 'Harness home: ' + home),
+            line(zh ? '命令（不带 --profile 即操作当前 ' + profileName + ' profile）：' : 'Commands (without --profile, these act on the ' + profileName + ' profile):'),
+            line('  dsh --dump-config'),
+            line('  dsh plugin add <third-party-plugin>'),
+            line('  dsh plugin remove <third-party-plugin>'),
+            line('  dsh plugin update'),
+            line(zh ? '安装/移除插件后请重启 DSH My Desktop。' : 'Restart DSH My Desktop after plugin changes.'),
+            line(''),
+            '',
+          ].join('\r\n')
+          welcomePath = join(stateDir, 'welcome.cmd')
+          writeFileSync(welcomePath, welcome, 'utf8')
         } else {
           writeFileSync(join(shimDir, 'dsh'),
-            '#!/usr/bin/env sh\nexec "' + node + '" "' + entry + '" "$@"\n', 'utf8')
+            '#!/usr/bin/env sh\nexec "' + node + '" "' + termQuoted + '" "$@"\n', 'utf8')
           try { spawn('chmod', ['+x', join(shimDir, 'dsh')], { stdio: 'ignore' }).unref() } catch { /* ignore */ }
         }
       } catch {
         shimDir = undefined // Fall through to a plain terminal if the shim cannot be written.
       }
     }
+
     // Windows exposes the search path as `Path` (case-insensitive); Node only
     // guarantees it under whichever casing the OS used. Read both and rebuild a
-    // single entry so the original PATH is never dropped when we prepend the shim.
+    // single entry so the original PATH is never dropped when we prepend.
     const originalPath = process.platform === 'win32'
       ? (process.env.Path ?? process.env.PATH ?? '')
       : (process.env.PATH ?? '')
     const pathVar = process.platform === 'win32' ? 'Path' : 'PATH'
     const separator = process.platform === 'win32' ? ';' : ':'
-    const extraPath = shimDir === undefined ? [] : [shimDir]
-    const nextPath = [...extraPath, originalPath].join(separator)
+    // Prepend the shim dir AND the bundled node dir (so `dsh plugin`, which spawns
+    // `pnpm` from PATH, finds the bundled pnpm.cmd) — the system/user PATH is never touched.
+    const extraPath: string[] = []
+    if (shimDir !== undefined) extraPath.push(shimDir)
+    if (process.platform === 'win32') extraPath.push(nodeBinDir)
+    const nextPath = extraPath.length === 0 ? originalPath : [...extraPath, originalPath].join(separator)
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       DSH_HOME: home,
@@ -1430,33 +1542,132 @@ function openDshTerminal(): void {
     if (process.platform === 'win32' && process.env.PATH !== undefined) delete env.PATH
 
     if (process.platform === 'win32') {
+      // Opening a persistent interactive console from a Windows GUI (Electron)
+      // main process must go through a `start` broker: a directly spawned
+      // `cmd /K` console child does not stay attached/open (it exits instantly),
+      // so we write a tiny broker that uses `start` to open the real interactive
+      // window and then exits. This mirrors the reference desktop-terminal.
       const cmd = process.env.ComSpec ?? 'cmd.exe'
-      // Spawn the console-subsystem child directly and detached so Windows gives
-      // it a brand-new, visible console window that inherits `env` unchanged
-      // (a `start` indirection can drop the PATH we pass, breaking the `dsh`
-      // shim lookup).
-      const child = spawn(cmd, ['/d', '/k', 'cd /d "' + cwd + '"'], {
-        cwd,
+      const cmdQuoted = cmd.replace(/"/g, '""')
+      const brokerDir = dirname(welcomePath ?? cwd)
+      const target = welcomePath !== undefined
+        ? cmdQuoted + ' /D /K call "' + welcomePath.replace(/"/g, '""') + '"'
+        : cmdQuoted + ' /D /K cd /d "' + cwd.replace(/"/g, '""') + '"'
+      const launchCmd = join(brokerDir, 'launch.cmd')
+      const broker = [
+        '@echo off',
+        'start "' + DESKTOP_APP_NAME + '" /D "' + cwd.replace(/"/g, '""') + '" ' + target,
+        'exit /b 0',
+        '',
+      ].join('\r\n')
+      writeFileSync(launchCmd, broker, 'utf8')
+      // Spawn the broker from its own directory using just the basename. Passing
+      // the full quoted path to `cmd /S /C` fails (exit 1) when it contains spaces
+      // (e.g. "...\DSH My Desktop\..."), so run `cmd /D /S /C launch.cmd` from the
+      // broker dir — the same pattern the reference desktop-terminal uses. The
+      // broker itself runs hidden; its `start` creates the visible console.
+      const child = spawn(cmd, ['/D', '/S', '/C', 'launch.cmd'], {
+        cwd: brokerDir,
         env,
         stdio: 'ignore',
-        detached: true,
-        windowsHide: false,
+        detached: false,
+        windowsHide: true,
       })
+      child.once('error', error => { logTerminalError('spawn failed: ' + (error instanceof Error ? error.message : String(error))) })
       child.unref()
       return
     }
     const shell = process.env.SHELL ?? '/bin/bash'
     const child = spawn(shell, ['-l'], { cwd, env, stdio: 'ignore', detached: true })
+    child.once('error', error => { logTerminalError('spawn failed: ' + (error instanceof Error ? error.message : String(error))) })
     child.unref()
-  } catch {
+  } catch (error) {
     // Opening a terminal is best-effort; never take down the host on failure.
+    logTerminalError('open failed: ' + (error instanceof Error ? error.stack ?? error.message : String(error)))
   }
+}
+
+/** Append a terminal-open diagnostic to userData/terminal.log so failures are visible. */
+function logTerminalError(detail: string): void {
+  try {
+    const line = `[${new Date().toISOString()}] ${detail}\n`
+    appendFileSync(join(app.getPath('userData'), 'terminal.log'), line, 'utf8')
+  } catch { /* ignore */ }
 }
 
 /** Restart the whole desktop application (clean shutdown, then relaunch). */
 async function restartDesktop(): Promise<void> {
   if (isQuitting) return
   await shutdownDesktop(() => { app.relaunch(); app.exit() })
+}
+
+/** Launcher profile registry roots (state under userData, profiles under DSH home). */
+function launcherProfileRoots(): ReturnType<typeof resolveProfileRoots> {
+  return resolveProfileRoots({ stateDir: app.getPath('userData') })
+}
+
+/** Read-only snapshot of the current managed profiles (for the shell/bridge). */
+function currentProfilesSnapshot(): ReadonlyArray<ReturnType<typeof listProfiles>[number]> {
+  const roots = launcherProfileRoots()
+  const active = readActiveProfile(roots)
+  return listProfiles(roots, active)
+}
+
+/**
+ * Create a new Web profile and seed it with the shared official runtime +
+ * bundled plugins. It does NOT select the profile or require a relaunch; a
+ * later select/switch starts it.
+ */
+async function createWebProfile(name: string): Promise<void> {
+  assertProfileName(name)
+  const roots = launcherProfileRoots()
+  createProfileDirectory(roots, name)
+  const seed = lastSeedOptions
+  if (seed === undefined) throw new Error('启动尚未完成，无法创建 profile。')
+  // Reuse the current node/pnpm/store plumbing against the new profile dir.
+  await seedBundledPlugins({ ...seed, profileDir: profileDirFor(roots.home, name) })
+}
+
+/**
+ * Select a compatible profile to be active on the next launch, then relaunch
+ * the whole desktop application so it starts the newly selected profile.
+ */
+async function switchWebProfile(name: string): Promise<void> {
+  const roots = launcherProfileRoots()
+  const target = listProfiles(roots, readActiveProfile(roots)).find((profile) => profile.name === name)
+  if (target === undefined) throw new Error(`profile ${JSON.stringify(name)} does not exist`)
+  if (!target.selectable) throw new Error(`profile ${JSON.stringify(name)} is not a launchable Web profile`)
+  writeActiveProfile(roots, name)
+  await restartDesktop()
+}
+
+/** Delete a non-active profile directory (fails closed on the active one). */
+function deleteWebProfile(name: string): void {
+  const roots = launcherProfileRoots()
+  deleteProfileDirectory(roots, name, readActiveProfile(roots))
+}
+
+/** Renderer-safe view of the managed profiles. */
+function desktopProfileViews(): readonly ProfileOperationView[] {
+  return currentProfilesSnapshot().map((profile) => ({
+    name: profile.name,
+    exists: profile.exists,
+    webCapable: profile.webCapable,
+    selectable: profile.selectable,
+    deletable: profile.deletable,
+    current: profile.name === readActiveProfile(launcherProfileRoots()),
+    problem: profile.problem,
+  }))
+}
+
+interface ProfileOperationView {
+  readonly name: string
+  readonly exists: boolean
+  readonly webCapable: boolean
+  readonly selectable: boolean
+  readonly deletable: boolean
+  readonly current: boolean
+  readonly problem: string | null
 }
 
 /** Enter recovery isolation and restart DSH into the recovery window. */

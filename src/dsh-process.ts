@@ -20,7 +20,10 @@ export interface DshServer {
 
 export interface StartDshOptions {
   bootstrapPath: string
-  desktopBridgePatch?: string
+  /** Extra `--patch` overlay paths applied on top of the profile (desktop bridge, bundled plugins, …). */
+  patches?: readonly string[]
+  /** Profile name to boot via `--profile <name>` (defaults to `web`). */
+  profileName?: string
   environment?: NodeJS.ProcessEnv
   onUnexpectedExit?: (message: string) => void
   onIpcMessage?: (message: unknown) => void
@@ -34,6 +37,14 @@ export interface StartDshOptions {
 /** 桌面窗口已经承载 Web UI，禁止官方 dsh-web-app 再拉起系统浏览器。 */
 export const DSH_WEB_LAUNCH_ARGS = ['web', '--port', resolveDesktopWebPort(process.env.DSH_DESKTOP_WEB_PORT), '--no-open'] as const
 
+/**
+ * Web app flags appended after the profile selection. `--port 0` lets the OS
+ * pick a free port; `--no-open` keeps the desktop window as the only host.
+ */
+function webAppArgs(): readonly string[] {
+  return ['--port', resolveDesktopWebPort(process.env.DSH_DESKTOP_WEB_PORT), '--no-open']
+}
+
 export function resolveDesktopWebPort(value: string | undefined): string {
   if (value === undefined || !/^\d+$/.test(value)) return '0'
   const port = Number(value)
@@ -42,15 +53,20 @@ export function resolveDesktopWebPort(value: string | undefined): string {
 
 /** 启动 DSH Web，并在收到本机就绪地址后返回。 */
 export function startDsh(options: StartDshOptions): Promise<DshServer> {
-  const launchArgs = options.desktopBridgePatch === undefined
-    ? [...DSH_WEB_LAUNCH_ARGS]
-    : ['web', '--patch', options.desktopBridgePatch, ...DSH_WEB_LAUNCH_ARGS.slice(1)]
+  const patches = options.patches ?? []
+  const patchArgs = patches.flatMap(patch => ['--patch', patch])
+  // Select the profile explicitly with `--profile <name>`: the bare `web`
+  // subcommand is a hardcoded alias for `--profile web`, so it can only ever
+  // boot the `web` profile and would ignore a selected profile (e.g. `desktop`).
+  // Profile selection MUST come before `--patch` and the web app's own flags.
+  const profileName = options.profileName ?? 'web'
+  const launchArgs = ['--profile', profileName, ...patchArgs, ...webAppArgs()]
   const child = spawn(options.nodeExecutable, [options.bootstrapPath, options.runtime.entry, ...launchArgs], {
     cwd: options.workingDirectory ?? options.runtime.workingDirectory ?? options.runtime.root,
     env: {
       ...process.env,
       ...options.environment,
-      DSH_DESKTOP_HOST: options.desktopBridgePatch === undefined ? undefined : '1',
+      DSH_DESKTOP_HOST: patchArgs.length === 0 ? undefined : '1',
       ...(options.pathPrefix === undefined ? {} : {
         PATH: prependPath(options.environment?.PATH ?? process.env.PATH, options.pathPrefix),
       }),

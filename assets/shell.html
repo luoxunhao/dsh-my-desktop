@@ -17,9 +17,14 @@
     .divider{width:1px;height:18px;background:#363937;margin:0 4px;flex:none}
     .identity{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:8px;min-width:0;padding:0 8px;-webkit-app-region:no-drag}
     .identity .word{font-size:13px;font-weight:650;letter-spacing:.2px;color:#e9ebea;white-space:nowrap}
-    .identity .version{font-size:11px;color:#9aa09c;white-space:nowrap}
+    /* Version shown as an outlined “扩展窗口”-style pill; clicking it opens the project-info window. */
+    .identity .version{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 10px;font-size:11px;color:#9aa09c;white-space:nowrap;background:transparent;border:1px solid #3a3d3b;border-radius:999px;cursor:pointer;-webkit-app-region:no-drag;transition:border-color .12s,color .12s,background .12s}
+    .identity .version:hover{color:#e9ebea;border-color:#4c504d;background:#ffffff12}
+    .identity .version:active{background:#ffffff1a}
+    .identity .version:focus-visible{outline:2px solid #8a9e94;outline-offset:2px}
+    .identity .version .chevron{width:8px;height:8px;opacity:.75;pointer-events:none}
     .status{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;color:#8f9592;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:30%}
-    .identity,.status{pointer-events:none}
+    .identity .word,.status{pointer-events:none}
     :root[data-color-scheme="light"]{color-scheme:light;background:#ffffff;color:#1a1d1c}
     :root[data-color-scheme="light"] .bar{background:linear-gradient(180deg,#ffffff 0%,#f6f7f6 100%);border-bottom:1px solid #e7e8e7}
     :root[data-color-scheme="light"] .icon:hover:not(:disabled){background:#2631480f}
@@ -27,7 +32,10 @@
     :root[data-color-scheme="light"] .divider{background:#0000001a}
     :root[data-color-scheme="light"] .identity .word{color:#171a19}
     :root[data-color-scheme="light"] .identity .version,:root[data-color-scheme="light"] .status{color:#6b726e}
-    @media(max-width:760px){.bar{padding-right:146px}.identity .version{display:none}.status{max-width:20%}}
+    :root[data-color-scheme="light"] .identity .version{border-color:#d8dbd9;background:#ffffff}
+    :root[data-color-scheme="light"] .identity .version:hover{color:#171a19;border-color:#b9bebb;background:#00000008}
+    :root[data-color-scheme="light"] .identity .version:active{background:#00000012}
+    @media(max-width:760px){.bar{padding-right:146px}.identity .version{height:18px;padding:0 7px}.identity .version .chevron{display:none}.status{max-width:20%}}
   </style>
 </head>
 <body>
@@ -35,9 +43,9 @@
     <button id="terminal" class="icon" data-tool="terminal" title="打开终端" aria-label="打开终端"><img src="shell-icons/terminal.svg" alt=""></button>
     <button id="reloadBtn" class="icon" data-tool="reload" aria-haspopup="menu" title="重启选项" aria-label="重启选项"><img src="shell-icons/rotate.svg" alt=""></button>
     <button id="developerBtn" class="icon" data-tool="developer" aria-haspopup="menu" title="开发者选项" aria-label="开发者选项"><img src="shell-icons/wrench.svg" alt=""></button>
-    <span class="identity" aria-hidden="true">
-      <span class="word" id="appName">DSH My Desktop</span>
-      <span class="version" id="version">v0.1.0</span>
+    <span class="identity">
+      <span class="word" id="appName" aria-hidden="true">DSH My Desktop</span>
+      <button type="button" id="version" class="version" title="关于" aria-haspopup="dialog"><span id="versionText">v0.1.0</span><img class="chevron" src="shell-icons/chevron-down.svg" alt=""></button>
     </span>
     <span id="status" class="status" role="status"></span>
   </header>
@@ -46,7 +54,8 @@
     const status=document.getElementById('status');
     const zhOf=()=>bootstrap?.locale?.startsWith('zh')??navigator.language.toLowerCase().startsWith('zh');
     function applyState(next){state=next;status.textContent=next.reloading?(zhOf()?'正在重新加载…':'Reloading…'):''}
-    function applyBootstrap(value){bootstrap=value;document.documentElement.lang=value.locale;document.documentElement.dataset.colorScheme=value.colorScheme;document.documentElement.style.colorScheme=value.colorScheme;const zh=value.locale.startsWith('zh');const terminal=document.getElementById('terminal');terminal.title=terminal.ariaLabel=zh?'打开终端':'Open terminal';applyState(state??value.state)}
+    function applyBootstrap(value){bootstrap=value;document.documentElement.lang=value.locale;document.documentElement.dataset.colorScheme=value.colorScheme;document.documentElement.style.colorScheme=value.colorScheme;const zh=value.locale.startsWith('zh');const terminal=document.getElementById('terminal');terminal.title=terminal.ariaLabel=zh?'打开终端':'Open terminal';const version=document.getElementById('version');document.getElementById('versionText').textContent=`v${value.version}`;version.title=version.ariaLabel=zh?'关于 DSH My Desktop':'About DSH My Desktop';applyState(state??value.state)}
+    document.getElementById('version').addEventListener('click',()=>{api.action('about')});
     function clearOpenMenu(button=openMenu){if(!button)return;button.setAttribute('aria-expanded','false');if(openMenu===button)openMenu=undefined}
     async function showToolMenu(button){clearOpenMenu();button.setAttribute('aria-expanded','true');openMenu=button;const rect=button.getBoundingClientRect();try{await api.popupTool(button.dataset.tool,rect.left,rect.bottom)}finally{clearOpenMenu(button)}}
     document.addEventListener('pointerdown',event=>{if(openMenu&&event.target!==openMenu)clearOpenMenu()},true);window.addEventListener('blur',()=>clearOpenMenu());

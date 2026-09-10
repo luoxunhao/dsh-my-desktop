@@ -1,6 +1,6 @@
 {
   "name": "deepseek-harness-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DeepSeek Harness 原生桌面启动器",
   "author": "luoxunhao",
   "desktopName": "DSH My Desktop",
@@ -32,6 +32,8 @@
     "prepare-runtime": "pnpm run build && node dist/scripts/prepare-runtime.js",
     "pack": "pnpm run prepare-runtime && electron-builder --dir",
     "dist": "pnpm run prepare-runtime && electron-builder --publish never",
+    "dist:local": "pnpm run build && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --publish never",
+    "pack:local": "pnpm run build && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --dir",
     "smoke:mac": "pnpm run build && node dist/scripts/smoke-macos-package.mjs",
     "smoke:linux": "pnpm run build && node dist/scripts/smoke-linux-package.mjs"
   },
@@ -43,7 +45,7 @@
     "typescript": "7.0.2"
   },
   "build": {
-    "appId": "ai.micheng.deepseekHarnessDesktop",
+    "appId": "ai.micheng.dshMyDesktop",
     "productName": "DSH My Desktop",
     "icon": "assets/icon.png",
     "asar": true,
@@ -119,10 +121,6 @@
         "to": "shell.html"
       },
       {
-        "from": "build/dsh-path.ps1",
-        "to": "dsh-path.ps1"
-      },
-      {
         "from": "assets/shortcuts.html",
         "to": "shortcuts.html"
       },
@@ -161,11 +159,19 @@
           "plugin-seed.js",
           "plugin-toolchain.js",
           "profile-updates.js",
+          "profiles.js",
           "recovery-mode.js",
           "process-control.js",
           "readiness.js",
           "runtime-archive.js",
           "runtime-prebuilt.js"
+        ]
+      },
+      {
+        "from": "dist/desktop-settings-plugin",
+        "to": "dsh-my-desktop-setting",
+        "filter": [
+          "**/*"
         ]
       }
     ],

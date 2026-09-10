@@ -28,9 +28,10 @@ for (const scenario of [
       const services: Record<string, unknown> = {}
       const ctx: Record<string, unknown> = { provide: (name: string, value: unknown) => { services[name] = value } }
       apply(ctx)
-      assert.deepEqual(Object.keys(services), scenario.expected ? ['desktopProfiles', 'desktopPnpm'] : [])
+      assert.deepEqual(Object.keys(services), scenario.expected ? ['desktopProfiles', 'desktopPnpm', 'desktopRuntime'] : [])
       assert.equal(ctx.desktopProfiles !== undefined, scenario.expected)
       assert.equal(ctx.desktopPnpm !== undefined, scenario.expected)
+      assert.equal(ctx.desktopRuntime !== undefined, scenario.expected)
       assert.equal(existsSync(process.execPath), true)
     } finally {
       process.env = previousEnv

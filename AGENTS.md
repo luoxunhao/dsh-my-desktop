@@ -9,11 +9,20 @@ DSH My Desktop — Electron 桌面启动器。本文件是给开发/构建 agent
 但脚本里是 ASCII 输出，避免编码问题）：
 
 ```powershell
-pwsh -File scripts\build.ps1                  # = pnpm run dist：NSIS 安装器 + zip
-pwsh -File scripts\build.ps1 -Target pack     # = electron-builder --dir：win-unpacked 免安装版
+pwsh -File scripts\build.ps1 -Target dist-local  # 【推荐】缓存优先：只 tsc + 装配插件 + electron-builder，不重下官方运行时
+pwsh -File scripts\build.ps1                  # = pnpm run dist：NSIS 安装器 + zip（会重跑 prepare-runtime 重新装配运行时）
+pwsh -File scripts\build.ps1 -Target pack-local  # = 缓存优先出 win-unpacked 免安装版
+pwsh -File scripts\build.ps1 -Target pack     # = electron-builder --dir（重装配运行时）
 pwsh -File scripts\build.ps1 -Target test     # = pnpm test
 pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行时
 ```
+
+> **缓存优先（默认建议）**：日常出包用 `dist-local`/`pack-local`——只 `tsc` +
+> 装配私有插件 + `electron-builder`，**不重下官方运行时**（本地 `runtime-dsh`/`runtime-dsh.tgz`
+> 版本一致即复用，见 `prepare-runtime.ts` 的 `officialRuntimeIsCurrent`）。仅当升官方 DSH 版本或
+> 运行时配置变更时才需要 `DSH_FORCE_RUNTIME_REBUILD=1` 或走完整 `dist`。
+> `build.ps1` 默认给 electron-builder 指到可访问的镜像源（`ELECTRON_MIRROR`、
+> `ELECTRON_BUILDER_BINARIES_MIRROR` 指 npmmirror），避免直连 GitHub 拉不动的 winCodeSign/nsis 等工具。
 
 `build.ps1` 会自动：
 1. 把项目内固定 Node **`.build-node`** 放到 PATH 最前（`prepare-runtime` 校验 Node v24.20.0 版本 + SHA256）；
@@ -65,8 +74,10 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
   改它不需 `tsc`，dev 从 `assets/` 直接读，重启即生效。
 - `src/shell-contract.ts`、`src/shell-preload.cts`、`src/main.ts` —— 顶栏按钮 IPC
   （`dsh-shell:tool` / `dsh-shell:popup-tool`）与 `openDshTerminal` 等实现，改后需 `tsc`。
-- `build/installer.nsh` + `build/dsh-path.ps1` —— 安装时把内置 `dsh` 写入用户 PATH
-  （在 `$INSTDIR\bin\dsh.cmd` 生成启动器），仅打包安装版生效。
+- `build/installer.nsh` —— NSIS 安装脚本。安装/卸载阶段**不**做任何同步子进程或改用户 PATH
+  的工作（曾因 `nsExec` 调 powershell 写 PATH 而永久卡死，故已移除）；运行时由应用首次启动解压。
+- `src/main.ts` 的 `openDshTerminal` —— 打开 DSH 终端：在 userData 生成 `dsh` shim 并只注入到该终端
+  进程的 PATH（不动系统 PATH），对齐 `dsh-desktop` 的做法。
 - `scripts/build.ps1` —— 推荐的打包入口（固定 Node/PATH/pnpm）。
 
 ## 测试说明（已知的仓库缺口）

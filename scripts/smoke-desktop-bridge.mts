@@ -87,7 +87,7 @@ export function apply(ctx) {
     // Web 直接使用共享 profile，不附加 overlay 或 Desktop 标识。
     const server = await startDsh({
       bootstrapPath: join(project, 'dist', 'src', 'dsh-bootstrap.mjs'),
-      desktopBridgePatch: desktop ? patch : undefined,
+      patches: desktop ? [patch] : [],
       runtime: { root: runtime, entry: join(runtime, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js') },
       nodeExecutable: join(project, 'runtime-node', process.platform === 'win32' ? 'node.exe' : 'node'),
       workingDirectory: root,

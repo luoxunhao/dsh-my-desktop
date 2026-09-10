@@ -15,7 +15,16 @@ test('installer.nsh 在使用 LogicLib 宏前必须引入 LogicLib.nsh', async (
   assert.ok(logicLibIndex < ifIndex, 'LogicLib.nsh 必须出现在第一个 ${If} 之前')
   assert.match(source, /\$INSTDIR\\\$\{APP_FILENAME\}/)
   assert.match(source, /customInstall/)
-  assert.match(source, /extract-runtime/)
+  // 安装/卸载里不得出现会同步阻塞、用 nsExec 调 powershell 改用户 PATH 的
+  // dsh-path.ps1 步骤：实测该步会等不到子进程句柄关闭，把安装窗口永久卡死在
+  // “正在安装”（源头项目 dsh-codex-desktop 无此步，可正常安装）。PATH 暴露改由
+  // 应用首次启动完成。
+  assert.doesNotMatch(source, /dsh-path\.ps1/)
+  assert.doesNotMatch(source, /dsh\.cmd/)
+  // 运行时的整套解压不再在安装器里同步执行：改成首次启动由应用用独立 Node 子进程
+  // 解压（带进度/超时）。因此安装器内不得出现同步调用 extract-runtime.mjs。
+  assert.doesNotMatch(source, /node\.exe\\"[^\\r]*extract-runtime\.mjs/)
+  assert.doesNotMatch(source, /extract-runtime\.mjs"/)
   assert.match(source, /nsExec::ExecToLog/)
   assert.doesNotMatch(source, /ExecWait/)
   assert.match(source, /customUnInstall/)

@@ -454,12 +454,13 @@ async function seedCommunityPlugins(options: SeedOptions): Promise<SeedResult> {
   return { seeded: plan.packages.map((plugin) => plugin.packageName) }
 }
 
-export async function ensureProfileScaffold(profileDir: string): Promise<void> {
+export async function ensureProfileScaffold(profileDir: string, profileName?: string): Promise<void> {
   await mkdir(profileDir, { recursive: true })
   const manifestPath = join(profileDir, 'package.json')
   if (!existsSync(manifestPath)) {
+    const safeName = typeof profileName === 'string' && profileName !== '' ? profileName : 'web'
     await writeTextFileAtomic(manifestPath, `${JSON.stringify({
-      name: 'dsh-profile-web',
+      name: `dsh-profile-${safeName}`,
       private: true,
       dependencies: {},
       dsh: { profile: { bundles: [...OFFICIAL_PROFILE_BUNDLES] } },

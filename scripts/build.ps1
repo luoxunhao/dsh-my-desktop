@@ -25,6 +25,20 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# 目标别名：把友好的连字符名映射到 package.json 脚本名。
+# 免重装配（本地缓存优先、零联网）出包走 dist-local / pack-local —— 前提是
+# 官方运行时(runtime-dsh.tgz / runtime-dsh)已在本仓库装配过一次。
+$targetAliases = @{
+  'dist-local'       = 'dist:local'
+  'pack-local'       = 'pack:local'
+  'dist'             = 'dist'
+  'pack'             = 'pack'
+  'prepare-runtime'  = 'prepare-runtime'
+  'build'            = 'build'
+  'test'             = 'test'
+}
+if ($targetAliases.ContainsKey($Target)) { $Target = $targetAliases[$Target] }
+
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $nodeDir = Join-Path $root '.build-node'
 $nodeExe = Join-Path $nodeDir 'node.exe'
@@ -44,6 +58,13 @@ try {
   # Put the project-local Node first on PATH so pnpm / electron-builder /
   # prepare-runtime all run under it.
   $env:Path = "$nodeDir;$env:Path"
+  # 缓存优先、避免直连 GitHub 拉不动的产物（electron 运行时 / winCodeSign /
+  # nsis 等 electron-builder 工具）。默认走可访问的镜像源；已设过则保留用户值。
+  # 命中本地 electron-builder 缓存后不会再联网；只在缓存缺失时才去镜像拉一次。
+  if (-not $env:ELECTRON_MIRROR) { $env:ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/' }
+  if (-not $env:ELECTRON_BUILDER_BINARIES_MIRROR) { $env:ELECTRON_BUILDER_BINARIES_MIRROR = 'https://npmmirror.com/mirrors/electron-builder-binaries/' }
+  Write-Host "electron mirror: $env:ELECTRON_MIRROR"
+  Write-Host "electron-builder binaries mirror: $env:ELECTRON_BUILDER_BINARIES_MIRROR"
   # 自动定位 pnpm：优先当前用户的 npm 全局安装目录，再回退到 PATH 上的 pnpm。
   # （不要写死某个用户路径，例如 C:\Users\<用户>\AppData\Roaming\npm\pnpm.cmd。）
   $pnpm = $null

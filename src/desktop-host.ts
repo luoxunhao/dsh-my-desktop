@@ -5,6 +5,15 @@ import { APPLY_PLUGIN_UPDATES_IPC, OFFICIAL_DSH_VERSION, isDeepSeekOfficialPacka
 import { desktopBridgeClientBundle } from './desktop-bridge-client-source.js'
 import { finalizeProfileBundlesAfterInstall, officialRuntimeInstallArgs, writeOfficialRuntimeManifest } from './plugin-seed.js'
 import { terminateProcessTree } from './process-control.js'
+import {
+  assertProfileName,
+  isSafeProfileName,
+  listProfiles,
+  profileDirFor,
+  readActiveProfile,
+  resolveProfileRoots,
+  type ManagedProfile,
+} from './profiles.js'
 
 export const DESKTOP_BRIDGE_PACKAGE = 'dsh-desktop-bridge'
 
@@ -23,6 +32,64 @@ export interface DesktopHostOptions {
   runner?: (args: readonly string[], cwd: string, signal?: AbortSignal) => DesktopPnpmHandle
   recycleDelayMs?: number
   isInstalled?: (packageName: string) => boolean
+  /** Registry roots used to list/create/select/delete profiles. */
+  profileRoots?: { home: string; stateDir: string }
+}
+
+/**
+ * Child→main request telling the Electron main to perform a profile operation
+ * that must own the filesystem seed and/or relaunch (create seeds the new dir,
+ * select persists active + relaunches, delete removes a dir). Fire-and-forget:
+ * main runs the operation in the background.
+ */
+export type DesktopProfileActionMessage =
+  | { type: 'desktop/profile/create'; name: string }
+  | { type: 'desktop/profile/select'; name: string }
+  | { type: 'desktop/profile/delete'; name: string }
+
+export function isDesktopProfileActionMessage(value: unknown): value is DesktopProfileActionMessage {
+  if (typeof value !== 'object' || value === null) return false
+  const message = value as Record<string, unknown>
+  if (message.type === 'desktop/profile/create' || message.type === 'desktop/profile/select' || message.type === 'desktop/profile/delete') {
+    return typeof message.name === 'string' && isSafeProfileName(message.name)
+  }
+  return false
+}
+
+/** Renderer-safe profile projection consumed by the settings section. */
+export interface DesktopProfileBridgeView extends ManagedProfile {
+  readonly current: boolean
+}
+
+/** Map a managed profile to the renderer-safe bridge projection. */
+export function toDesktopProfileBridgeView(profile: ManagedProfile, active: string): DesktopProfileBridgeView {
+  return Object.freeze({ ...profile, current: profile.name === active })
+}
+
+/**
+ * Child→main request for a launcher-native side effect that must run in the
+ * Electron main process (the renderer/web-profile process cannot apply it).
+ * Fire-and-forget: main performs the action; no synchronous reply is needed
+ * (several actions restart or open native UI).
+ */
+export type DesktopActionMessage =
+  | { type: 'desktop/action/restart' }
+  | { type: 'desktop/action/terminal/open' }
+  | { type: 'desktop/action/devtools/toggle' }
+
+export function isDesktopActionMessage(value: unknown): value is DesktopActionMessage {
+  if (typeof value !== 'object' || value === null) return false
+  const type = (value as Record<string, unknown>).type
+  return type === 'desktop/action/restart'
+    || type === 'desktop/action/terminal/open'
+    || type === 'desktop/action/devtools/toggle'
+}
+
+/** All child→main desktop messages the bridge may emit. */
+export type DesktopHostMessage = DesktopProfileActionMessage | DesktopActionMessage
+
+export function isDesktopHostMessage(value: unknown): value is DesktopHostMessage {
+  return isDesktopProfileActionMessage(value) || isDesktopActionMessage(value)
 }
 
 export function shouldRecycleAfterPluginArgs(args: readonly string[]): boolean {
@@ -158,6 +225,16 @@ export function createDesktopHostServices(options: DesktopHostOptions) {
     }).catch(error => { console.error('插件安装后处理失败。', error) })
     return handle
   }
+  const roots = options.profileRoots ?? resolveProfileRoots({
+    home: options.profileName ? join(options.profileDir, '..', '..') : undefined,
+    stateDir: dirname(options.profileDir),
+  })
+  const activeName = readActiveProfile(roots)
+  const emitProfileAction = (message: DesktopProfileActionMessage): void => {
+    // Fire-and-forget to the Electron main; select triggers a relaunch so no
+    // reply is needed, and create/delete are reflected by the next read().
+    options.send?.(message)
+  }
   return {
     desktopProfiles: {
       connected: true,
@@ -166,11 +243,24 @@ export function createDesktopHostServices(options: DesktopHostOptions) {
         dir: options.profileDir,
         connected: true,
       },
+      active: activeName,
       list() {
-        return [{ name: options.profileName, dir: options.profileDir }]
+        return listProfiles(roots, activeName).map((profile) => toDesktopProfileBridgeView(profile, activeName))
       },
-      async select() {
-        return
+      async create(name: string) {
+        assertProfileName(name)
+        emitProfileAction({ type: 'desktop/profile/create', name })
+      },
+      async select(name: string) {
+        assertProfileName(name)
+        emitProfileAction({ type: 'desktop/profile/select', name })
+      },
+      async delete(name: string) {
+        assertProfileName(name)
+        emitProfileAction({ type: 'desktop/profile/delete', name })
+      },
+      canDelete(name: string) {
+        return isSafeProfileName(name) && name !== activeName
       },
     },
     desktopPnpm: {
@@ -179,6 +269,21 @@ export function createDesktopHostServices(options: DesktopHostOptions) {
         return runPlugin(args, options.profileDir, signal)
       },
       runPlugin,
+    },
+    // Launcher-native side effects the settings plugin may drive. Each method
+    // forwards to the Electron main over IPC because the renderer/web-profile
+    // process cannot open terminals, toggle DevTools, or relaunch itself.
+    desktopRuntime: {
+      connected: true,
+      requestRestart(): void {
+        options.send?.({ type: 'desktop/action/restart' })
+      },
+      openTerminal(): void {
+        options.send?.({ type: 'desktop/action/terminal/open' })
+      },
+      toggleDeveloperTools(): void {
+        options.send?.({ type: 'desktop/action/devtools/toggle' })
+      },
     },
   }
 }
@@ -247,7 +352,7 @@ function completedPnpmHandle(exitCode: number, message = ''): DesktopPnpmHandle 
 }
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const DESKTOP_BRIDGE_FILES = [
@@ -260,6 +365,7 @@ export const DESKTOP_BRIDGE_FILES = [
   'plugin-seed.js',
   'plugin-toolchain.js',
   'profile-updates.js',
+  'profiles.js',
   'recovery-mode.js',
   'process-control.js',
   'readiness.js',

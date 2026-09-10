@@ -33,19 +33,12 @@
 !endif
 
 !macro customInstall
-  DetailPrint "正在解压运行时，请稍候..."
-  nsExec::ExecToLog '"$INSTDIR\resources\node\node.exe" "$INSTDIR\resources\extract-runtime.mjs" "$INSTDIR" "$INSTDIR\resources"'
-  Pop $0
-  ; 暴露内置 dsh CLI：在 $INSTDIR\bin 生成 dsh.cmd 启动器，并把该目录加进用户 PATH。
-  CreateDirectory "$INSTDIR\bin"
-  FileOpen $0 "$INSTDIR\bin\dsh.cmd" w
-  FileWrite $0 "@echo off$\r$\n"
-  FileWrite $0 '"$INSTDIR\resources\node\node.exe" "$INSTDIR\dsh-runtime\node_modules\@deepseek-ai\dsh\lib\bin.js" %*$\r$\n'
-  FileClose $0
-  DetailPrint "正在把 dsh 添加到用户 PATH..."
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\dsh-path.ps1" add "$INSTDIR\bin"'
-  Pop $0
-  SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment"
+  ; 安装期不执行任何会同步阻塞的子进程工作：
+  ;  (1) 整套官方 DSH 运行时（dsh-runtime.tgz，数万个文件）的解压不在安装器里跑，
+  ;      改由应用首次启动用独立 Node 子进程完成（带进度/超时）。
+  ;  (2) 不在此写 dsh CLI 并改用户 PATH：经 nsExec 调 powershell 去写 PATH 注册表
+  ;      会等不到子进程句柄关闭，把安装窗口永久卡在“正在安装”（与源头项目
+  ;      dsh-codex-desktop 对齐——它没这步，能正常安装）。PATH 暴露由应用首启完成。
 !macroend
 
 ; 只按精确进程名结束主程序。Uninstall DSH My Desktop.exe 包含主程序文件名，
@@ -109,10 +102,8 @@
 
 !macro customUnInstall
   SetShellVarContext current
-  ; 从用户 PATH 移除 $INSTDIR\bin（卸载时清理 dsh 命令入口）。
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\dsh-path.ps1" remove "$INSTDIR\bin"'
-  Pop $0
-  SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment"
+  ; 与 customInstall 一致：不做会同步阻塞的写 PATH 步骤（nsExec 等 powershell 改 PATH
+  ; 注册表的子进程句柄会卡死卸载器）。PATH 若残留 dsh 入口，由应用自行清理。
   !insertmacro safeKillDesktopProcesses
   RMDir /r "$APPDATA\DSH My Desktop"
   RMDir /r "$LOCALAPPDATA\DSH My Desktop"

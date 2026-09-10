@@ -121,18 +121,21 @@ test('启动 overlay 位于 Web 参数之前，热重启继续注入且不依赖
   const launchFile = join(root, 'launch.json')
   const patch = join(root, 'Desktop 桥接', 'desktop.patch.yml')
   try {
-    for (const desktopBridgePatch of [patch, patch, undefined]) {
+    for (const patches of [[patch, patch], [patch], []] as const) {
       const server = await startDsh({
         bootstrapPath,
-        desktopBridgePatch,
+        patches,
         runtime: { entry: fixtureEntry, root: projectRoot },
         nodeExecutable: process.execPath,
         environment: { DSH_FIXTURE_MODE: 'healthy', DSH_FIXTURE_LAUNCH_FILE: launchFile, DSH_DESKTOP_HOST: 'inherited' },
       })
       try {
         const launch = JSON.parse(await readFile(launchFile, 'utf8'))
-        assert.deepEqual(launch.args, desktopBridgePatch ? ['web', '--patch', patch, '--port', '0', '--no-open'] : ['web', '--port', '0', '--no-open'])
-        assert.equal(launch.desktop, desktopBridgePatch ? '1' : undefined)
+        // Profile selection is explicit (`--profile <name>`) so a selected
+        // profile other than `web` is actually booted; `--patch` follows.
+        const expectedArgs = ['--profile', 'web', ...patches.flatMap(patchEntry => ['--patch', patchEntry]), '--port', '0', '--no-open']
+        assert.deepEqual(launch.args, expectedArgs)
+        assert.equal(launch.desktop, patches.length === 0 ? undefined : '1')
         assert.equal(launch.ipc, true)
       } finally {
         await server.stop()

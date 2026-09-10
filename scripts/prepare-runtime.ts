@@ -53,7 +53,16 @@ async function main(): Promise<void> {
     throw new Error('随包 Node 版本不匹配：需要 ' + expectedNodeVersion + '，实际 ' + process.version + '。')
   }
   const officialArchive = join(projectRoot, 'runtime-dsh.tgz')
-  for (const target of [nodeRoot, pluginRoot, officialRuntimeRoot, officialArchive]) {
+  // 缓存优先：官方运行时一旦装配过且与目标版本一致，就复用本地产物，不再联网
+  // 重下整套官方 DSH。仅当 DSH_FORCE_RUNTIME_REBUILD=1（升版本/配置变更）时强制重装。
+  const forceRuntime = String(process.env.DSH_FORCE_RUNTIME_REBUILD) === '1'
+  const runtimeCurrent = !forceRuntime
+    && existsSync(officialArchive)
+    && officialRuntimeIsCurrent(officialRuntimeRoot)
+
+  // Node / pnpm 装配是本地拷贝（廉价），始终执行；但不清运行时目录以免误删可复用缓存。
+  const targetsToWipe = [nodeRoot, pluginRoot, ...(runtimeCurrent ? [] : [officialRuntimeRoot, officialArchive])]
+  for (const target of targetsToWipe) {
     if (!target.startsWith(projectRoot + sep)) throw new Error(`拒绝清理项目外路径：${target}`)
     await removePreparedPath(target)
   }
@@ -66,11 +75,15 @@ async function main(): Promise<void> {
   await cp(nodeExecutable, stagedNodeExecutable)
   await writeFile(`${stagedNodeExecutable}.sha256`, nodeSha256 + '\n', 'utf8')
   await stagePnpm(nodeRoot)
-  const officialStore = join(officialRuntimeRoot, '.store')
-  await stageOfficialRuntime(officialRuntimeRoot, nodeRoot, officialStore)
-  await removePreparedPath(officialStore)
-  packDirectoryToTarGz(officialRuntimeRoot, join(projectRoot, 'runtime-dsh.tgz'))
-  writeFileSha256(join(projectRoot, 'runtime-dsh.tgz'))
+  if (runtimeCurrent) {
+    console.log(`复用本地预装官方运行时：${officialRuntimeRoot}（版本一致，跳过联网装配）`)
+  } else {
+    const officialStore = join(officialRuntimeRoot, '.store')
+    await stageOfficialRuntime(officialRuntimeRoot, nodeRoot, officialStore)
+    await removePreparedPath(officialStore)
+    packDirectoryToTarGz(officialRuntimeRoot, join(projectRoot, 'runtime-dsh.tgz'))
+    writeFileSha256(join(projectRoot, 'runtime-dsh.tgz'))
+  }
   console.log(`已装配 Node 运行时：${nodeRoot}`)
   console.log(`已装配预装官方运行时：${join(projectRoot, 'runtime-dsh.tgz')}`)
   if (STORE_PACKAGES.length > 0) {
@@ -80,6 +93,27 @@ async function main(): Promise<void> {
     writeFileSha256(join(pluginRoot, 'store.tgz'))
     console.log(`已装配内置插件仓库：${join(pluginRoot, 'store.tgz')}`)
   }
+  // 随包私有桌面设置插件：把 dsh-my-desktop-setting 的构建产物拷到打包资源。
+  await stageDesktopSettingsPlugin()
+}
+
+/** 把随包私有桌面设置插件构建产物拷到 dist/desktop-settings-plugin（供 extraResources）。 */
+export async function stageDesktopSettingsPlugin(): Promise<void> {
+  const sourceEnv = process.env.DSH_DESKTOP_SETTINGS_DIR
+  const source = sourceEnv !== undefined && sourceEnv !== ''
+    ? resolve(sourceEnv)
+    : join(projectRoot, '..', 'dsh-my-desktop-setting')
+  if (!existsSync(join(source, 'lib', 'index.js'))) {
+    console.warn('跳过随包桌面设置插件：未找到构建产物（先构建 dsh-my-desktop-setting，或用 DSH_DESKTOP_SETTINGS_DIR 指向）。')
+    return
+  }
+  const dest = join(projectRoot, 'dist', 'desktop-settings-plugin')
+  await removePreparedPath(dest)
+  await mkdir(join(dest, 'lib'), { recursive: true })
+  await cp(join(source, 'lib', 'index.js'), join(dest, 'lib', 'index.js'))
+  await cp(join(source, 'lib', 'client.js'), join(dest, 'lib', 'client.js'))
+  await writeFile(join(dest, 'cordis.patch.yml'), '[]\n', 'utf8')
+  console.log(`已装配随包桌面设置插件：${dest}`)
 }
 
 async function copyWorkspacePackage(sourcePackage: string, destinationPackage: string): Promise<void> {
@@ -239,6 +273,24 @@ export function validateOfficialRuntimeLayout(destinationRoot: string): void {
   }
 }
 
+/**
+ * 判断本地已装配的官方运行时是否与目标依赖版本一致（不联网）。
+ * 一致则复用本地产物，跳过官方 DSH 的整树联网重装。
+ */
+export function officialRuntimeIsCurrent(destinationRoot: string): boolean {
+  for (const [packageName, expectedVersion] of Object.entries(officialRuntimeNpmDependencies())) {
+    const manifestPath = join(destinationRoot, 'node_modules', ...packageName.split('/'), 'package.json')
+    if (!existsSync(manifestPath)) return false
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { version?: unknown }
+      if (manifest.version !== expectedVersion) return false
+    } catch {
+      return false
+    }
+  }
+  return true
+}
+
 /** npm 全局安装在 Unix 位于 lib/node_modules，Windows 则直接位于 node_modules。 */
 export function officialRuntimeGlobalNodeModulesRoot(destinationRoot: string, platform = process.platform): string {
   return platform === 'win32'
@@ -329,6 +381,10 @@ async function isDirectory(entry: { isDirectory(): boolean, isSymbolicLink(): bo
   return entry.isDirectory() || (entry.isSymbolicLink() && (await stat(path)).isDirectory())
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main()
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // `--stage-plugin`：只装配随包私有插件资源（快速出包 dist:local 用），不重装运行时。
+  if (process.argv.includes('--stage-plugin')) await stageDesktopSettingsPlugin()
+  else await main()
+}
 
 
