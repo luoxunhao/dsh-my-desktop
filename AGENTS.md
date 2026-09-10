@@ -87,13 +87,60 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
   （子目录没有自己的 `pnpm-workspace.yaml`/lockfile）。
 - 构建：`pnpm run build:plugin` → 产出 `plugins/desktop-settings/lib/{index.js,client.js}`。
   `lib/` 是构建产物（已 gitignore），只在打包时装配。
-- 装配：`scripts/prepare-runtime.ts` 的 `stageDesktopSettingsPlugin()` 把 `lib/` 拷到
-  `dist/desktop-settings-plugin`，再由 `package.json` 的 `extraResources` 落到安装包的
-  `resources/dsh-my-desktop-setting/`。
-- 运行时：`src/desktop-settings-plugin.ts` 把它物化到 userData 目录并生成 `--patch` overlay
-  （与 desktop-bridge 同一套做法）；dev 模式回退到仓库内 `plugins/desktop-settings`。
+- 装配：`scripts/prepare-runtime.ts` 的 `stageDesktopSettingsPlugin()` 把 `lib/` +
+  `package.json` 拷到 `dist/desktop-settings-plugin`，再由 `package.json` 的 `extraResources`
+  落到安装包的 `resources/dsh-my-desktop-setting/`。
 - 它只依赖 `@deepseek-ai/dsh-client-*` 的**类型**（运行时 externals 由 client module table 提供）。
   版本对齐用的 tarball 在 `plugins/desktop-settings/vendor/<dsh-version>/`，**需入库**。
+
+### 插件不装进任何 profile（重要）
+
+插件**不写入** profile 目录（不进 `dsh.profile.bundles`、不进 profile 的 `node_modules`）。
+它每次启动时以 `--patch` overlay 注入**当前选中的 profile**：
+
+```
+node bootstrap.mjs <dsh> --profile <当前profile> --patch <bridge.patch.yml> --patch <settings.patch.yml> --port 0 --no-open
+```
+
+- **物化位置**：`%APPDATA%\DSH My Desktop\desktop-settings-plugin\`（每用户一份，与 profile 无关），
+  由 `src/desktop-settings-plugin.ts` 的 `prepareDesktopSettings()` 在每次启动时覆盖写入。
+- **跟随 profile**：因为不是"装在某个 profile 里"，切到任何 profile（`web`/`desktop`/自建）
+  插件都在，无需重装。
+- **为什么不用 `dsh.profile.bundles`**：那是官方 bundle + registry 社区插件的位置，
+  `pruneMissingProfileBundles`/`reconcileProfileBundles` 会丢弃或拒绝私有包。
+  走 `--patch` 与 desktop-bridge 同一套机制，无需改动 seed/reconcile。
+- **物化清单的版本**读插件自身 `package.json`（`resolveDesktopSettingsVersion`），
+  缺失/损坏时回退到应用版本——**不要写死版本号**，否则随发布漂移。
+
+### 桌面桥（`desktop-bridge`）暴露的 ctx 服务
+
+`src/desktop-bridge.mts` 在 `ctx.root` 上 provide 三个服务（只注册一次；
+注册到 entry ctx 会因 Cordis 作用域隔离而不可见）：
+
+- `desktopProfiles` —— profile 列/建/删/选（真实读写 `<DSH_HOME>/profiles` + userData 注册表）
+- `desktopPnpm` —— 真实 pnpm 桥
+- `desktopRuntime` —— 重启 / 开终端 / 开发者工具
+
+子进程 ↔ Electron main 经 `process.send` IPC 请求/应答（带 requestId）。
+**建/删 profile 的耗时差异很大**：create 要 seed（pnpm 装依赖，可能几十秒），
+select 近乎瞬时，所以超时按操作类型分别设置，且**永不挂死 HTTP 响应**。
+
+## 多 profile 模型
+
+启动器不再写死单 profile：**profile 是受管对象，可列/建/删/选**。
+
+- **磁盘布局**：`<DSH_HOME>/profiles/<name>/`（默认 `DSH_HOME=~/.dsh`）。
+- **选中态**：`%APPDATA%\DSH My Desktop\profile-registry.json`（`{version:1, active}`），
+  由 `src/profiles.ts` 的 `readActiveProfile`/`writeActiveProfile` 维护；缺失或损坏时回退
+  `DEFAULT_PROFILE_NAME = 'web'`。
+- **API**：`listProfiles` / `createProfileDirectory` / `deleteProfileDirectory` /
+  `profileDirFor` / `resolveProfileRoots` / `isSafeProfileName`（`src/profiles.ts`）。
+- **启动**：`main.ts` 读 active → `--profile <activeName>` 启动 DSH 子进程。
+  ⚠️ **必须用 `--profile`**：DSH CLI 的裸 `web` 子命令是 `--profile web` 的硬编码别名，
+  只会启动 `web`，会忽略所选 profile。
+- **删除是移到回收站**（trash-move），不是直接 unlink；当前 active profile 不可删。
+- **切换需要重启**：改注册表后走 `restartDesktop()` 重启整代。
+- 新增 profile 首次启动要 seed（pnpm 装依赖），**较慢是正常的**。
 
 ## 与 UI / 顶栏改动相关的关键文件
 
@@ -107,8 +154,30 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
   进程的 PATH（不动系统 PATH），对齐 `dsh-desktop` 的做法。
 - `scripts/build.ps1` —— 推荐的打包入口（固定 Node/PATH/pnpm）。
 
+## 改完代码后怎么让正在跑的应用生效
+
+安装版**不读仓库**，它读两份副本，容易踩坑：
+
+1. `D:\Program Files\DSH My Desktop\resources\` —— 安装目录（**需 UAC 提权**才能写）。
+2. `%APPDATA%\DSH My Desktop\` —— 物化副本（**运行中的应用实际读的是这份**：
+   `desktop-bridge\` 与 `desktop-settings-plugin\`）。
+
+`scripts/stage-installed.ps1` 把 `release\win-unpacked\resources` 同步到这两处（需提权运行）：
+
+```powershell
+Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','E:\project\dsh\dsh-my-desktop\scripts\stage-installed.ps1'
+```
+
+- 该脚本只覆盖 `lib/` 与 `cordis.patch.yml`：物化目录有自己的 `package.json`，
+  构建产物树里没有，整树覆盖会把它删掉。
+- **改完必须完全重启应用**：单实例锁会让第二次启动无效，且进程内已加载旧代码。
+- 更省事的办法是直接装 `release\dsh-my-desktop-<version>-win-x64.exe` 覆盖安装。
+
 ## 测试说明（已知的仓库缺口）
 
 `pnpm test` 会跑 `dist/test/*.test.js`。已知有若干用例读 `.github/workflows/desktop-package.yml`，
 而本仓库 **没有 `.github/`**，这些用例会因文件不存在（ENOENT）而失败——这是该副本缺 `.github`
 导致的已知缺口，不是被测代码的问题。若需要这些 CI 相关用例通过，需补 `.github/workflows/desktop-package.yml`。
+
+另有 1 条与 `.github` 无关的既有失败：`profile-repair.test.ts` 的「官方 Web bundle 缺失时…」。
+当前基线是 **326 项 / 320 通过 / 5 失败**（全部为上述已知项）。

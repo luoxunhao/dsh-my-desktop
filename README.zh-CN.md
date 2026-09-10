@@ -20,12 +20,15 @@ Web 界面承载到原生桌面窗口里。安装包自带 Node.js 与一套自�
 ## 这个项目实际是什么
 
 DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工作台 UI。窗口里看到的内容，
-来自 DSH 核心（`@deepseek-ai/dsh`）以及你安装进其 `web` profile 的插件。
+来自 DSH 核心（`@deepseek-ai/dsh`）以及你安装进**当前 profile** 的插件。
 
-本版本（0.1.0）：
+本版本（0.1.3）：
 
 - 默认不随包任何社区插件（`BUNDLED_PLUGINS` 为空）；
-- 在本地经校验的 `127.0.0.1` 回环地址启动 DSH 的 `web` profile（`dsh-base` +
+- 随包一个**内置的桌面设置页**（`dsh-my-desktop-setting` 插件，源码在
+  `plugins/desktop-settings/`），启动时注入——见下文；
+- 支持**多 profile 管理**：列出、新建、删除、切换，选中态跨重启保留；
+- 在本地经校验的 `127.0.0.1` 回环地址启动所选 profile（`dsh-base` +
   `dsh-web-app`），并把 Web UI 放进 Electron 窗口；
 - 提供一个桌面壳：窗口/托盘、通知、主题、缩放、设置窗口与更新检查。
 
@@ -45,9 +48,34 @@ DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工�
 | Electron 桌面壳 | ✅ 是 |
 | Node.js 运行时 + pnpm | ✅ 是 |
 | DSH 官方核心运行时（`@deepseek-ai/dsh` 系列，0.1.2-rc.1） | ✅ 是 |
+| 桌面设置插件（`dsh-my-desktop-setting`） | ✅ 是——由本仓库构建 |
 | 社区 / 第三方 DSH 插件 | ❌ 否 |
 
 核心运行时预装且与 profile 隔离，你之后安装的插件不会覆盖随包运行时。
+
+## Profile
+
+Profile 是受管对象，不是写死的 `web` 目录：
+
+- 每个 profile 位于 `<DSH_HOME>/profiles/<name>/`（Windows 为 `~/.dsh/profiles/<name>`）。
+- 选中态存在 `%APPDATA%\DSH My Desktop\profile-registry.json`，缺失或损坏时回退到 `web`。
+- 可在内置的桌面设置页新建、删除、切换 profile。删除是移入回收站，且**当前 profile 不可删**。
+- 切换 profile 会重启本地 DSH 服务；新建的 profile 首次启动需要自行 seed（pnpm 装依赖），
+  **耗时较长是正常的**。
+
+## 内置的桌面设置页
+
+安装包随带一个私有插件 `dsh-my-desktop-setting`，源码就在本仓库
+`plugins/desktop-settings/`。它与启动器一起构建、一起打包，并向 DSH 设置壳注册一个
+「桌面设置」区块。
+
+它**不会安装进任何 profile**。启动器每次启动时把它物化到
+`%APPDATA%\DSH My Desktop\desktop-settings-plugin\`，再以 `--patch` overlay 注入**当前
+选中的 profile**。由此带来两点值得知道的结论：
+
+- 它**跟随 profile**——切换 profile 不需要重装。
+- 它是启动器的功能，不是 profile 的依赖，因此永远不会出现在 profile 的
+  `node_modules` 或 `dsh.profile.bundles` 里。
 
 ## 首次启动
 
@@ -65,6 +93,9 @@ dsh plugin --profile web add <package>
 ## 桌面壳提供了什么
 
 - 加载本地 DSH Web UI 的桌面窗口。
+- 在桌面设置页管理 profile（新建 / 删除 / 切换）。
+- 随包的桌面设置页，涵盖 profile、插件市场、AA、外观、通知与宿主动作
+  （重启、终端、开发者工具）。
 - 托盘图标与“重新加载”动作（重启本地 DSH 服务）。
 - 桌面通知、主题处理、缩放、窗口状态处理。
 - 设置窗口与更新检查（启动后检查新版本）。
@@ -78,16 +109,21 @@ dsh plugin --profile web add <package>
 需要 Node.js `24.20.0`（随包运行时按此版本校验）与 pnpm。
 
 ```powershell
-# 一次性安装依赖
+# 一次性安装依赖（同时链接仓库内的插件 workspace）
 pnpm install --frozen-lockfile
 
 # 装配随包 node/pnpm + DSH 核心运行时，再产出各平台安装器
 pnpm run dist
 ```
 
-`pnpm run dist` 先跑 `prepare-runtime`（装配随包 Node + pnpm，并把官方 DSH 核心
-运行时打成 tarball），再由 electron-builder 把安装器写到 `release\`。本地用固定
-Node 24.20.0 构建的辅助脚本是 `scripts/build.ps1`（用 `pwsh` 运行）。
+`pnpm run dist` 会先构建随包插件，再跑 `prepare-runtime`（装配随包 Node + pnpm，并把官方
+DSH 核心运行时打成 tarball），最后由 electron-builder 把安装器写到 `release\`。
+
+插件与启动器是**一体构建**的：所有出包路径都会先构建插件（`pnpm run build:all`），
+且插件产物缺失时打包会**直接报错**，而不是静默产出一个没有桌面设置页的安装包。
+
+本地用固定 Node 24.20.0 构建的辅助脚本是 `scripts/build.ps1`（用 `pwsh` 运行）；
+`-Target dist-local` 是快路径，复用已装配的运行时而不重新下载。
 
 `prepare-runtime` 会从 npm registry 下载官方 DSH 运行时与随包插件。默认使用官方
 `https://registry.npmjs.org/`，可用环境变量 `DSH_BUILD_REGISTRY` 覆盖——例如官方源
@@ -101,6 +137,8 @@ pnpm run dist
 ## 数据与隐私
 
 - DSH 配置、会话与凭据保存在用户的 DSH 目录（Windows 为 `~/.dsh`）。卸载应用不会删除。
+- 当前 profile 的选中态保存在应用的用户数据目录
+  （`%APPDATA%\DSH My Desktop\profile-registry.json`）。
 - 启动器只在内嵌窗口加载经校验的 `127.0.0.1` 回环 HTTP 地址。
 - 外部链接由系统浏览器打开；DSH 页面以 Electron 上下文隔离与沙箱运行，Node 集成已禁用。
 - 你配置的模型服务商与 DSH 工具可能自行发起网络请求。
