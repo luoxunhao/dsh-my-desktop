@@ -36,6 +36,7 @@ import { resolveDshBootstrap, resolveDshRuntime, resolveNodeExecutable } from '.
 import { renderTerminalEntry } from './desktop/dsh-term.js'
 import { createDesktopState, type DesktopState } from './desktop/desktop-state.js'
 import { launchDsh, type DshLaunchResult } from './desktop/launch-service.js'
+import { createWindowRegistry, type WindowRegistry } from './desktop/window-registry.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -156,6 +157,18 @@ async function startApplication(): Promise<void> {
     notificationPreferences,
     updatePreferences,
     initialColorScheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
+  })
+  // Bind the window registry to the app's real collaborators once. It must exist
+  // before any window is created, but AFTER the store (it reads handles from it).
+  windowRegistry = createWindowRegistry({
+    state,
+    resolvePreload,
+    resolveShellAsset,
+    resolveWindowIconImage,
+    isNavigating: () => windowNavigation.isNavigating(),
+    installShortcutHandler,
+    runTask: runMainTask,
+    broadcastShellState,
   })
   installShellIpc()
   installRecoveryIpc()
@@ -365,7 +378,7 @@ function installDesktopFaviconReplacement(): void {
 }
 
 async function showStartupWindow(message: string): Promise<void> {
-  const window = state.windows.mainWindow ??= createWindow()
+  const window = createWindow()
   const view = requireDshView()
   showDshContentView()
   const html = resolveStartupHtml()
@@ -409,7 +422,7 @@ function runtimeExtractionMessage(progress: RuntimeExtractionProgress): string {
 
 async function createMainWindow(serverUrl: string): Promise<void> {
   state.shell.allowedOrigin = new URL(serverUrl).origin
-  state.windows.mainWindow ??= createWindow()
+  createWindow()
   const view = requireDshView()
   const profileDir = state.launch.lastSeedOptions?.profileDir
   if (profileDir !== undefined) {
@@ -546,8 +559,9 @@ async function openWorkbenchOrRecovery(profileDir: string, serverUrl: string): P
 
 async function showRecoveryWindow(profileDir: string, failure?: { failureMessage: string, failurePlugins: string[] }): Promise<void> {
   stopRendererHealthTimer()
-  state.windows.mainWindow ??= createWindow()
-  const window = state.windows.mainWindow
+  const window = createWindow()
+  // The recovery page drops the workbench's larger minimum size so it fits on
+  // small screens; the DSH view restores it via showDshContentView().
   window.setMinimumSize(720, 520)
   if (window.isMaximized()) window.unmaximize()
   window.setSize(920, 680)
@@ -797,126 +811,34 @@ function resolvePreload(name: 'shell-preload.cjs' | 'dsh-view-preload.cjs' | 're
   return join(app.getAppPath(), 'dist', 'src', name)
 }
 
+// Window/view ownership lives in desktop/window-registry.ts. These thin wrappers
+// keep the existing call sites readable and bind the registry to the app's
+// real collaborators once, at startup.
+let windowRegistry: WindowRegistry | undefined
+
+function requireWindowRegistry(): WindowRegistry {
+  if (windowRegistry === undefined) throw new Error('窗口注册表尚未初始化。')
+  return windowRegistry
+}
+
 function requireDshView(): WebContentsView {
-  if (state.windows.dshView === undefined) throw new Error('DSH 内容视图尚未创建。')
-  return state.windows.dshView
+  return requireWindowRegistry().requireDshView()
 }
 
 function requireRecoveryView(): WebContentsView {
-  if (state.windows.recoveryView === undefined) throw new Error('恢复内容视图尚未创建。')
-  return state.windows.recoveryView
+  return requireWindowRegistry().requireRecoveryView()
 }
 
 function showDshContentView(): void {
-  if (state.windows.mainWindow !== undefined && !state.windows.mainWindow.isDestroyed()) state.windows.mainWindow.setMinimumSize(960, 640)
-  state.windows.recoveryView?.setVisible(false)
-  state.windows.dshView?.setVisible(true)
+  requireWindowRegistry().showDshContentView()
 }
 
 function showRecoveryContentView(): void {
-  state.windows.dshView?.setVisible(false)
-  state.windows.recoveryView?.setVisible(true)
-}
-
-function layoutDshView(window: BrowserWindow): void {
-  const bounds = window.getContentBounds()
-  state.windows.dshView?.setBounds({ x: 0, y: SHELL_BAR_HEIGHT, width: bounds.width, height: Math.max(0, bounds.height - SHELL_BAR_HEIGHT) })
-}
-
-function layoutRecoveryView(window: BrowserWindow): void {
-  const bounds = window.getContentBounds()
-  state.windows.recoveryView?.setBounds({ x: 0, y: 0, width: bounds.width, height: bounds.height })
+  requireWindowRegistry().showRecoveryContentView()
 }
 
 function createWindow(): BrowserWindow {
-  const windowIcon = resolveWindowIconImage()
-  const palette = DESKTOP_THEME_PALETTES[state.shell.colorScheme]
-  const window = new BrowserWindow({
-    width: 1360,
-    height: 900,
-    minWidth: 960,
-    minHeight: 640,
-    show: true,
-    title: DESKTOP_APP_NAME,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    // The small Windows non-client edge is painted from this color. Keep it
-    // aligned with the title-bar wash instead of leaving a white seam above
-    // the CSS gradient.
-    backgroundColor: palette.titleBarBackground,
-    ...(process.platform === 'darwin' ? {} : { titleBarOverlay: { color: palette.titleBarBackground, symbolColor: palette.titleBarSymbol, height: SHELL_BAR_HEIGHT } }),
-    ...(windowIcon === undefined ? {} : { icon: windowIcon }),
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: resolvePreload('shell-preload.cjs'),
-      sandbox: true,
-    },
-  })
-  const view = new WebContentsView({ webPreferences: {
-    contextIsolation: true,
-    nodeIntegration: false,
-    preload: resolvePreload('dsh-view-preload.cjs'),
-    sandbox: true,
-  } })
-  const recovery = new WebContentsView({ webPreferences: {
-    contextIsolation: true,
-    nodeIntegration: false,
-    preload: resolvePreload('recovery-preload.cjs'),
-    sandbox: true,
-  } })
-  state.windows.dshView = view
-  state.windows.recoveryView = recovery
-  window.contentView.addChildView(view)
-  window.contentView.addChildView(recovery)
-  recovery.setVisible(false)
-  layoutDshView(window)
-  layoutRecoveryView(window)
-  window.on('resize', () => { layoutDshView(window); layoutRecoveryView(window) })
-  window.on('maximize', () => { layoutDshView(window); layoutRecoveryView(window) })
-  window.on('unmaximize', () => { layoutDshView(window); layoutRecoveryView(window) })
-  runMainTask(window.loadFile(resolveShellAsset('shell.html'), { query: { theme: state.shell.colorScheme } }))
-
-  view.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternalOpenUrl(url, state.shell.allowedOrigin)) runMainTask(shell.openExternal(url))
-    return { action: 'deny' }
-  })
-  view.webContents.on('did-start-navigation', () => { state.shell.settingsDialogVisible = false })
-  view.webContents.on('will-navigate', (event, url) => {
-    if (windowNavigation.isNavigating()) {
-      event.preventDefault()
-      return
-    }
-    if (isSameOrigin(url, state.shell.allowedOrigin)) return
-    event.preventDefault()
-    if (isExternalOpenUrl(url, state.shell.allowedOrigin)) runMainTask(shell.openExternal(url))
-  })
-  view.webContents.on('will-redirect', (event, url) => {
-    if (isSameOrigin(url, state.shell.allowedOrigin)) return
-    event.preventDefault()
-    if (isExternalOpenUrl(url, state.shell.allowedOrigin)) runMainTask(shell.openExternal(url))
-  })
-  recovery.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  installShortcutHandler(window.webContents)
-  installShortcutHandler(view.webContents)
-  applyInitialWindowState(window)
-  window.on('enter-full-screen', broadcastShellState)
-  window.on('leave-full-screen', broadcastShellState)
-  window.on('close', event => {
-    if (!shouldHideInsteadOfClose(state.runtime.isQuitting)) return
-    event.preventDefault()
-    window.hide()
-  })
-  window.on('closed', () => {
-    if (state.windows.mainWindow === window) {
-      state.windows.mainWindow = undefined
-      state.windows.dshView = undefined
-      state.windows.recoveryView = undefined
-      state.recovery.profileDir = undefined
-      state.recovery.failureMessage = undefined
-      state.shell.settingsDialogVisible = false
-    }
-  })
-  return window
+  return requireWindowRegistry().ensureMainWindow()
 }
 
 function currentShellState(): ShellState {
@@ -2252,8 +2174,5 @@ async function installDesktopUpdate(): Promise<void> {
 }
 
 function showMainWindow(): void {
-  if (state.windows.mainWindow === undefined) return
-  if (state.windows.mainWindow.isMinimized()) state.windows.mainWindow.restore()
-  state.windows.mainWindow.show()
-  state.windows.mainWindow.focus()
+  requireWindowRegistry().showMainWindow()
 }

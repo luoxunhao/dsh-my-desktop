@@ -13,9 +13,10 @@ test('仅同源 DSH 页面允许在桌面窗口内导航', () => {
 })
 
 test('主窗口同时拦截导航和服务端重定向', async () => {
-  const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  assert.match(main, /will-navigate/)
-  assert.match(main, /will-redirect/)
+  // The DSH view's navigation guards are attached where the view is created.
+  const registry = await readFile(new URL('../../src/desktop/window-registry.ts', import.meta.url), 'utf8')
+  assert.match(registry, /will-navigate/)
+  assert.match(registry, /will-redirect/)
 })
 
 test('仅 HTTP(S) 外部链接可交给系统浏览器', () => {

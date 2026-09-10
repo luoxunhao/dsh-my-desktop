@@ -17,11 +17,13 @@ test('缺少离线 store 时仍执行官方清理和补种入口', async () => {
 
 test('主窗口导航完成前不结束启动或插件热重载', async () => {
   const source = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
+  // Window creation (including the navigation guards) now lives in the registry.
+  const registry = await readFile(new URL('../../src/desktop/window-registry.ts', import.meta.url), 'utf8')
   // 恢复页使用专用导航：DSH 页面确认可用后才切换内容视图。
   assert.equal((source.match(/await openWorkbenchOrRecovery\(/g) ?? []).length, 2)
   assert.match(source, /isRecycling = true\s+broadcastShellState\(\)\s+try \{\s+await showStartupWindow\(desktopText\('加载中', 'Loading'\)\)/)
   assert.match(source, /console\.error\('显示启动错误页面失败。'/)
-  assert.match(source, /will-navigate'[\s\S]*?windowNavigation\.isNavigating\(\)[\s\S]*?event\.preventDefault\(\)/)
+  assert.match(registry, /will-navigate'[\s\S]*?deps\.isNavigating\(\)[\s\S]*?event\.preventDefault\(\)/)
   assert.match(source, /watchProfileActivation\(profileDir, scheduleProfileActivationRecycle/)
   assert.match(source, /waitForDshMarketBatchToSettle\(/)
   assert.match(source, /function handleDshIpc\(message: unknown\): void \{[\s\S]*?scheduleProfileActivationRecycle\(\)/)
@@ -37,11 +39,13 @@ test('主窗口导航完成前不结束启动或插件热重载', async () => {
 
 test('桌面壳与 DSH 内容分层并复用托盘重载实现', async () => {
   const source = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  assert.match(source, /new WebContentsView/)
-  assert.match(source, /window\.contentView\.addChildView\(view\)/)
+  // Layering (shell window + child content views) is created by the window registry.
+  const registry = await readFile(new URL('../../src/desktop/window-registry.ts', import.meta.url), 'utf8')
+  assert.match(registry, /new WebContentsView/)
+  assert.match(registry, /window\.contentView\.addChildView\(view\)/)
   assert.match(source, /id === 'reload'\) await recycleDshForPluginUpdate\(\)/)
   assert.match(source, /if \(id === 'reload'\) \{\s+await recycleDshForPluginUpdate\(\)/)
-  assert.match(source, /title: DESKTOP_APP_NAME/)
+  assert.match(registry, /title: DESKTOP_APP_NAME/)
 })
 
 test('插件恢复页使用独立内容视图和受限 preload，不复用 DSH 侧栏', async () => {
@@ -50,11 +54,13 @@ test('插件恢复页使用独立内容视图和受限 preload，不复用 DSH �
   // The recovery view is declared on the state store (it is shared mutable state),
   // so assert the declaration there rather than in main.ts.
   const stateSource = await readFile(new URL('../../src/desktop/desktop-state.ts', import.meta.url), 'utf8')
+  // The recovery view is created by the window registry.
+  const registry = await readFile(new URL('../../src/desktop/window-registry.ts', import.meta.url), 'utf8')
   assert.match(stateSource, /recoveryView: WebContentsView \| undefined/)
-  assert.match(main, /preload: resolvePreload\('recovery-preload\.cjs'\)/)
+  assert.match(registry, /preload: deps\.resolvePreload\('recovery-preload\.cjs'\)/)
   assert.match(main, /function showRecoveryWindow/)
   assert.match(main, /window\.unmaximize\(\)\s+window\.setSize\(920, 680\)/)
-  assert.match(main, /state\.windows\.dshView\?\.setVisible\(false\)/)
+  assert.match(registry, /state\.windows\.dshView\?\.setVisible\(false\)/)
   assert.match(recovery, /恢复模式/)
   assert.doesNotMatch(recovery, /dshShell/)
   assert.doesNotMatch(recovery, /class="titlebar"/)
