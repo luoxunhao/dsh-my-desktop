@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 
-import { copyWorkspacePackages, officialRuntimeGlobalNodeModulesRoot, officialRuntimeNpmDependencies, officialRuntimeNpmInstallArgs, pruneStoreForPackaging, removePreparedPath, resolveBundledNodeSha256, validateOfficialRuntimeLayout, writePnpmShims } from '../scripts/prepare-runtime.js'
+import { copyWorkspacePackages, officialRuntimeGlobalNodeModulesRoot, officialRuntimeNpmDependencies, officialRuntimeNpmInstallArgs, pruneStoreForPackaging, removePreparedPath, resolveBundledNodeSha256, stageDesktopSettingsPlugin, validateOfficialRuntimeLayout, writePnpmShims } from '../scripts/prepare-runtime.js'
 import { DESKTOP_BRIDGE_FILES } from '../src/desktop-host.js'
 
 test('按目标平台选择随包 Node 的 SHA256', () => {
@@ -202,6 +202,72 @@ test('打包配置包含恢复页及其运行依赖', async () => {
   assert.ok(resources.some(resource => resource.from === 'assets/recovery.html' && resource.to === 'recovery.html'))
   const bridge = resources.find(resource => resource.to === 'desktop-bridge')
   assert.ok(bridge?.filter?.includes('recovery-mode.js'))
+})
+
+test('随包桌面设置插件构建产物缺失时直接失败（不静默出无插件的包）', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-stage-plugin-'))
+  const empty = join(root, 'empty-plugin')
+  const previous = process.env.DSH_DESKTOP_SETTINGS_DIR
+  try {
+    await mkdir(empty, { recursive: true })
+    process.env.DSH_DESKTOP_SETTINGS_DIR = empty
+    // 插件与启动器一体化：缺产物必须报错，否则会产出一个设置页消失的安装包。
+    await assert.rejects(
+      () => stageDesktopSettingsPlugin(),
+      /随包桌面设置插件构建产物缺失/,
+    )
+  } finally {
+    if (previous === undefined) delete process.env.DSH_DESKTOP_SETTINGS_DIR
+    else process.env.DSH_DESKTOP_SETTINGS_DIR = previous
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('随包桌面设置插件同时要求 host 与 client 两个产物', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-stage-plugin-'))
+  const partial = join(root, 'partial-plugin')
+  const previous = process.env.DSH_DESKTOP_SETTINGS_DIR
+  try {
+    // 只有 host 入口、缺 client bundle：同样必须失败（否则设置页无 UI）。
+    await mkdir(join(partial, 'lib'), { recursive: true })
+    await writeFile(join(partial, 'lib', 'index.js'), 'export const name = "x"\n', 'utf8')
+    process.env.DSH_DESKTOP_SETTINGS_DIR = partial
+    await assert.rejects(
+      () => stageDesktopSettingsPlugin(),
+      /lib[\\/]client\.js/,
+    )
+  } finally {
+    if (previous === undefined) delete process.env.DSH_DESKTOP_SETTINGS_DIR
+    else process.env.DSH_DESKTOP_SETTINGS_DIR = previous
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('一体化构建：所有出包脚本都先构建插件', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
+    scripts?: Record<string, string>
+  }
+  const scripts = manifest.scripts ?? {}
+
+  /** 递归展开 `pnpm run <x>` 链，判断某脚本最终是否构建了插件。 */
+  const buildsPlugin = (name: string, seen = new Set<string>()): boolean => {
+    if (seen.has(name)) return false
+    seen.add(name)
+    const body = scripts[name]
+    if (body === undefined) return false
+    if (body.includes('build:plugin') || body.includes('build:all')) return true
+    for (const match of body.matchAll(/pnpm run ([\w:-]+)/g)) {
+      if (buildsPlugin(match[1]!, seen)) return true
+    }
+    return false
+  }
+
+  // 插件是启动器的定制设置页：任何出包路径最终都必须构建它（直接或经 prepare-runtime）。
+  for (const name of ['dist', 'dist:local', 'pack', 'pack:local', 'prepare-runtime', 'start']) {
+    assert.ok(buildsPlugin(name), `${name} 最终必须构建插件：${scripts[name] ?? '(missing)'}`)
+  }
+  // build:all 自身要按 插件 → 启动器 的顺序构建。
+  assert.equal(scripts['build:all'], 'pnpm run build:plugin && pnpm run build')
 })
 
 test('Windows 冒烟检查使用实际产品可执行文件名', async () => {

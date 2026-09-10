@@ -61,14 +61,21 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
 
 ## package.json scripts
 
-- `build` = `tsc`（编译到 `dist/`）；`check` = `tsc --noEmit`
+- `build` = `tsc`（只编译启动器到 `dist/`）；`check` = `tsc --noEmit`
 - `build:plugin` = `pnpm --dir plugins/desktop-settings run build`；`check:plugin` = 同目录 `typecheck`
-- `start` = `build && electron .`（开发运行，不打包）
-- `prepare-runtime` = `build && node dist/scripts/prepare-runtime.js`
+- **`build:all` = 插件 → 启动器**（一体化的默认构建入口）；`check:all` = 两侧一起 typecheck
+- `start` = `build:all && electron .`（开发运行，不打包）
+- `prepare-runtime` = `build:all && node dist/scripts/prepare-runtime.js`
 - `dist` = `prepare-runtime && electron-builder --publish never`（经 build.ps1 跑，pnpm 已由脚本定位正确）
 - `pack` = `prepare-runtime && electron-builder --dir`
 - `test` = `build && node --test dist/test/*.test.js`
-- `dist:local` / `pack:local` = 先 `build:plugin` 再 `build` + `--stage-plugin` + 打包（**日常出包走这个**）
+- `dist:local` / `pack:local` = `build:all` + `--stage-plugin` + 打包（**日常出包走这个**）
+
+> **一体化构建**：插件是启动器的定制设置页，所有出包路径最终都会构建它
+> （`dist`/`pack` 经 `prepare-runtime` → `build:all`）。`test/prepare-runtime.test.ts` 里有一条
+> 用例递归展开 `pnpm run` 链来守住这个约束——**新增出包脚本时别忘了让它最终走到插件构建**。
+> 插件产物缺失时 `stageDesktopSettingsPlugin()` 会**直接抛错**而不是警告跳过，
+> 避免产出一个设置页消失、却看起来正常的安装包。
 
 ## 随包私有插件：`plugins/desktop-settings`
 

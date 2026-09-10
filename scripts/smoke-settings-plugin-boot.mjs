@@ -13,7 +13,7 @@ import { startDsh } from '../dist/src/dsh-process.js'
 
 const project = process.cwd()
 const runtime = join(project, 'runtime-dsh')
-const pluginRepo = process.env.DSH_SETTINGS_PLUGIN_REPO ?? join(project, '..', 'dsh-my-desktop-setting')
+const pluginRepo = process.env.DSH_SETTINGS_PLUGIN_REPO ?? join(project, 'plugins', 'desktop-settings')
 
 const root = mkdtempSync(join(tmpdir(), 'dsh-settings-boot-'))
 const home = join(root, 'home')
@@ -26,7 +26,7 @@ writeFileSync(join(profile, 'package.json'), JSON.stringify({
 writeFileSync(join(profile, 'pnpm-workspace.yaml'), 'packages:\n  - .\nnodeLinker: hoisted\nautoInstallPeers: false\n', 'utf8')
 
 const settingsPatch = prepareDesktopSettings(join(root, 'settings-plugin'), pluginRepo)
-if (settingsPatch === undefined) throw new Error('settings plugin lib missing; build dsh-my-desktop-setting first')
+if (settingsPatch === undefined) throw new Error('settings plugin lib missing; run `pnpm run build:plugin` first')
 
 // Inject a probe that records the client-modules graph + host loader rows.
 const probePath = join(root, 'probe.mjs')

@@ -29,15 +29,17 @@
     "check": "tsc --noEmit",
     "build:plugin": "pnpm --dir plugins/desktop-settings run build",
     "check:plugin": "pnpm --dir plugins/desktop-settings run typecheck",
+    "build:all": "pnpm run build:plugin && pnpm run build",
+    "check:all": "pnpm run check:plugin && pnpm run check",
     "test": "pnpm run build && node --test dist/test/*.test.js",
-    "start": "pnpm run build && electron .",
-    "prepare-runtime": "pnpm run build && node dist/scripts/prepare-runtime.js",
+    "start": "pnpm run build:all && electron .",
+    "prepare-runtime": "pnpm run build:all && node dist/scripts/prepare-runtime.js",
     "pack": "pnpm run prepare-runtime && electron-builder --dir",
     "dist": "pnpm run prepare-runtime && electron-builder --publish never",
-    "dist:local": "pnpm run build:plugin && pnpm run build && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --publish never",
-    "pack:local": "pnpm run build:plugin && pnpm run build && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --dir",
-    "smoke:mac": "pnpm run build && node dist/scripts/smoke-macos-package.mjs",
-    "smoke:linux": "pnpm run build && node dist/scripts/smoke-linux-package.mjs"
+    "dist:local": "pnpm run build:all && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --publish never",
+    "pack:local": "pnpm run build:all && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --dir",
+    "smoke:mac": "pnpm run build:all && node dist/scripts/smoke-macos-package.mjs",
+    "smoke:linux": "pnpm run build:all && node dist/scripts/smoke-linux-package.mjs"
   },
   "devDependencies": {
     "@electron/notarize": "3.1.1",

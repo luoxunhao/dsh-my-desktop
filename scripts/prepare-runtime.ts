@@ -97,15 +97,25 @@ async function main(): Promise<void> {
   await stageDesktopSettingsPlugin()
 }
 
-/** 把随包私有桌面设置插件构建产物拷到 dist/desktop-settings-plugin（供 extraResources）。 */
+/**
+ * 把随包私有桌面设置插件构建产物拷到 dist/desktop-settings-plugin（供 extraResources）。
+ *
+ * 插件与启动器是一体的：它是 DSH My Desktop 的定制设置页，缺了它安装包就没有桌面设置。
+ * 因此构建产物缺失时**直接失败**，而不是警告后跳过——静默跳过会产出一个看起来正常、
+ * 但设置页消失的安装包，比构建报错难查得多。
+ */
 export async function stageDesktopSettingsPlugin(): Promise<void> {
   const sourceEnv = process.env.DSH_DESKTOP_SETTINGS_DIR
   const source = sourceEnv !== undefined && sourceEnv !== ''
     ? resolve(sourceEnv)
     : join(projectRoot, 'plugins', 'desktop-settings')
-  if (!existsSync(join(source, 'lib', 'index.js'))) {
-    console.warn('跳过随包桌面设置插件：未找到构建产物（先跑 pnpm run build:plugin，或用 DSH_DESKTOP_SETTINGS_DIR 指向）。')
-    return
+  for (const file of ['lib/index.js', 'lib/client.js'] as const) {
+    if (!existsSync(join(source, file))) {
+      throw new Error(
+        `随包桌面设置插件构建产物缺失：${join(source, file)}\n`
+        + '  先构建插件（pnpm run build:plugin），或用 DSH_DESKTOP_SETTINGS_DIR 指向已构建的插件目录。',
+      )
+    }
   }
   const dest = join(projectRoot, 'dist', 'desktop-settings-plugin')
   await removePreparedPath(dest)
