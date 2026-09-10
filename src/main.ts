@@ -48,6 +48,8 @@ import { createProfileActionsService, type ProfileActionsService, type ProfileOp
 import { createShellBroadcastService, type ShellBroadcastService } from './desktop/shell-broadcast-service.js'
 import { createRestartService, type RestartService } from './recovery/restart-service.js'
 import { resolveLauncherProfileRoots } from './desktop/launcher-roots.js'
+import { createDesktopProfileCheckpoint, DESKTOP_PROFILE_CHECKPOINT_SLOT_IDS, type DesktopProfileCheckpointSlotId } from './recovery/profile-checkpoint.js'
+import { projectCheckpointSlots } from './recovery/renderer-views.js'
 import { resolveLaunchDecision } from './recovery/launch-mode.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
@@ -1155,6 +1157,14 @@ function setDesktopUpdateStatus(status: DesktopUpdateStatus, checked = false): v
   requireUpdateService().setDesktopUpdateStatus(status, checked)
 }
 
+/**
+ * Recovery IPC channel names.
+ *
+ * NOTE: these are duplicated in `recovery-preload.cts`, which is a CommonJS preload
+ * and cannot import this module. The duplication is a known drift hazard — a channel
+ * renamed on one side only fails at runtime with "no handler registered", not at
+ * compile time. `test/recovery-ipc-contract.test.ts` asserts the two lists match.
+ */
 const RECOVERY_IPC = {
   activate: 'dsh-recovery:activate',
   getStartupLog: 'dsh-recovery:get-startup-log',
@@ -1164,6 +1174,9 @@ const RECOVERY_IPC = {
   restoreHealthyConfig: 'dsh-recovery:restore-healthy-config',
   returnToWorkbench: 'dsh-recovery:return-to-workbench',
   uninstall: 'dsh-recovery:uninstall',
+  listCheckpoints: 'dsh-recovery:list-checkpoints',
+  inspectCheckpoint: 'dsh-recovery:inspect-checkpoint',
+  listProfiles: 'dsh-recovery:list-profiles',
 } as const
 
 function requireRecoveryProfile(sender: WebContents): string {
@@ -1189,8 +1202,34 @@ async function recoveryPageStatus(profileDir: string): Promise<object> {
   }
 }
 
-async function restartDshInRecoveryMode(profileDir: string, destination: 'recovery' | 'workbench' = 'recovery'): Promise<void> {
-  if (state.launch.lastStartOptions === undefined || state.launch.lastSeedOptions === undefined) throw new Error('恢复环境尚未准备完成。')
+/**
+ * Build the checkpoint manager for the profile being recovered.
+ *
+ * The harness home comes from the launcher's own resolution (which honours the
+ * user's data-directory choice), NOT from `dirname(profileDir, '..', '..')`.
+ * Those coincide today, but deriving it independently would silently break the
+ * moment a data directory is configured — the same class of mistake that made
+ * safe mode's isolation fail earlier.
+ */
+function requireRecoveryCheckpoint(profileDir: string) {
+  const roots = resolveLauncherProfileRoots(app.getPath('userData'))
+  return createDesktopProfileCheckpoint({
+    userDataDir: app.getPath('userData'),
+    profileDir,
+    homeDir: roots.home,
+    profileName: basename(profileDir),
+    appVersion: app.getVersion(),
+  })
+}
+
+/** Narrow an untrusted slot id to the fixed set, rejecting anything else. */
+function assertCheckpointSlotId(value: string): DesktopProfileCheckpointSlotId {
+  const candidate = DESKTOP_PROFILE_CHECKPOINT_SLOT_IDS.find(id => id === value)
+  if (candidate === undefined) throw new Error(`槽位标识不合法：${JSON.stringify(value)}`)
+  return candidate
+}
+
+async function restartDshInRecoveryMode(profileDir: string, destination: 'recovery' | 'workbench' = 'recovery'): Promise<void> {  if (state.launch.lastStartOptions === undefined || state.launch.lastSeedOptions === undefined) throw new Error('恢复环境尚未准备完成。')
   state.runtime.isRecycling = true
   broadcastShellState()
   try {
@@ -1279,6 +1318,24 @@ function installRecoveryIpc(): void {
   ipcMain.handle(RECOVERY_IPC.returnToWorkbench, async event => {
     requireRecoveryProfile(event.sender)
     await returnToWorkbenchFromRecovery()
+  })
+  // Checkpoints and profiles. Both capabilities already existed in the backend —
+  // checkpoints since the health-snapshot work, profiles since the launcher gained
+  // managed profiles — but neither had a way to reach the recovery page, so a user
+  // could not see or use them. These handlers only project; the logic stays in the
+  // modules that already own it.
+  ipcMain.handle(RECOVERY_IPC.listCheckpoints, async event => {
+    const profileDir = requireRecoveryProfile(event.sender)
+    return projectCheckpointSlots(requireRecoveryCheckpoint(profileDir).listSlots())
+  })
+  ipcMain.handle(RECOVERY_IPC.inspectCheckpoint, async (event, slotId: unknown) => {
+    const profileDir = requireRecoveryProfile(event.sender)
+    if (typeof slotId !== 'string') throw new Error('槽位标识不合法。')
+    return requireRecoveryCheckpoint(profileDir).inspectSlot(assertCheckpointSlotId(slotId))
+  })
+  ipcMain.handle(RECOVERY_IPC.listProfiles, async event => {
+    requireRecoveryProfile(event.sender)
+    return desktopProfileViews()
   })
 }
 
