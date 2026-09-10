@@ -7,6 +7,7 @@ import { finalizeProfileBundlesAfterInstall, officialRuntimeInstallArgs, writeOf
 import { terminateProcessTree } from './process-control.js'
 import {
   assertProfileName,
+  deleteProfileDirectory,
   isSafeProfileName,
   listProfiles,
   profileDirFor,
@@ -263,11 +264,12 @@ export function createDesktopHostServices(options: DesktopHostOptions) {
   ): Promise<void> => {
     assertProfileName(name)
     if (options.request !== undefined) {
+      // Creating a profile seeds it (pnpm install) and legitimately takes a
+      // while; a select relaunches almost immediately. Wait accordingly, and
+      // never hang the HTTP response forever.
+      const timeoutMs = type === 'desktop/profile/create' ? 120_000 : 5_000
       try {
-        // Wait for main to finish so the next list() reflects the change, but
-        // never let a slow/absent reply hang the HTTP response: the client
-        // refreshes again shortly after, which catches a late completion.
-        await options.request({ type, requestId: nextRequestId(), name } as DesktopProfileActionMessage, 15_000)
+        await options.request({ type, requestId: nextRequestId(), name } as DesktopProfileActionMessage, timeoutMs)
       } catch (error) {
         console.warn(`桌面 profile 操作等待主进程确认失败（${type}）：`, error instanceof Error ? error.message : error)
       }
@@ -297,7 +299,13 @@ export function createDesktopHostServices(options: DesktopHostOptions) {
         await runProfileOp('desktop/profile/select', name)
       },
       async delete(name: string) {
-        await runProfileOp('desktop/profile/delete', name)
+        assertProfileName(name)
+        // Deleting a profile is a pure filesystem operation the bridge can do
+        // here, instantly and synchronously with the request — no main-process
+        // round-trip is needed. Main is only notified afterwards so its own
+        // state (window/registry) stays consistent.
+        deleteProfileDirectory(roots, name, readActiveProfile(roots))
+        options.send?.({ type: 'desktop/profile/delete', requestId: nextRequestId(), name })
       },
       canDelete(name: string) {
         return isSafeProfileName(name) && name !== readActiveProfile(roots)
