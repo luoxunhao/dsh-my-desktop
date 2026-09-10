@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -144,13 +144,14 @@ function extractOnce(archivePath: string, destDir: string, readyPath: (dir: stri
     extractTarGz(archivePath, stagingDir)
     if (!existsSync(readyPath(stagingDir))) throw new Error(`压缩包内容不完整：${archivePath}`)
     if (isExtractionCurrent(archivePath, destDir, readyPath)) return false
-    if (process.platform === 'win32') {
-      mkdirSync(destDir, { recursive: true })
-      cpSync(stagingDir, destDir, { recursive: true, force: true })
-    } else {
-      rmSync(destDir, { recursive: true, force: true })
-      renameSync(stagingDir, destDir)
-    }
+    // Publish atomically on every platform: stage fully, then swap into place.
+    // Copying file-by-file straight into destDir is NOT atomic — an interruption
+    // (antivirus/indexer/lock held by another process) leaves a partial tree that
+    // still contains the ready file, so the next launch mistakes it for complete
+    // and boots a broken runtime. A rename is atomic on the same volume, so a
+    // failure either leaves the previous state or nothing, never a half-tree.
+    rmSync(destDir, { recursive: true, force: true })
+    renameSync(stagingDir, destDir)
     writeFileSync(completeMarker, `${archiveVersion}\n`, 'utf8')
     return true
   } finally {

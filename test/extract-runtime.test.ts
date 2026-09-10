@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -63,8 +64,51 @@ async function createHangingExtractor(root: string): Promise<string> {
   return extractorPath
 }
 
-test('已解压过的运行时不会重复解压，内容缺失时会自愈', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-extract-'))
+test('解压是原子的：就绪文件存在但无完成标记时，视为未完成并重新解压', async () => {
+  // 回归测试：Windows 上曾直接把 staging 逐文件拷进最终目录，拷贝中途被中断
+  // （杀毒/索引器/其它进程持锁）会留下"有 bin.js 但只有部分文件"的残缺树。
+  // 由于完成判定只认 .dsh-extract-complete，残缺树必须被判为未完成并重解压，
+  // 而不是被误当作已就绪去启动一个坏掉的运行时。
+  const root = await mkdtemp(join(tmpdir(), 'dsh-extract-atomic-'))
+  try {
+    const resources = join(root, 'resources')
+    const officialSrc = join(root, 'official')
+    const storeSrc = join(root, 'store')
+    await mkdir(join(officialSrc, 'node_modules', '@deepseek-ai', 'dsh', 'lib'), { recursive: true })
+    await writeFile(join(officialSrc, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'), 'ok', 'utf8')
+    await writeFile(join(officialSrc, 'marker.txt'), 'complete', 'utf8')
+    await mkdir(join(storeSrc, 'v11'), { recursive: true })
+    await writeFile(join(storeSrc, 'v11', 'keep.txt'), 'store', 'utf8')
+    await mkdir(resources, { recursive: true })
+    packDirectoryToTarGz(officialSrc, join(resources, 'dsh-runtime.tgz'))
+    packDirectoryToTarGz(storeSrc, join(resources, 'plugins-store.tgz'))
+    createChecksums(resources)
+
+    const runtimeDir = join(root, 'app', 'dsh-runtime')
+    const storeDir = join(root, 'app', 'plugins', 'store')
+
+    // 模拟"部分解压"的残缺树：就绪文件在，但完成标记不在、且缺了别的文件。
+    await mkdir(join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'lib'), { recursive: true })
+    await writeFile(join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'), 'partial', 'utf8')
+    assert.equal(existsSync(join(runtimeDir, '.dsh-extract-complete')), false)
+    assert.equal(existsSync(join(runtimeDir, 'marker.txt')), false)
+
+    // 必须判为需要解压，且解压后目录是完整的（而非把残缺树当作已完成跳过）。
+    assert.equal(packagedRuntimesNeedExtraction(resources, runtimeDir, storeDir), true)
+    assert.deepEqual(extractPackagedRuntimes(resources, runtimeDir, storeDir), { official: true, store: true })
+    assert.equal(existsSync(join(runtimeDir, 'marker.txt')), true)
+    assert.equal(await readFile(join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'), 'utf8'), 'ok')
+
+    // 完成后不再重复解压，且没有留下 staging 残留目录。
+    assert.equal(packagedRuntimesNeedExtraction(resources, runtimeDir, storeDir), false)
+    const leftovers = (await readdir(join(root, 'app'))).filter(name => name.startsWith('.dsh-runtime-'))
+    assert.deepEqual(leftovers, [])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('已解压过的运行时不会重复解压，内容缺失时会自愈', async () => {  const root = await mkdtemp(join(tmpdir(), 'dsh-extract-'))
   try {
     const resources = join(root, 'resources')
     const officialSrc = join(root, 'official')
