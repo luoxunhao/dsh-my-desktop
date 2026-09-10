@@ -38,6 +38,7 @@ import { createDesktopState, type DesktopState } from './desktop/desktop-state.j
 import { launchDsh, type DshLaunchResult } from './desktop/launch-service.js'
 import { createWindowRegistry, type WindowRegistry } from './desktop/window-registry.js'
 import { createNotificationService, type NotificationService } from './desktop/notification-service.js'
+import { notificationPreferencesPath, updatePreferencesPath } from './desktop/preference-paths.js'
 import { createUpdateService, type UpdateService } from './desktop/update-service.js'
 import { createTrayService, type TrayService } from './desktop/tray-service.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
@@ -150,8 +151,6 @@ async function shutdownDesktop(exit: () => void): Promise<void> {
 
 async function startApplication(): Promise<void> {
   await app.whenReady()
-  ensureWindowsNotificationIdentity()
-  installWindowsNotificationActivationHandler()
   // Load preferences BEFORE creating the store and registering IPC: the shell
   // handlers read these values at call time and would otherwise see defaults.
   const notificationPreferences = await loadNotificationPreferences(notificationPreferencesPath())
@@ -215,6 +214,10 @@ async function startApplication(): Promise<void> {
     installUpdate: installDesktopUpdate,
     runTask: runMainTask,
   })
+  // Windows toast identity and the activation handler both go through the
+  // notification service, so they must run AFTER the services above are created.
+  ensureWindowsNotificationIdentity()
+  installWindowsNotificationActivationHandler()
   installShellIpc()
   installRecoveryIpc()
   installDesktopFaviconReplacement()
@@ -1681,14 +1684,6 @@ async function popupShellTool(tool: ShellToolPopupId, x: number, y: number): Pro
   const close = (): void => { if (!settled) { settled = true } }
   menu.once('menu-will-close', close)
   menu.popup({ window, x: Math.round(x), y: Math.round(y), callback: close })
-}
-
-function notificationPreferencesPath(): string {
-  return requireNotificationService().notificationPreferencesPath()
-}
-
-function updatePreferencesPath(): string {
-  return requireUpdateService().updatePreferencesPath()
 }
 
 /**

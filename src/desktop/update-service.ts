@@ -64,10 +64,6 @@ type DesktopUpdateInteraction = 'interactive' | 'background' | 'settings'
 export function createUpdateService(deps: UpdateDeps) {
   const { update, notifications } = deps
 
-  /** Preferences file for desktop update policy. */
-  function updatePreferencesPath(): string {
-    return join(app.getPath('userData'), 'desktop-update-settings.json')
-  }
 
   function setDesktopUpdateStatus(status: DesktopUpdateStatus, checked = false): void {
     update.status = status
@@ -247,7 +243,6 @@ export function createUpdateService(deps: UpdateDeps) {
   }
 
   return {
-    updatePreferencesPath,
     setDesktopUpdateStatus,
     configureDesktopUpdater,
     scheduleStartupUpdateCheck,

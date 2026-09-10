@@ -61,10 +61,6 @@ export interface NotificationDeps {
 export function createNotificationService(deps: NotificationDeps) {
   const { windows: w, notifications } = deps
 
-  /** Preferences file for desktop notifications. */
-  function notificationPreferencesPath(): string {
-    return join(app.getPath('userData'), 'desktop-settings.json')
-  }
 
   /**
    * Windows resolves a toast's small source icon from a Start Menu shortcut that
@@ -266,7 +262,6 @@ export function createNotificationService(deps: NotificationDeps) {
   }
 
   return {
-    notificationPreferencesPath,
     ensureWindowsNotificationIdentity,
     sendNotificationReplyToDsh,
     installWindowsNotificationActivationHandler,
