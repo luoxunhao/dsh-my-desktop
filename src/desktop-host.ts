@@ -263,7 +263,14 @@ export function createDesktopHostServices(options: DesktopHostOptions) {
   ): Promise<void> => {
     assertProfileName(name)
     if (options.request !== undefined) {
-      await options.request({ type, requestId: nextRequestId(), name } as DesktopProfileActionMessage)
+      try {
+        // Wait for main to finish so the next list() reflects the change, but
+        // never let a slow/absent reply hang the HTTP response: the client
+        // refreshes again shortly after, which catches a late completion.
+        await options.request({ type, requestId: nextRequestId(), name } as DesktopProfileActionMessage, 15_000)
+      } catch (error) {
+        console.warn(`桌面 profile 操作等待主进程确认失败（${type}）：`, error instanceof Error ? error.message : error)
+      }
       return
     }
     // Legacy fire-and-forget (no reply channel available).
