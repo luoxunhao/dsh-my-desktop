@@ -97,20 +97,20 @@ async function harness(t: TestContext, options: { installError?: Error; loadErro
     returnToWorkbenchFromRecovery: async () => { scope.presentation = 'workbench' },
     showStartupWindow: async () => { scope.presentation = 'startup'; events.push('startup') },
     requireRecovery: () => ({
-      restartDsh: async (profileDir, destination) => {
+      restartDsh: async (profileDir: string, destination: string) => {
         if (destination === 'workbench') scope.returnToWorkbenchFromRecovery()
         else scope.showRecoveryWindow(profileDir)
       },
-      pageStatus: async (_profileDir) => ({ active: state.recovery.failureMessage !== undefined, running: true }),
+      pageStatus: async (_profileDir: string) => ({ active: state.recovery.failureMessage !== undefined, running: true }),
       returnToWorkbench: () => scope.returnToWorkbenchFromRecovery(),
-      showRecoveryWindow: (_profileDir, failure) => scope.showRecoveryWindow(_profileDir, failure),
-      maybeLeaveRecoveryMode: async (_profileDir) => {
+      showRecoveryWindow: (_profileDir: string, failure?: { failureMessage: string; failurePlugins: string[] }) => scope.showRecoveryWindow(_profileDir, failure),
+      maybeLeaveRecoveryMode: async (_profileDir: string) => {
         const left = await recovery.tryAutoLeaveRecoveryMode(_profileDir);
         if (left) { state.recovery.failureMessage = undefined; state.recovery.failurePlugin = undefined; state.recovery.failurePlugins = []; }
         return left;
       },
       clearSessionHints: () => { state.recovery.failureMessage = undefined; state.recovery.failurePlugin = undefined; state.recovery.failurePlugins = [] },
-      openWorkbenchOrRecovery: async (_profileDir, serverUrl) => {
+      openWorkbenchOrRecovery: async (_profileDir: string, serverUrl: string) => {
         if (recovery.isRecoveryModeActive(_profileDir)) {
           scope.showRecoveryWindow(_profileDir)
         } else {

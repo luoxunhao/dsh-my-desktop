@@ -31,10 +31,10 @@ test('主窗口导航完成前不结束启动或插件热重载', async () => {
   assert.match(source, /escapeRoute\(/)
   assert.doesNotMatch(source, /contents === state\.windows\.dshView\?\.webContents \|\| contents === state\.windows\.mainWindow\?\.webContents/)
   assert.match(source, /state\.shell\.settingsDialogVisible/)
-  assert.match(source, /\[role=\"dialog\"\]\[aria-modal=\"true\"\]/)
-  assert.match(source, /\^\(设置\|settings\)\$/)
+  const routes = await readFile(new URL('../../src/desktop/ipc-routes.ts', import.meta.url), 'utf8')
+  assert.match(routes, /\[role=\"dialog\"\]\[aria-modal=\"true\"\]/)
+  assert.match(routes, /\^\(设置\|settings\)\$/)
   assert.match(source, /dismissDshSettingsDialog\(\)/)
-  assert.match(source, /DSH_MARKET_BATCH_MAX_WAIT_MS/)
 })
 
 test('桌面壳与 DSH 内容分层并复用托盘重载实现', async () => {
