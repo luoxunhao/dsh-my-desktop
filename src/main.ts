@@ -44,6 +44,7 @@ import { createTrayService, type TrayService } from './desktop/tray-service.js'
 import { createShellIpcRegistrar, type ShellIpcRegistrar } from './desktop/shell-ipc-registrar.js'
 import { createTerminalService, type TerminalService } from './desktop/terminal-service.js'
 import { createDialogService, type DesktopSettingsSection, type DialogService } from './desktop/dialog-service.js'
+import { createProfileActionsService, type ProfileActionsService, type ProfileOperationView } from './desktop/profile-actions-service.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -275,6 +276,17 @@ async function startApplication(): Promise<void> {
     installShortcutHandler,
     updateSnapshot: desktopUpdateSnapshot,
     runTask: runMainTask,
+  })
+  // Profile ops read launch state at call time; recovery restart arrives as an
+  // injected callback so this module does not depend on the recovery flow.
+  profileActions = createProfileActionsService({
+    lastSeedOptions: () => state.launch.lastSeedOptions,
+    lastStartOptions: () => state.launch.lastStartOptions,
+    isQuitting: () => state.runtime.isQuitting,
+    dshView: () => state.windows.dshView,
+    shutdown: shutdownDesktop,
+    enterRecoveryMode: (profileDir, options) => enterRecoveryMode(profileDir, options),
+    restartDshInRecoveryMode,
   })
   installShellIpc()
   installRecoveryIpc()
@@ -967,6 +979,14 @@ function requireDialogService(): DialogService {
   return dialogService
 }
 
+// Profile management and launcher-native desktop actions.
+let profileActions: ProfileActionsService | undefined
+
+function requireProfileActions(): ProfileActionsService {
+  if (profileActions === undefined) throw new Error('profile 操作服务尚未初始化。')
+  return profileActions
+}
+
 let shellIpcRegistrar: ShellIpcRegistrar | undefined
 
 function requireShellIpcRegistrar(): ShellIpcRegistrar {
@@ -1353,92 +1373,39 @@ function openDshTerminal(): void {
 
 /** Restart the whole desktop application (clean shutdown, then relaunch). */
 async function restartDesktop(): Promise<void> {
-  if (state.runtime.isQuitting) return
-  await shutdownDesktop(() => { app.relaunch(); app.exit() })
+  await requireProfileActions().restartDesktop()
 }
 
-/** Launcher profile registry roots (state under userData, profiles under DSH home). */
 function launcherProfileRoots(): ReturnType<typeof resolveProfileRoots> {
-  return resolveProfileRoots({ stateDir: app.getPath('userData') })
+  return requireProfileActions().launcherProfileRoots()
 }
 
-/** Read-only snapshot of the current managed profiles (for the shell/bridge). */
 function currentProfilesSnapshot(): ReadonlyArray<ReturnType<typeof listProfiles>[number]> {
-  const roots = launcherProfileRoots()
-  const active = readActiveProfile(roots)
-  return listProfiles(roots, active)
+  return requireProfileActions().currentProfilesSnapshot()
 }
 
-/**
- * Create a new Web profile and seed it with the shared official runtime +
- * bundled plugins. It does NOT select the profile or require a relaunch; a
- * later select/switch starts it.
- */
 async function createWebProfile(name: string): Promise<void> {
-  assertProfileName(name)
-  const roots = launcherProfileRoots()
-  createProfileDirectory(roots, name)
-  const seed = state.launch.lastSeedOptions
-  if (seed === undefined) throw new Error('启动尚未完成，无法创建 profile。')
-  // Reuse the current node/pnpm/store plumbing against the new profile dir.
-  await seedBundledPlugins({ ...seed, profileDir: profileDirFor(roots.home, name) })
+  await requireProfileActions().createWebProfile(name)
 }
 
-/**
- * Select a compatible profile to be active on the next launch, then relaunch
- * the whole desktop application so it starts the newly selected profile.
- */
 async function switchWebProfile(name: string): Promise<void> {
-  const roots = launcherProfileRoots()
-  const target = listProfiles(roots, readActiveProfile(roots)).find((profile) => profile.name === name)
-  if (target === undefined) throw new Error(`profile ${JSON.stringify(name)} does not exist`)
-  if (!target.selectable) throw new Error(`profile ${JSON.stringify(name)} is not a launchable Web profile`)
-  writeActiveProfile(roots, name)
-  await restartDesktop()
+  await requireProfileActions().switchWebProfile(name)
 }
 
-/** Delete a non-active profile directory (fails closed on the active one). */
 function deleteWebProfile(name: string): void {
-  const roots = launcherProfileRoots()
-  deleteProfileDirectory(roots, name, readActiveProfile(roots))
+  requireProfileActions().deleteWebProfile(name)
 }
 
-/** Renderer-safe view of the managed profiles. */
 function desktopProfileViews(): readonly ProfileOperationView[] {
-  return currentProfilesSnapshot().map((profile) => ({
-    name: profile.name,
-    exists: profile.exists,
-    webCapable: profile.webCapable,
-    selectable: profile.selectable,
-    deletable: profile.deletable,
-    current: profile.name === readActiveProfile(launcherProfileRoots()),
-    problem: profile.problem,
-  }))
+  return requireProfileActions().desktopProfileViews()
 }
 
-interface ProfileOperationView {
-  readonly name: string
-  readonly exists: boolean
-  readonly webCapable: boolean
-  readonly selectable: boolean
-  readonly deletable: boolean
-  readonly current: boolean
-  readonly problem: string | null
-}
-
-/** Enter recovery isolation and restart DSH into the recovery window. */
 async function restartIntoRecoveryFromShell(): Promise<void> {
-  const profileDir = state.launch.lastSeedOptions?.profileDir
-  const seedOptions = state.launch.lastSeedOptions
-  if (profileDir === undefined || seedOptions === undefined || state.launch.lastStartOptions === undefined) return
-  await enterRecoveryMode(profileDir, { force: true })
-  await restartDshInRecoveryMode(profileDir)
+  await requireProfileActions().restartIntoRecoveryFromShell()
 }
 
-/** Toggle DevTools on the DSH renderer (and the shell page when focused). */
 function toggleDeveloperTools(): void {
-  const contents = state.windows.dshView?.webContents
-  if (contents !== undefined && !contents.isDestroyed()) contents.toggleDevTools()
+  requireProfileActions().toggleDeveloperTools()
 }
 
 /** Invoke a non-popup title-bar tool. */
