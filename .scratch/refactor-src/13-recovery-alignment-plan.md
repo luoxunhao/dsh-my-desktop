@@ -145,3 +145,90 @@ shared/theme.css                     99 行
 原 ticket 08（文档 + 发版 0.1.4）blocked by 13。本方案把 13 从「重构」升级为
 「重构 + 行为变更 + 新 UI」，因此 **0.1.4 的发布范围也应相应调整**（至少是
 minor 版本，不是 patch）。
+
+## 六、范围扩张（用户已确认）
+
+用户确认**连 checkpoint 快照恢复与 Safe Mode 一起做**。以下为补充调研结论。
+
+### 6.1 Safe Mode（`safe-mode.ts`，184 行）
+
+参考实现的三个导出：
+
+```ts
+desktopSafeModePaths(userDataDir): DesktopSafeModePaths
+ensureDesktopSafeModeEnvironment(userDataDir): DesktopSafeModePaths
+cleanupDesktopSafeModeEnvironment(userDataDir): boolean
+```
+
+语义（`main.ts:408-433`）：
+
+- `safeModeRequested` 时：`ensureDesktopSafeModeEnvironment()` 建**隔离的 DSH_HOME**
+- 否则：若 `process.env.DSH_HOME` 等于隔离目录则 **delete**（防止泄漏到正常启动），
+  并 `cleanupDesktopSafeModeEnvironment()` 清理上一次的遗留
+- 隔离环境是**一次性**的（可丢弃）
+
+### 6.2 checkpoint 快照（`profile-checkpoint.ts`，826 行）
+
+**设计要点**（前 75 行注释已说明）：
+
+- 恰好 **3 个滚动槽**：`slot-1` / `slot-2` / `slot-3`
+- 恢复槽位**绝不运行 pnpm、绝不拷贝 node_modules**，只恢复固定的声明式文件
+- 恢复后的**第一次健康启动**消费一个 skip marker，而不是覆盖快照
+
+**快照覆盖的文件**（`DESKTOP_PROFILE_CHECKPOINT_FILES`，7 个）：
+
+| 文件 | 单文件上限 | 相对根 |
+|---|---|---|
+| `package.json` | 1 MB | profileDir |
+| `pnpm-lock.yaml` | 32 MB | profileDir |
+| `pnpm-workspace.yaml` | 1 MB | profileDir |
+| `cordis.patch.yml` | 1 MB | profileDir |
+| `.dsh-market/state.json` | 1 MB | profileDir |
+| `home/settings.yaml` | 4 MB | **homeDir** |
+| `home/cordis.patch.yml` | 1 MB | **homeDir** |
+
+**关键**：`home/*` 解析到**独立的 homeDir**，其余解析到 profileDir（`profile-checkpoint.ts:476-478`）。
+
+### 6.3 ⚠️ 我们的目录布局与参考实现的映射
+
+这是我们与 dsh-desktop **最容易踩错**的一处。实测：
+
+| 概念 | dsh-desktop | 我们 |
+|---|---|---|
+| homeDir | 独立于 profileDir | **`~/.dsh`**（`resolveProfileRoots().home`） |
+| profileDir | 各 profile 目录 | **`~/.dsh/profiles/<name>`** |
+| settings.yaml 位置 | `<homeDir>/settings.yaml` | **`~/.dsh/settings.yaml`** ✅ 同一位置 |
+| profile 下有 `home/` 子目录？ | 是（快照路径用 `home/` 前缀） | **否**（实测 `profiles/web/home` 不存在） |
+
+结论：**我们不需要创建 `home/` 子目录**——参考实现里的 `home/` 只是其快照清单中的
+**逻辑前缀**，映射到 `homeDir`。移植时应把 `home/settings.yaml` 解析为
+`<我们的 home>/settings.yaml`，即 `~/.dsh/settings.yaml`（已存在，实测 217 字节级别的
+`settings.yaml` 在 `.dsh` 根下）。
+
+若照字面在 profile 下建 `home/`，会得到一个**永远不会被 DSH 读取的空目录**，
+快照会成功地备份错误的文件——**静默失效**，这是本阶段最大的风险点。
+
+### 6.4 控制器能力（`startup-recovery-controller.ts`，483 行）
+
+用户确认一并实现 preview→execute 两阶段确认。参考实现的保护：
+
+- `previewId` 形如 `uninstall_<43 字符>` / `restore_<43 字符>`
+- **5 分钟 TTL**（`PREVIEW_TTL_MS`）+ **一次性消费**
+- `MAX_PREVIEWS = 256`（上限，防内存膨胀）
+- `generation-changed` 错误码：generation 变了就拒绝操作
+- `maskSecrets` 脱敏错误详情，上限 24000 字符
+- `immutable-target` / `invalid-target` / `operation-failed` / `operation-in-progress` /
+  `preview-expired` / `state-unavailable` 六类错误码
+
+### 6.5 修订后的阶段划分
+
+原 5 阶段细化为 7 阶段（每阶段独立可验证、可提交）：
+
+1. ✅ **进程标记机制**（已完成，提交 `192b0a9`）
+2. Safe Mode 环境隔离（`safe-mode.ts` 移植 + 清理语义）
+3. checkpoint 存储（`profile-checkpoint.ts` 移植，含 3 槽滚动 + skip marker + 文件上限）
+4. 重启改为重启整应用 + 原生确认框 + 幂等
+5. 启动消费标记：跳过 Profile 准入、不启动 Host、恢复页数据改走 IPC
+6. 重建恢复页 UI（React + Vite）+ checkpoint/两阶段确认交互
+7. ticket 13 原定的重构（此时边界已确定）
+
