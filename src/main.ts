@@ -45,6 +45,7 @@ import { createShellIpcRegistrar, type ShellIpcRegistrar } from './desktop/shell
 import { createTerminalService, type TerminalService } from './desktop/terminal-service.js'
 import { createDialogService, type DesktopSettingsSection, type DialogService } from './desktop/dialog-service.js'
 import { createProfileActionsService, type ProfileActionsService, type ProfileOperationView } from './desktop/profile-actions-service.js'
+import { createShellBroadcastService, type ShellBroadcastService } from './desktop/shell-broadcast-service.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -287,6 +288,16 @@ async function startApplication(): Promise<void> {
     shutdown: shutdownDesktop,
     enterRecoveryMode: (profileDir, options) => enterRecoveryMode(profileDir, options),
     restartDshInRecoveryMode,
+  })
+  // Broadcast/theme is the cross-cutting concern; created before the IPC registrar
+  // (which dispatches theme reports into it) and before the dialog service.
+  shellBroadcast = createShellBroadcastService({
+    windows: state.windows,
+    shell: state.shell,
+    isRecycling: () => state.runtime.isRecycling,
+    locale: desktopLocale,
+    appVersion: () => app.getVersion(),
+    updateSnapshot: desktopUpdateSnapshot,
   })
   installShellIpc()
   installRecoveryIpc()
@@ -987,6 +998,15 @@ function requireProfileActions(): ProfileActionsService {
   return profileActions
 }
 
+// Theme application and shell-state broadcast — a cross-cutting concern called from
+// the shell IPC, tray, window registry and dialog service.
+let shellBroadcast: ShellBroadcastService | undefined
+
+function requireShellBroadcast(): ShellBroadcastService {
+  if (shellBroadcast === undefined) throw new Error('外壳广播服务尚未初始化。')
+  return shellBroadcast
+}
+
 let shellIpcRegistrar: ShellIpcRegistrar | undefined
 
 function requireShellIpcRegistrar(): ShellIpcRegistrar {
@@ -1015,62 +1035,27 @@ function createWindow(): BrowserWindow {
 }
 
 function currentShellState(): ShellState {
-  const window = state.windows.mainWindow
-  const zoomFactor = state.windows.dshView?.webContents.getZoomFactor() ?? 1
-  return {
-    ...state.shell.navigationState,
-    fullscreen: window?.isFullScreen() ?? false,
-    reloading: state.runtime.isRecycling,
-    zoomPercent: Math.round(zoomFactor * 100),
-  }
+  return requireShellBroadcast().currentShellState()
 }
 
 function shellBootstrap(): ShellBootstrap {
-  const locale = desktopLocale()
-  return {
-    actions: localizedShellActions(locale, process.platform),
-    colorScheme: state.shell.colorScheme,
-    locale,
-    menus: localizedShellMenus(locale),
-    platform: process.platform,
-    runtimeVersion: OFFICIAL_DSH_VERSION,
-    state: currentShellState(),
-    version: app.getVersion(),
-  }
+  return requireShellBroadcast().shellBootstrap()
 }
 
 function broadcastShellBootstrap(): void {
-  const bootstrap = shellBootstrap()
-  for (const window of [state.windows.mainWindow, state.windows.shortcutsWindow, state.windows.aboutWindow, state.windows.settingsWindow]) {
-    if (window !== undefined && !window.isDestroyed()) window.webContents.send(SHELL_IPC.bootstrap, bootstrap)
-  }
+  requireShellBroadcast().broadcastShellBootstrap()
 }
 
 function setWindowBackground(window: BrowserWindow | undefined, color: string): void {
-  if (window !== undefined && !window.isDestroyed()) window.setBackgroundColor(color)
+  requireShellBroadcast().setWindowBackground(window, color)
 }
 
 function applyDesktopTheme(colorScheme: DesktopColorScheme, preference?: DesktopThemePreference): void {
-  state.shell.colorScheme = colorScheme
-  if (preference !== undefined) {
-    state.shell.themePreference = preference
-    nativeTheme.themeSource = preference
-  }
-  const palette = DESKTOP_THEME_PALETTES[colorScheme]
-  setWindowBackground(state.windows.mainWindow, palette.titleBarBackground)
-  setWindowBackground(state.windows.settingsWindow, palette.settingsBackground)
-  setWindowBackground(state.windows.shortcutsWindow, palette.shortcutsBackground)
-  setWindowBackground(state.windows.aboutWindow, palette.aboutBackground)
-  if (process.platform !== 'darwin' && state.windows.mainWindow !== undefined && !state.windows.mainWindow.isDestroyed()) {
-    state.windows.mainWindow.setTitleBarOverlay({ color: palette.titleBarBackground, symbolColor: palette.titleBarSymbol, height: SHELL_BAR_HEIGHT })
-  }
+  requireShellBroadcast().applyDesktopTheme(colorScheme, preference)
 }
 
 function broadcastShellState(): void {
-  const shellState = currentShellState()
-  for (const window of [state.windows.mainWindow, state.windows.shortcutsWindow, state.windows.aboutWindow, state.windows.settingsWindow]) {
-    if (window !== undefined && !window.isDestroyed()) window.webContents.send(SHELL_IPC.state, shellState)
-  }
+  requireShellBroadcast().broadcastShellState()
 }
 
 function desktopUpdateSnapshot(): DesktopUpdateSnapshot {
@@ -1078,9 +1063,7 @@ function desktopUpdateSnapshot(): DesktopUpdateSnapshot {
 }
 
 function broadcastDesktopUpdateState(): void {
-  if (state.windows.settingsWindow !== undefined && !state.windows.settingsWindow.isDestroyed()) {
-    state.windows.settingsWindow.webContents.send(SHELL_IPC.desktopUpdateState, desktopUpdateSnapshot())
-  }
+  requireShellBroadcast().broadcastDesktopUpdateState()
 }
 
 function setDesktopUpdateStatus(status: DesktopUpdateStatus, checked = false): void {

@@ -12,7 +12,7 @@
 **Blocked by:** 09 — 抽出终端服务（同为「由 IPC 触发的宿主动作」类，先做完终端可复用
 其窄接口写法）
 
-**Status:** 代码完成，**待人工验证**
+**Status:** done — 人工验证通过（profile 列出/新建/删除/切换均正常）
 
 - [x] 抽出 `src/desktop/profile-actions-service.ts`（151 行）
 - [x] 依赖窄接口：4 个 store 字段经访问器传入，未 import `DesktopState`
@@ -20,7 +20,7 @@
 - [x] 切换 profile 后持久化 + 重启整代的行为保留
 - [x] `check:all` 通过、全量测试 **335 / 329 / 5**（与基线一致）
 - [x] `dist-local` 出包成功
-- [ ] **人工启动确认**：设置页能列出 profile、能新建、能删除（非当前）、能切换并重启
+- [x] **人工启动确认**：profile 列出/新建/删除/切换均正常
 
 ## 执行结果
 

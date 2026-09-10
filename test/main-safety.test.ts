@@ -267,13 +267,16 @@ test('DSH 主题变化同步到桌面外壳、原生菜单和辅助窗口', asyn
   assert.doesNotMatch(bridge, /inject = \[[^\]]*'theme'/)
   assert.match(dshPreload, /reportDocumentTheme/)
   assert.match(dshPreload, /attributeFilter: \['style'\]/)
-  assert.match(main, /nativeTheme\.themeSource = preference/)
-  assert.match(main, /setTitleBarOverlay/)
+  // Theme application (nativeTheme, title-bar overlay) lives in the broadcast service.
+  const broadcast = await readFile(new URL('../../src/desktop/shell-broadcast-service.ts', import.meta.url), 'utf8')
+  assert.match(broadcast, /nativeTheme\.themeSource = preference/)
+  assert.match(broadcast, /setTitleBarOverlay/)
   assert.match(shell, /linear-gradient\(180deg,#222423 0%,#1d201e 100%\)/)
   assert.match(shell, /linear-gradient\(180deg,#ffffff 0%,#f6f7f6 100%\)/)
   for (const source of [shell, settings, shortcuts, about, startup]) {
     assert.match(source, /data-color-scheme="light"/)
   }
   for (const source of [shell, settings, shortcuts, about]) assert.match(source, /dataset\.colorScheme=value\.colorScheme/)
+  // The DSH content view still receives the theme as a load-time query.
   assert.match(main, /loadFile\(html, \{ query: \{ theme: state\.shell\.colorScheme \} \}\)/)
 })
