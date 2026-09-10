@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import './styles.css'
+import { PrimitivesShowcase } from './PrimitivesShowcase'
 
 /**
  * Minimal recovery page — the build-chain smoke test.

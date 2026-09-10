@@ -1,44 +1,132 @@
 @import 'tailwindcss';
 
 /**
- * Entry stylesheet for the recovery page.
+ * Theme tokens for the recovery page.
  *
- * Tailwind v4 is configured in CSS rather than a JS config file, so the theme lives
- * here. The colour values are aligned with the launcher's existing
- * `DESKTOP_THEME_PALETTES` so the recovery window does not look like a different
- * product from the settings/about/shortcuts windows.
+ * Token NAMES match the reference implementation so the component styles can be
+ * ported verbatim, and so a future reader can compare the two files line by line.
  *
- * Light and dark are driven by the `data-color-scheme` attribute that the window
- * registry already sets on every shell page, rather than by `prefers-color-scheme`
- * — the app follows the user's DSH theme, which may differ from the OS.
+ * THE ONE DELIBERATE DIFFERENCE — HOW DARK MODE IS SELECTED
+ * --------------------------------------------------------
+ * The reference switches on `@media (prefers-color-scheme: dark)`, i.e. the OS.
+ * We switch on `[data-color-scheme='dark']`, because the app follows the user's DSH
+ * theme, which can differ from the OS setting. The window registry already stamps
+ * that attribute on every shell page, and the DSH renderer reports theme changes
+ * that the main process broadcasts — so keying off `prefers-color-scheme` here would
+ * make the recovery page disagree with the rest of the app.
+ *
+ * Values are the reference's, in oklch.
  */
-@theme {
-  --color-surface: #ffffff;
-  --color-surface-muted: #f6f7f6;
-  --color-border-subtle: #e3e5e4;
-  --color-content: #1d201e;
-  --color-content-muted: #61666b;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
 }
 
-:root {
+:root,
+:root[data-color-scheme='light'] {
   color-scheme: light;
-  background: var(--color-surface-muted);
-  color: var(--color-content);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --radius: 0.625rem;
 }
 
 :root[data-color-scheme='dark'] {
   color-scheme: dark;
-  --color-surface: #1d201e;
-  --color-surface-muted: #222423;
-  --color-border-subtle: #333635;
-  --color-content: #f4f5f4;
-  --color-content-muted: #a5aaad;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    /* The window is a fixed-size recovery surface; the panels scroll, not the page. */
+    overflow: hidden;
+    min-width: 320px;
+  }
+
+  /* Native-feeling frame so the page does not look like an embedded web view. */
+  .dshNativeFrame {
+    position: fixed;
+    z-index: 1000;
+    top: 0;
+    right: 0;
+    left: 0;
+    box-sizing: border-box;
+    height: 36px;
+    border-bottom: 1px solid var(--color-border);
+    background: color-mix(in oklch, var(--color-background) 92%, transparent);
+    user-select: none;
+    -webkit-app-region: drag;
+  }
+
+  .dshNativeFrame[data-platform='darwin'] { padding: 0 8px 0 88px; }
+  .dshNativeFrame[data-platform='win32'] { padding: 0 146px 0 8px; }
 }
