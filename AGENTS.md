@@ -3,6 +3,42 @@
 DSH My Desktop — Electron 桌面启动器。本文件是给开发/构建 agent 的工具链速查。
 **优先用仓库自带的 `scripts/build.ps1` 打包**，它能正确处理下面的 Node/PATH/pnpm 约束。
 
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as local markdown under `.scratch/<feature-slug>/` (GitHub connectivity
+is unreliable from the dev environment). See `agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary, unchanged. See `agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `adr/` at the repo root (not `docs/`, which is gitignored).
+See `agents/domain.md`.
+
+## 向用户提问的强制约定
+
+**任何需要用户做决定的问题，必须用 `ask_user_question` 工具提出，不能写成普通回复。**
+
+用户明确要求过这一点，并已两次因为我在正文里用文字提问而纠正。原因是纯文本提问
+不会渲染成可点选的选项，用户只能手打回答，体验差且容易漏答。
+
+硬性要求：
+
+1. **每个问题至少 3 个选项**，不能只给「是/否」或单一方案。
+2. **必须有一个推荐选项**，并在该选项的 label 末尾加「（推荐）」。
+3. 推荐选项的 `description` 要说明**为什么推荐**（权衡是什么），而不是复述选项本身。
+4. 一次可以把**整个 frontier 的问题打包**进一次 `ask_user_question` 调用
+   （它接受问题数组），不必一问一停。
+5. 问题的 `question` 字段要写足背景——用户在选项界面上看不到我正文里的铺垫，
+   关键事实（实测数据、约束、代价）要么写进 `question`，要么写进选项 `description`。
+
+反面例子（已犯过两次，不要重犯）：在回复正文里写
+「❓ **Q1** — 标题：问题… ➡️ 推荐 X」，这**不算**提问，用户无法点选。
+
 ## 构建入口（推荐）
 
 用仓库里的 `scripts/build.ps1`（用 PowerShell 7 跑，`pwsh`；Windows PowerShell 5.1 也能跑，
