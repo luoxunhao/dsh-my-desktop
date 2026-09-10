@@ -104,24 +104,30 @@ test('打包配置把更新源指到 GitHub Releases', async () => {
 
 test('主进程在窗口稳定后按策略安排启动检查', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  assert.match(main, /buildDesktopTrayItems/)
-  assert.match(main, /import updater from 'electron-updater'/)
-  assert.doesNotMatch(main, /import \{ autoUpdater \} from 'electron-updater'/)
-  assert.match(main, /autoDownload = false/)
-  assert.match(main, /function checkDesktopUpdate/)
+  // The updater now lives in its own module; the tray menu and update policy moved
+  // with it. main.ts keeps only the startup ordering and the delegation.
+  const updateService = await readFile(new URL('../../src/desktop/update-service.ts', import.meta.url), 'utf8')
+  const trayService = await readFile(new URL('../../src/desktop/tray-service.ts', import.meta.url), 'utf8')
+  assert.match(trayService, /buildDesktopTrayItems/)
+  assert.match(updateService, /import updater from 'electron-updater'/)
+  assert.doesNotMatch(updateService, /import \{ autoUpdater \} from 'electron-updater'/)
+  assert.match(updateService, /autoDownload = false/)
+  assert.match(updateService, /function checkDesktopUpdate/)
   const startupView = main.indexOf('await openWorkbenchOrRecovery(profileDir, started.server.url)')
   const startupCheck = main.indexOf('scheduleStartupUpdateCheck()', startupView)
   assert.equal(startupView >= 0 && startupCheck > startupView, true)
-  assert.match(main, /shouldCheckForUpdatesOnStartup\(state\.update\.preferences, app\.isPackaged\)/)
-  assert.match(main, /checkDesktopUpdate\('background'\)/)
+  assert.match(updateService, /shouldCheckForUpdatesOnStartup\(update\.preferences, app\.isPackaged\)/)
+  assert.match(updateService, /checkDesktopUpdate\('background'\)/)
 })
 
 test('主进程遵循更新库可用标志，旧版和受策略限制的新版不触发下载', async () => {
-  const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8')
-  const start = main.indexOf('async function checkDesktopUpdate(')
-  const end = main.indexOf('async function downloadDesktopUpdate(', start)
+  // Read the COMPILED service: the extracted slice is executed by node:vm, so it
+  // must be plain JS (the TypeScript source carries type annotations the VM rejects).
+  const updateService = await readFile(new URL('../src/desktop/update-service.js', import.meta.url), 'utf8')
+  const start = updateService.indexOf('async function checkDesktopUpdate(')
+  const end = updateService.indexOf('async function downloadDesktopUpdate(', start)
   assert.ok(start >= 0 && end > start)
-  const check = main.slice(start, end)
+  const check = updateService.slice(start, end)
   for (const scenario of [
     { version: '1.0.47', available: false },
     { version: '1.0.48', available: false },
@@ -137,9 +143,10 @@ test('主进程遵循更新库可用标志，旧版和受策略限制的新版�
       updateInfo: { version: scenario.version, releaseNotes: '## 修复' },
     }
     // 执行实际编译后的检查函数，覆盖状态转换与后台自动下载分支。
+    // The body now comes from update-service.ts, which closes over `update` (the
+    // store slice) and `deps` rather than the whole store.
     await runInNewContext(`(async () => { ${check}; await checkDesktopUpdate('background') })()`, {
-      // The compiled function reads mutable state through the shared store.
-      state: { update: { status, preferences: { policy: 'auto-download' } } },
+      update: { status, preferences: { policy: 'auto-download' } },
       app: { isPackaged: true, getVersion: () => '1.0.48' },
       autoUpdater: { checkForUpdates: async () => result },
       setDesktopUpdateStatus: (next: typeof status) => { status = next },
@@ -149,7 +156,8 @@ test('主进程遵循更新库可用标志，旧版和受策略限制的新版�
       showDesktopUpdateNotification: () => { notices += 1 },
       formatDesktopReleaseNotes,
       publicDesktopUpdateError,
-      desktopLocale: () => 'zh',
+      deps: { locale: () => 'zh', text: (zh: string) => zh },
+      dialog: { showMessageBox: async () => ({ response: 1 }) },
     })
     assert.equal(status.kind, scenario.available ? 'available' : 'none', `线上版本 ${scenario.version}`)
     assert.equal(downloads, scenario.available ? 1 : 0)

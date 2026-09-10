@@ -37,6 +37,9 @@ import { renderTerminalEntry } from './desktop/dsh-term.js'
 import { createDesktopState, type DesktopState } from './desktop/desktop-state.js'
 import { launchDsh, type DshLaunchResult } from './desktop/launch-service.js'
 import { createWindowRegistry, type WindowRegistry } from './desktop/window-registry.js'
+import { createNotificationService, type NotificationService } from './desktop/notification-service.js'
+import { createUpdateService, type UpdateService } from './desktop/update-service.js'
+import { createTrayService, type TrayService } from './desktop/tray-service.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -169,6 +172,48 @@ async function startApplication(): Promise<void> {
     installShortcutHandler,
     runTask: runMainTask,
     broadcastShellState,
+  })
+  // The three services below form the cycle documented in ticket 06. Their edges
+  // are wired HERE, in one place, so no module imports another in a loop:
+  //   updater → tray   (status change refreshes the menu)
+  //   tray    → updater (menu items drive check/download/install)
+  //   notifications → tray (unread badge refreshes the menu)
+  notificationService = createNotificationService({
+    windows: state.windows,
+    notifications: state.notifications,
+    locale: desktopLocale,
+    refreshTrayMenu,
+    showMainWindow,
+    showDesktopSettingsWindow,
+    runTask: runMainTask,
+  })
+  updateService = createUpdateService({
+    update: state.update,
+    notifications: state.notifications,
+    locale: desktopLocale,
+    text: desktopText,
+    isQuitting: () => state.runtime.isQuitting,
+    refreshTrayMenu,
+    broadcastUpdateState: broadcastDesktopUpdateState,
+    showDesktopSettingsWindow,
+    shutdown: shutdownDesktop,
+    runTask: runMainTask,
+  })
+  trayService = createTrayService({
+    tray: {
+      get current() { return state.runtime.tray },
+      set current(value) { state.runtime.tray = value },
+    },
+    update: state.update,
+    notifications: state.notifications,
+    locale: desktopLocale,
+    showMainWindow,
+    reloadDsh: recycleDshForPluginUpdate,
+    requestQuit,
+    checkForUpdates: async () => { await checkDesktopUpdate() },
+    downloadUpdate: async () => { await downloadDesktopUpdate() },
+    installUpdate: installDesktopUpdate,
+    runTask: runMainTask,
   })
   installShellIpc()
   installRecoveryIpc()
@@ -821,6 +866,28 @@ function requireWindowRegistry(): WindowRegistry {
   return windowRegistry
 }
 
+// Notification / update / tray ownership lives in their own modules. As with the
+// window registry, each is bound once at startup so its injected dependencies
+// (the cycle-breaking callbacks) are visible in exactly one place.
+let notificationService: NotificationService | undefined
+let updateService: UpdateService | undefined
+let trayService: TrayService | undefined
+
+function requireNotificationService(): NotificationService {
+  if (notificationService === undefined) throw new Error('通知服务尚未初始化。')
+  return notificationService
+}
+
+function requireUpdateService(): UpdateService {
+  if (updateService === undefined) throw new Error('更新服务尚未初始化。')
+  return updateService
+}
+
+function requireTrayService(): TrayService {
+  if (trayService === undefined) throw new Error('托盘服务尚未初始化。')
+  return trayService
+}
+
 function requireDshView(): WebContentsView {
   return requireWindowRegistry().requireDshView()
 }
@@ -901,12 +968,7 @@ function broadcastShellState(): void {
 }
 
 function desktopUpdateSnapshot(): DesktopUpdateSnapshot {
-  return {
-    currentVersion: app.getVersion(),
-    packaged: app.isPackaged,
-    status: state.update.status,
-    ...(state.update.lastUpdateCheckAt === undefined ? {} : { lastCheckedAt: state.update.lastUpdateCheckAt }),
-  }
+  return requireUpdateService().desktopUpdateSnapshot()
 }
 
 function broadcastDesktopUpdateState(): void {
@@ -916,10 +978,7 @@ function broadcastDesktopUpdateState(): void {
 }
 
 function setDesktopUpdateStatus(status: DesktopUpdateStatus, checked = false): void {
-  state.update.status = status
-  if (checked) state.update.lastUpdateCheckAt = new Date().toISOString()
-  refreshTrayMenu()
-  broadcastDesktopUpdateState()
+  requireUpdateService().setDesktopUpdateStatus(status, checked)
 }
 
 const RECOVERY_IPC = {
@@ -1625,11 +1684,11 @@ async function popupShellTool(tool: ShellToolPopupId, x: number, y: number): Pro
 }
 
 function notificationPreferencesPath(): string {
-  return join(app.getPath('userData'), 'desktop-settings.json')
+  return requireNotificationService().notificationPreferencesPath()
 }
 
 function updatePreferencesPath(): string {
-  return join(app.getPath('userData'), 'desktop-update-settings.json')
+  return requireUpdateService().updatePreferencesPath()
 }
 
 /**
@@ -1639,196 +1698,43 @@ function updatePreferencesPath(): string {
  * Windows falls back to the generic Electron identity shown in the toast header.
  */
 function ensureWindowsNotificationIdentity(): void {
-  if (process.platform !== 'win32') return
-  const shortcutDirectories = [
-    join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
-    process.env.ProgramData === undefined ? undefined : join(process.env.ProgramData, 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
-  ].filter((value): value is string => value !== undefined)
-  for (const directory of shortcutDirectories) {
-    for (const name of [`${DESKTOP_APP_NAME}.lnk`, `${DESKTOP_APP_NAME} Test.lnk`]) {
-      const shortcut = join(directory, name)
-      if (!existsSync(shortcut)) continue
-      try {
-        const details = shell.readShortcutLink(shortcut)
-        if (resolve(details.target).toLocaleLowerCase() !== resolve(process.execPath).toLocaleLowerCase()) continue
-        // 只补 AUMID / toastActivatorClsid 做身份注册，绝不改写图标：
-        // 用 notification.ico 覆盖会毁掉 electron-builder 生成的开始菜单快捷方式图标，
-        // 进而导致任务栏按钮（按 AUMID 从该快捷方式取图标）变成空白。
-        shell.writeShortcutLink(shortcut, 'update', {
-          target: details.target,
-          appUserModelId: DESKTOP_APP_USER_MODEL_ID,
-          toastActivatorClsid: DESKTOP_TOAST_ACTIVATOR_CLSID,
-          ...(details.icon === undefined ? {} : { icon: details.icon, iconIndex: details.iconIndex ?? 0 }),
-        })
-      } catch {
-        // A stale or protected shortcut must not prevent the desktop app from starting.
-      }
-    }
-  }
-  if (app.isPackaged || !process.argv.some(argument => argument.startsWith('--user-data-dir='))) return
-  const icon = resolveNotificationIconPath({ appPath: app.getAppPath(), isPackaged: app.isPackaged, resourcesPath: process.resourcesPath })
-  if (icon === undefined) return
-  const shortcut = join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', `${DESKTOP_APP_NAME} Test.lnk`)
-  const args = process.argv.slice(1)
-    .map(argument => /\s|"/.test(argument) ? `"${argument.replaceAll('"', '\\"')}"` : argument)
-    .join(' ')
-  shell.writeShortcutLink(shortcut, existsSync(shortcut) ? 'replace' : 'create', {
-    target: process.execPath,
-    args,
-    cwd: app.getAppPath(),
-    description: `${DESKTOP_APP_NAME} test build`,
-    icon,
-    iconIndex: 0,
-    appUserModelId: DESKTOP_APP_USER_MODEL_ID,
-    toastActivatorClsid: DESKTOP_TOAST_ACTIVATOR_CLSID,
-  })
+  requireNotificationService().ensureWindowsNotificationIdentity()
 }
 
 function sendNotificationReplyToDsh(sessionId: string, text: string): void {
-  if (state.windows.dshView === undefined || state.windows.dshView.webContents.isDestroyed()) {
-    showNotificationReplyError(sessionId)
-    return
-  }
-  state.windows.dshView.webContents.send(SHELL_IPC.dshNotificationReply, { sessionId, text })
+  requireNotificationService().sendNotificationReplyToDsh(sessionId, text)
 }
 
 function installWindowsNotificationActivationHandler(): void {
-  if (process.platform !== 'win32') return
-  Notification.handleActivation(details => {
-    const reply = parseWindowsNotificationReplyActivation(details)
-    if (reply === undefined) return
-    sendNotificationReplyToDsh(reply.sessionId, reply.text)
-  })
+  requireNotificationService().installWindowsNotificationActivationHandler()
 }
 
 function notificationCopy(event: DesktopNotificationEvent): { title: string; body: string } {
-  const zh = isChineseLocale(desktopLocale())
-  const status = event.kind === 'approval'
-    ? (zh ? '需要审批' : 'Approval required')
-    : event.kind === 'question'
-      ? (zh ? '需要你的输入' : 'Your input is needed')
-      : (zh ? '任务已完成' : 'Task completed')
-  const title = event.title === undefined ? status : `${status} · ${event.title}`
-  if (event.body !== undefined) {
-    return { title, body: event.body }
-  }
-  const task = event.title === undefined
-    ? (zh ? 'DeepSeek Harness 任务' : 'DeepSeek Harness task')
-    : `“${event.title}”`
-  if (event.kind === 'approval') return { title, body: zh ? `${task}正在等待审批` : `${task} is waiting for approval` }
-  if (event.kind === 'question') return { title, body: zh ? `${task}正在等待你的回答` : `${task} is waiting for your answer` }
-  return { title, body: zh ? `${task}已完成` : `${task} is complete` }
+  return requireNotificationService().notificationCopy(event)
 }
 
 function updateUnreadCompletionBadge(count: number): void {
-  state.notifications.unreadCompletionCount = count
-  if (process.platform === 'win32' && state.windows.mainWindow !== undefined && !state.windows.mainWindow.isDestroyed()) {
-    if (count === 0) {
-      state.windows.mainWindow.setOverlayIcon(null, '')
-    } else {
-      const iconPath = resolveTaskBadgeIconPath({ appPath: app.getAppPath(), isPackaged: app.isPackaged, resourcesPath: process.resourcesPath }, count)
-      const overlay = nativeImage.createFromPath(iconPath)
-      if (!overlay.isEmpty()) {
-        const description = isChineseLocale(desktopLocale()) ? `${count} 个已完成任务` : `${count} completed tasks`
-        state.windows.mainWindow.setOverlayIcon(overlay, description)
-      }
-    }
-  } else if (process.platform === 'darwin' || process.platform === 'linux') {
-    app.setBadgeCount(count)
-  }
-  refreshTrayMenu()
+  requireNotificationService().updateUnreadCompletionBadge(count)
 }
 
 function dismissNotificationsForSession(sessionId: string): void {
-  for (const [id, notification] of state.notifications.active) {
-    if (!id.endsWith(`:${sessionId}`)) continue
-    notification.close()
-    state.notifications.active.delete(id)
-  }
+  requireNotificationService().dismissNotificationsForSession(sessionId)
 }
 
 function focusMainWindowForNotification(): void {
-  showMainWindow()
-  if (process.platform !== 'win32' || state.windows.mainWindow === undefined) return
-  state.windows.mainWindow.setAlwaysOnTop(true)
-  state.windows.mainWindow.focus()
-  state.windows.mainWindow.setAlwaysOnTop(false)
+  requireNotificationService().focusMainWindowForNotification()
 }
 
 function openNotificationSession(sessionId: string): void {
-  focusMainWindowForNotification()
-  if (state.windows.dshView !== undefined && !state.windows.dshView.webContents.isDestroyed()) {
-    state.windows.dshView.webContents.send(SHELL_IPC.dshOpenSession, sessionId)
-  }
+  requireNotificationService().openNotificationSession(sessionId)
 }
 
 function showNotificationReplyError(sessionId: string): void {
-  if (!Notification.isSupported()) return
-  const zh = isChineseLocale(desktopLocale())
-  const id = `reply-error:${sessionId}`
-  state.notifications.active.get(id)?.close()
-  const notification = new Notification({
-    title: zh ? '回复发送失败' : 'Reply not sent',
-    body: zh ? '未能将回复发送到这个任务。请打开任务后重试。' : 'The reply could not be sent to this task. Open it and try again.',
-    timeoutType: 'never',
-  })
-  state.notifications.active.set(id, notification)
-  notification.on('click', () => {
-    openNotificationSession(sessionId)
-    dismissNotificationsForSession(sessionId)
-  })
-  notification.on('close', () => {
-    if (state.notifications.active.get(id) === notification) state.notifications.active.delete(id)
-  })
-  notification.show()
+  requireNotificationService().showNotificationReplyError(sessionId)
 }
 
 function showDesktopNotification(event: DesktopNotificationEvent): void {
-  if (!Notification.isSupported()) return
-  if (!shouldShowDesktopNotification(event, state.notifications.preferences, state.windows.mainWindow?.isFocused() ?? false)) return
-  const id = `${event.kind}:${event.sessionId}`
-  state.notifications.active.get(id)?.close()
-  const copy = notificationCopy(event)
-  const supportsReply = event.kind !== 'approval' && (process.platform === 'win32' || process.platform === 'darwin')
-  const zh = isChineseLocale(desktopLocale())
-  const replyPlaceholder = zh ? `回复 ${DESKTOP_APP_NAME}` : `Reply to ${DESKTOP_APP_NAME}`
-  const toastId = `dsh-${createHash('sha256').update(id).digest('hex').slice(0, 40)}`
-  const notification = new Notification({
-    ...copy,
-    ...(supportsReply ? {
-      hasReply: true,
-      replyPlaceholder,
-    } : {}),
-    ...(supportsReply && process.platform === 'win32' ? {
-      id: toastId,
-      toastXml: buildWindowsReplyToastXml({
-        ...copy,
-        id: toastId,
-        persistent: event.kind !== 'turn-complete',
-        placeholder: replyPlaceholder,
-        replyLabel: zh ? '回复' : 'Reply',
-        replyArguments: windowsNotificationReplyArguments(event.sessionId),
-        closeLabel: zh ? '关闭' : 'Close',
-      }),
-    } : {}),
-    ...(event.kind === 'turn-complete' ? {} : { timeoutType: 'never' }),
-  })
-  state.notifications.active.set(id, notification)
-  notification.on('click', () => {
-    openNotificationSession(event.sessionId)
-    dismissNotificationsForSession(event.sessionId)
-  })
-  if (supportsReply && process.platform !== 'win32') {
-    notification.on('reply', (details, legacyReply) => {
-      const text = (details.reply ?? legacyReply).trim().slice(0, 4_000)
-      if (text === '') return
-      sendNotificationReplyToDsh(event.sessionId, text)
-    })
-  }
-  notification.on('close', () => {
-    if (state.notifications.active.get(id) === notification) state.notifications.active.delete(id)
-  })
-  notification.show()
+  requireNotificationService().showDesktopNotification(event)
 }
 
 type DesktopSettingsSection = 'notifications' | 'updates'
@@ -1937,240 +1843,51 @@ function showAboutWindow(): void {
 }
 
 function configureDesktopUpdater(): void {
-  autoUpdater.logger = console
-  autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = false
-  const channel = desktopUpdateChannel()
-  if (channel !== undefined) {
-    autoUpdater.channel = channel
-    autoUpdater.allowDowngrade = false
-  }
-  autoUpdater.on('download-progress', progress => {
-    setDesktopUpdateStatus({ kind: 'downloading', percent: progress.percent })
-  })
-  autoUpdater.on('update-downloaded', info => {
-    setDesktopUpdateStatus({ kind: 'ready', version: info.version })
-  })
-  autoUpdater.on('error', error => {
-    setDesktopUpdateStatus({ kind: 'error', message: publicDesktopUpdateError(error, desktopLocale()) })
-  })
+  requireUpdateService().configureDesktopUpdater()
 }
 
 function scheduleStartupUpdateCheck(): void {
-  if (state.update.startupUpdateTimer !== undefined || !shouldCheckForUpdatesOnStartup(state.update.preferences, app.isPackaged)) return
-  state.update.startupUpdateTimer = setTimeout(() => {
-    state.update.startupUpdateTimer = undefined
-    if (!state.runtime.isQuitting && shouldCheckForUpdatesOnStartup(state.update.preferences, app.isPackaged)) {
-      runMainTask(checkDesktopUpdate('background'))
-    }
-  }, STARTUP_UPDATE_CHECK_DELAY_MS)
+  requireUpdateService().scheduleStartupUpdateCheck()
 }
 
 function createTray(): void {
-  if (state.runtime.tray !== undefined) {
-    refreshTrayMenu()
-    return
-  }
-  const rasterPath = resolveRasterIconPath({
-    appPath: app.getAppPath(),
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-  })
-  const source = rasterPath === undefined ? nativeImage.createEmpty() : nativeImage.createFromPath(rasterPath)
-  const icon = source.isEmpty()
-    ? nativeImage.createEmpty()
-    : source
-        .crop(resolveCompactIconCrop(source.getSize()))
-        .resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE, quality: 'best' })
-  try {
-    state.runtime.tray = new Tray(icon)
-  } catch {
-    return
-  }
-  state.runtime.tray.on('click', () => showMainWindow())
-  refreshTrayMenu()
+  requireTrayService().createTray()
 }
 
 function refreshTrayMenu(): void {
-  if (state.runtime.tray === undefined) return
-  const badgeSuffix = state.notifications.unreadCompletionCount > 0
-    ? (isChineseLocale(desktopLocale()) ? ` · ${state.notifications.unreadCompletionCount} 个已完成任务` : ` · ${state.notifications.unreadCompletionCount} completed tasks`)
-    : ''
-  state.runtime.tray.setToolTip(DESKTOP_APP_NAME + badgeSuffix)
-  const items = buildDesktopTrayItems({
-    status: state.update.status,
-    currentVersion: app.getVersion(),
-    packaged: app.isPackaged,
-    locale: desktopLocale(),
-  })
-  state.runtime.tray.setContextMenu(Menu.buildFromTemplate(items.map(item => {
-    if (item.type === 'separator') return { type: 'separator' }
-    return {
-      label: item.label,
-      enabled: item.enabled,
-      click: () => { runMainTask(handleTrayUpdateAction(item.id)) },
-    }
-  })))
+  requireTrayService().refreshTrayMenu()
 }
 
 async function handleTrayUpdateAction(id: string): Promise<void> {
-  if (id === 'show') {
-    showMainWindow()
-    return
-  }
-  if (id === 'reload') {
-    await recycleDshForPluginUpdate()
-    return
-  }
-  if (id === 'quit') {
-    await requestQuit()
-    return
-  }
-  if (id === 'check') {
-    await checkDesktopUpdate()
-    return
-  }
-  if (id === 'download') {
-    await downloadDesktopUpdate()
-    return
-  }
-  if (id === 'install') {
-    await installDesktopUpdate()
-  }
+  await requireTrayService().handleTrayUpdateAction(id)
 }
 
 type DesktopUpdateInteraction = 'interactive' | 'background' | 'settings'
 
 async function checkDesktopUpdate(interaction: DesktopUpdateInteraction = 'interactive'): Promise<void> {
-  if (state.update.status.kind === 'checking' || state.update.status.kind === 'downloading') return
-  if (!app.isPackaged) {
-    if (interaction === 'interactive') {
-      await dialog.showMessageBox({
-        type: 'info',
-        title: DESKTOP_APP_NAME,
-        message: desktopText('开发态不能检查安装包更新，请使用发布的安装包。', 'Update checks are unavailable in development builds. Use a released installer.'),
-      })
-    }
-    return
-  }
-  setDesktopUpdateStatus({ kind: 'checking' })
-  try {
-    const result = await autoUpdater.checkForUpdates()
-    const version = result?.updateInfo.version
-    if (result?.isUpdateAvailable !== true || version === undefined || version === app.getVersion()) {
-      setDesktopUpdateStatus({ kind: 'none' }, true)
-      dismissDesktopUpdateNotification()
-      if (interaction === 'interactive') {
-        await dialog.showMessageBox({
-          type: 'info',
-          title: DESKTOP_APP_NAME,
-          message: desktopText('当前已是最新桌面端版本。', 'You already have the latest desktop version.'),
-        })
-      }
-      return
-    }
-    const available: Extract<DesktopUpdateStatus, { kind: 'available' }> = { kind: 'available', version, releaseNotes: formatDesktopReleaseNotes(result?.updateInfo.releaseNotes) }
-    setDesktopUpdateStatus(available, true)
-    if (interaction === 'background') {
-      if (shouldDownloadUpdateAutomatically(state.update.preferences)) await downloadDesktopUpdate('background')
-      else showDesktopUpdateNotification('available', version)
-      return
-    }
-    if (interaction === 'settings') return
-    const prompt = await dialog.showMessageBox({
-      type: 'question',
-      title: DESKTOP_APP_NAME,
-      message: desktopUpdatePrompt(available, desktopLocale()),
-      buttons: [desktopText('下载并安装', 'Download and Install'), desktopText('取消', 'Cancel')],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    if (prompt.response === 0) await downloadDesktopUpdate('interactive')
-  } catch (error) {
-    const message = publicDesktopUpdateError(error, desktopLocale())
-    setDesktopUpdateStatus({ kind: 'error', message }, true)
-    if (interaction === 'interactive') {
-      await dialog.showMessageBox({
-        type: 'error',
-        title: DESKTOP_APP_NAME,
-        message,
-      })
-    }
-  }
+  await requireUpdateService().checkDesktopUpdate(interaction)
 }
 
 async function downloadDesktopUpdate(interaction: DesktopUpdateInteraction = 'interactive'): Promise<void> {
-  if (state.update.status.kind !== 'available') return
-  const version = state.update.status.version
-  setDesktopUpdateStatus({ kind: 'downloading', percent: 0 })
-  try {
-    await autoUpdater.downloadUpdate()
-    const ready = { kind: 'ready' as const, version }
-    setDesktopUpdateStatus(ready)
-    if (interaction === 'background') {
-      showDesktopUpdateNotification('ready', version)
-      return
-    }
-    if (interaction === 'settings') return
-    const prompt = await dialog.showMessageBox({
-      type: 'question',
-      title: DESKTOP_APP_NAME,
-      message: desktopUpdatePrompt(ready, desktopLocale()),
-      buttons: [desktopText('现在安装', 'Install Now'), desktopText('稍后', 'Later')],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    if (prompt.response === 0) await installDesktopUpdate()
-  } catch (error) {
-    const message = publicDesktopUpdateError(error, desktopLocale())
-    setDesktopUpdateStatus({ kind: 'error', message })
-    if (interaction === 'interactive') {
-      await dialog.showMessageBox({
-        type: 'error',
-        title: DESKTOP_APP_NAME,
-        message,
-      })
-    }
-  }
+  await requireUpdateService().downloadDesktopUpdate(interaction)
 }
 
 async function handleDesktopUpdateSettingsAction(action: DesktopUpdateAction): Promise<void> {
-  if (action === 'check') await checkDesktopUpdate('settings')
-  else if (action === 'download') await downloadDesktopUpdate('settings')
-  else await installDesktopUpdate()
+  await requireUpdateService().handleDesktopUpdateSettingsAction(action)
 }
 
 const DESKTOP_UPDATE_NOTIFICATION_ID = 'desktop-update'
 
 function dismissDesktopUpdateNotification(): void {
-  state.notifications.active.get(DESKTOP_UPDATE_NOTIFICATION_ID)?.close()
-  state.notifications.active.delete(DESKTOP_UPDATE_NOTIFICATION_ID)
+  requireUpdateService().dismissDesktopUpdateNotification()
 }
 
 function showDesktopUpdateNotification(kind: 'available' | 'ready', version: string): void {
-  if (!Notification.isSupported()) return
-  dismissDesktopUpdateNotification()
-  const icon = resolveNotificationIconPath({ appPath: app.getAppPath(), isPackaged: app.isPackaged, resourcesPath: process.resourcesPath })
-  const notification = new Notification({
-    title: DESKTOP_APP_NAME,
-    body: kind === 'ready'
-      ? desktopText(`桌面端 ${version} 已下载，点击选择安装时间。`, `Desktop ${version} is ready. Click to choose when to install.`)
-      : desktopText(`发现桌面端 ${version}，点击查看更新。`, `Desktop ${version} is available. Click to review the update.`),
-    ...(icon === undefined ? {} : { icon }),
-  })
-  state.notifications.active.set(DESKTOP_UPDATE_NOTIFICATION_ID, notification)
-  notification.on('click', () => {
-    showDesktopSettingsWindow('updates')
-    dismissDesktopUpdateNotification()
-  })
-  notification.on('close', () => {
-    if (state.notifications.active.get(DESKTOP_UPDATE_NOTIFICATION_ID) === notification) state.notifications.active.delete(DESKTOP_UPDATE_NOTIFICATION_ID)
-  })
-  notification.show()
+  requireUpdateService().showDesktopUpdateNotification(kind, version)
 }
 
 async function installDesktopUpdate(): Promise<void> {
-  await shutdownDesktop(() => { autoUpdater.quitAndInstall(false, true) })
+  await requireUpdateService().installDesktopUpdate()
 }
 
 function showMainWindow(): void {

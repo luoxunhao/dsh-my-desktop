@@ -21,13 +21,57 @@
 
 **Blocked by:** 05 — 抽 DesktopWindowRegistry
 
-**Status:** ready-for-agent
+**Status:** 代码完成，**待人工验证**
 
-- [ ] 通知模块独立：通知偏好、活动通知集合、未读数、系统通知发送、点击/回复处理
-- [ ] 更新器模块独立：更新状态、偏好、检查/下载/安装流程、更新通知
-- [ ] **打破托盘环**：更新状态变更不再直接调用托盘刷新，改为注入的回调（或反向的显式依赖）
-- [ ] 托盘模块读取更新状态与未读数的方式改为显式依赖，不产生循环 import
-- [ ] 用依赖图检查确认这三个模块之间**没有**双向 import 边
-- [ ] `check:all` 通过、全量测试不新增失败
-- [ ] `dist-local` 出包成功
-- [ ] **人工启动应用确认**：托盘菜单可打开、更新状态能反映到托盘项、通知能正常弹出
+- [x] 通知模块独立：`notification-service.ts`（偏好、活动通知集合、未读数、系统通知、
+      点击/回复处理、Windows toast 身份注册）
+- [x] 更新器模块独立：`update-service.ts`（状态、偏好、检查/下载/安装、更新通知、
+      renderer 快照）
+- [x] **打破托盘环**：两条边都改为注入回调（见下）
+- [x] 托盘模块独立：`tray-service.ts`（6 个外部依赖全部显式注入）
+- [x] **依赖图检查：三个模块之间零 import**（实测确认，全部走注入）
+- [x] `check:all` 通过、全量测试 **330 / 324 / 5**（与基线一致）
+- [x] `dist-local` 出包成功；插件哈希 2/2，bridge 14/15（差异仍来自 ticket 02）
+- [ ] **人工启动确认**：托盘菜单可打开、更新状态能反映到托盘项、通知能正常弹出
+
+## 执行结果
+
+### 环的两条边（实测确认，均改为注入）
+
+```
+updater → tray     setDesktopUpdateStatus 内调用 refreshTrayMenu
+tray    → updater  handleTrayUpdateAction 内调用 check/download/install
+notifications → tray   updateUnreadCompletionBadge 内调用 refreshTrayMenu
+```
+
+第三条（通知 → 托盘）是实施时才发现的：未读角标变化也要刷新托盘菜单，同样构成环。
+
+全部在 `startApplication` 中**一处接线**，三个模块互相不 import：
+
+| 模块 | 行数 |
+|---|---|
+| `notification-service.ts` | 267 |
+| `update-service.ts` | 252 |
+| `tray-service.ts` | 128 |
+
+### 为什么托盘最后抽
+
+派生的实测数据印证了 ticket 的排序理由：托盘依赖 **6 个外部函数**
+（`showMainWindow`、`reloadDsh`、`requestQuit`、`checkForUpdates`、`downloadUpdate`、
+`installUpdate`），其中 3 个来自更新器。所以它必须在另两个之后抽，否则依赖无处可指。
+
+### 主入口变化
+
+`main.ts` **2178 → 1755 行**（−423）。这是重构开始以来 main.ts 第一次显著变小——
+ticket 04 净减 29 行、ticket 05 净增 45 行，本次是第一次真正见效。
+
+### 实施过程中的两个自查错误
+
+1. **`notificationCopy` 我凭印象重写而非照抄原文**，改了文案与逻辑（原文有
+   `approval`/`question` 三种 kind、`“${title}”` 引号包裹等细节）。tsc 因字段名不存在而报错，
+   才暴露出来。已改回逐字一致。
+2. **`desktopUpdateSnapshot` 形状写错**（我写成了扁平结构，原文是嵌套 `status` +
+   `packaged` + 条件 `lastCheckedAt`）。也是靠读原文修正。
+
+两次都是「没读原实现就动笔」，属于我自己引入的风险。
+
