@@ -2,7 +2,7 @@
 
 **What to build:** 用系统默认程序打开配置文件，以及在文件管理器里打开目录。
 
-**Blocked by:** 03
+**Blocked by:** 无（只依赖现有的 profile/数据目录解析）
 
 **Status:** ready-for-agent
 

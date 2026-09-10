@@ -3,7 +3,7 @@
 **What to build:** 建立"数据目录"这一概念——状态文件、来源判定三态、切换流程与排他锁，
 并让 `resolveProfileRoots()` 消费它。
 
-**Blocked by:** 03
+**Blocked by:** 无（只依赖现有的 esolveProfileRoots()，不依赖 ticket 03）
 
 **Status:** ready-for-agent
 
