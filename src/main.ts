@@ -67,7 +67,7 @@ interface DshProcessModule {
 
 const dshProcessModule = await import(app.isPackaged
   ? pathToFileURL(join(process.resourcesPath, 'desktop-bridge', 'dsh-process.js')).href
-  : './dsh-process.js') as DshProcessModule
+  : './bridge/dsh-process.js') as DshProcessModule
 const { isApplyPluginUpdatesIpc, startDsh } = dshProcessModule
 
 const { autoUpdater } = updater
