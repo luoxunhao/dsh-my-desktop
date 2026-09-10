@@ -753,6 +753,16 @@ async function handleRendererBootReport(value: unknown, profileDir = state.launc
       await captureProfileHealthCheckpoint(profileDir).catch(error => {
         console.error('无法保存 DSH 健康配置检查点。', error)
       })
+      // The three-slot snapshot system: captureHealthy was previously NEVER called
+      // on any launch path, so the recovery page's slots were always genuinely empty
+      // even though the read path (listCheckpoints) was fully wired. Capture with the
+      // same construction the recovery service uses for reads, so both ends agree on
+      // the on-disk layout (userData/health-snapshots/<profile>/slot-N).
+      try {
+        requireRecovery().checkpointFor(profileDir).captureHealthy()
+      } catch (error) {
+        console.error('无法保存 DSH 三槽快照。', error)
+      }
     }
     return
   }
