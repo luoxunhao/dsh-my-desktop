@@ -86,8 +86,10 @@ test('没有隔离插件时启动会自动退出恢复模式并进入工作台',
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   assert.match(main, /async function openWorkbenchOrRecovery\(profileDir: string, serverUrl: string\): Promise<void>/)
   assert.match(main, /if \(isRecoveryModeActive\(profileDir\)\) \{\s+if \(await maybeLeaveRecoveryMode\(profileDir\)\) \{\s+await createMainWindow\(serverUrl\)\s+return\s+\}\s+await showRecoveryWindow\(profileDir\)/)
-  assert.match(main, /await openWorkbenchOrRecovery\(profileDir, state\.runtime\.server\.url\)/)
-  assert.match(main, /await openWorkbenchOrRecovery\(seedOptions\.profileDir, state\.runtime\.server\.url\)/)
+  // Both launch sites now use the server returned by launchDsh rather than re-reading
+  // the store, which is also what makes the read type-safe.
+  assert.match(main, /await openWorkbenchOrRecovery\(profileDir, started\.server\.url\)/)
+  assert.match(main, /await openWorkbenchOrRecovery\(seedOptions\.profileDir, started\.server\.url\)/)
 })
 
 test('恢复模式中的健康启动不会覆盖最近正常配置检查点', async () => {

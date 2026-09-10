@@ -26,7 +26,7 @@ import {
   resolveProfileRoots,
   writeActiveProfile,
 } from './profiles/profiles.js'
-import { parseUnresolvedBundleError, removeProfileBundle, startAfterPluginUpdates, startWithProfileSelfRepair } from './profiles/profile-repair.js'
+import { parseUnresolvedBundleError, removeProfileBundle, startAfterPluginUpdates } from './profiles/profile-repair.js'
 import { confirmRecoveryStartup, enterRecoveryMode, getRecoveryStatus, isRecoveryModeActive, leaveRecoveryMode, restoreRecoveryPlugin, tryAutoLeaveRecoveryMode, uninstallRecoveryPlugin } from './recovery/recovery-mode.js'
 import { findRecoveryCandidates, trimStartupLogForRecovery } from './recovery/recovery-diagnostics.js'
 import { advanceStartupDiagnostic, beginStartupDiagnostic, completeStartupDiagnostic, failStartupDiagnostic, parseRendererBootReport, readStartupDiagnostic, type StartupDiagnosticStage } from './recovery/startup-diagnostics.js'
@@ -35,6 +35,7 @@ import { resolveBundledPluginStore, resolvePluginBinDir } from './runtime/plugin
 import { resolveDshBootstrap, resolveDshRuntime, resolveNodeExecutable } from './runtime/runtime.js'
 import { renderTerminalEntry } from './desktop/dsh-term.js'
 import { createDesktopState, type DesktopState } from './desktop/desktop-state.js'
+import { launchDsh, type DshLaunchResult } from './desktop/launch-service.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -273,28 +274,26 @@ async function startApplication(): Promise<void> {
       },
     }
     state.launch.lastStartOptions = startOptions
-    let started: { result: DshServer; repaired: string[] }
+    let started: DshLaunchResult
     try {
-      await beginDshStartupDiagnostic(profileDir)
-      started = await startWithProfileSelfRepair({
-        profileDir,
-        extraDirs: [desktopRuntimeDir],
-        start: () => startDsh({
-          ...startOptions,
-          onUnexpectedExit: handleUnexpectedDshExit,
-          onIpcMessage: handleDshIpc,
-        }),
-      })
+      started = await launchDsh({
+        startDsh,
+        startOptions: () => state.launch.lastStartOptions,
+        desktopRuntimeDir: () => desktopRuntimeDir,
+        setServer: server => { state.runtime.server = server },
+        beginDiagnostic: beginDshStartupDiagnostic,
+        advanceDiagnostic: advanceDshStartupDiagnostic,
+        onUnexpectedExit: handleUnexpectedDshExit,
+        onIpcMessage: handleDshIpc,
+      }, profileDir)
     } catch (error) {
       if (!state.runtime.isQuitting) await reportStartupFailure(error, profileDir)
       return
     }
-    state.runtime.server = started.result
-    await advanceDshStartupDiagnostic(profileDir, 'server-starting')
     if (started.repaired.length > 0) console.log('已自我修复损坏的插件清单：' + started.repaired.join('、'))
     state.launch.profileWatcher?.stop()
     state.launch.profileWatcher = watchProfileActivation(profileDir, scheduleProfileActivationRecycle, { onError: handleUnexpectedMainError })
-    await openWorkbenchOrRecovery(profileDir, state.runtime.server.url)
+    await openWorkbenchOrRecovery(profileDir, started.server.url)
     const smokeReadyFile = process.env.DSH_DESKTOP_SMOKE_READY_FILE
     if (smokeReadyFile !== undefined && smokeReadyFile !== '') {
       await writeTextFile(smokeReadyFile, 'ready\n', 'utf8')
@@ -736,22 +735,19 @@ async function recycleDshForPluginUpdate(): Promise<void> {
         console.error('插件更新失败，继续尝试加载 DSH。', message)
         await writeTextFile(join(app.getPath('userData'), 'plugin-update.log'), `${message}\n`, 'utf8')
       },
-      start: async () => {
-        await beginDshStartupDiagnostic(seedOptions.profileDir)
-        return startWithProfileSelfRepair({
-          profileDir: seedOptions.profileDir,
-          extraDirs: seedOptions.desktopRuntimeDir === undefined ? [] : [seedOptions.desktopRuntimeDir],
-          start: () => startDsh({
-            ...startOptions,
-            onUnexpectedExit: handleUnexpectedDshExit,
-            onIpcMessage: handleDshIpc,
-          }),
-        })
-      },
+      // Plugin updates retried before the launch, so this runs at most once here.
+      start: () => launchDsh({
+        startDsh,
+        startOptions: () => state.launch.lastStartOptions,
+        desktopRuntimeDir: () => seedOptions.desktopRuntimeDir,
+        setServer: server => { state.runtime.server = server },
+        beginDiagnostic: beginDshStartupDiagnostic,
+        advanceDiagnostic: advanceDshStartupDiagnostic,
+        onUnexpectedExit: handleUnexpectedDshExit,
+        onIpcMessage: handleDshIpc,
+      }, seedOptions.profileDir),
     })
-    state.runtime.server = started.result
-    await advanceDshStartupDiagnostic(seedOptions.profileDir, 'server-starting')
-    await openWorkbenchOrRecovery(seedOptions.profileDir, state.runtime.server.url)
+    await openWorkbenchOrRecovery(seedOptions.profileDir, started.server.url)
   } catch (error) {
     await reportStartupFailure(error, seedOptions.profileDir)
   } finally {
@@ -1040,26 +1036,27 @@ async function recoveryPageStatus(profileDir: string): Promise<object> {
 
 async function restartDshInRecoveryMode(profileDir: string, destination: 'recovery' | 'workbench' = 'recovery'): Promise<void> {
   if (state.launch.lastStartOptions === undefined || state.launch.lastSeedOptions === undefined) throw new Error('恢复环境尚未准备完成。')
-  const startOptions = state.launch.lastStartOptions
   state.runtime.isRecycling = true
   broadcastShellState()
   try {
     const current = state.runtime.server
     state.runtime.server = undefined
     await current?.stop()
-    await beginDshStartupDiagnostic(profileDir)
-    const started = await startWithProfileSelfRepair({
-      profileDir,
-      extraDirs: state.launch.lastSeedOptions.desktopRuntimeDir === undefined ? [] : [state.launch.lastSeedOptions.desktopRuntimeDir],
-      start: () => startDsh({
-        ...startOptions,
-        onUnexpectedExit: handleUnexpectedDshExit,
-        onIpcMessage: handleDshIpc,
-      }),
-    })
-    state.runtime.server = started.result
-    state.shell.allowedOrigin = new URL(state.runtime.server.url).origin
-    await advanceDshStartupDiagnostic(profileDir, 'server-starting')
+    await launchDsh({
+      startDsh,
+      startOptions: () => state.launch.lastStartOptions,
+      desktopRuntimeDir: () => state.launch.lastSeedOptions?.desktopRuntimeDir,
+      // The origin guard must be updated before the diagnostic advances, matching
+      // the original ordering at this call site.
+      setServer: server => {
+        state.runtime.server = server
+        state.shell.allowedOrigin = new URL(server.url).origin
+      },
+      beginDiagnostic: beginDshStartupDiagnostic,
+      advanceDiagnostic: advanceDshStartupDiagnostic,
+      onUnexpectedExit: handleUnexpectedDshExit,
+      onIpcMessage: handleDshIpc,
+    }, profileDir)
     state.recovery.failureMessage = undefined
     if (destination === 'workbench') {
       await returnToWorkbenchFromRecovery()

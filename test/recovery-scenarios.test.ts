@@ -6,6 +6,7 @@ import test, { type TestContext } from 'node:test'
 import vm from 'node:vm'
 
 import { startAfterPluginUpdates, startWithProfileSelfRepair } from '../src/profiles/profile-repair.js'
+import { launchDsh } from '../src/desktop/launch-service.js'
 import { findRecoveryCandidates } from '../src/recovery/recovery-diagnostics.js'
 import { captureProfileHealthCheckpoint, readProfileHealthCheckpoint } from '../src/profiles/profile-health-checkpoint.js'
 import * as recovery from '../src/recovery/recovery-mode.js'
@@ -71,6 +72,9 @@ async function harness(t: TestContext, options: { installError?: Error; loadErro
   const scope = vm.createContext({
     ...recovery, ...diagnostics, captureProfileHealthCheckpoint, readProfileHealthCheckpoint,
     startAfterPluginUpdates, startWithProfileSelfRepair, findRecoveryCandidates,
+    // `launchDsh` now lives in its own module; inject the REAL implementation so the
+    // extracted callers exercise the actual shared launch skeleton, not a stub.
+    launchDsh,
     Error, URL, join, readFile, writeTextFile: writeFile,
     console: { error: (...args: unknown[]) => errors.push(args), log: () => {}, warn: () => {} },
     app: { getPath: () => logs }, desktopText: (zh: string) => zh,
