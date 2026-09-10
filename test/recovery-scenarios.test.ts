@@ -10,6 +10,9 @@ import { findRecoveryCandidates } from '../src/recovery/recovery-diagnostics.js'
 import { captureProfileHealthCheckpoint, readProfileHealthCheckpoint } from '../src/profiles/profile-health-checkpoint.js'
 import * as recovery from '../src/recovery/recovery-mode.js'
 import * as diagnostics from '../src/recovery/startup-diagnostics.js'
+import { createDesktopState } from '../src/desktop/desktop-state.js'
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '../src/desktop/desktop-notifications.js'
+import { DEFAULT_UPDATE_PREFERENCES } from '../src/desktop/desktop-updater.js'
 
 // 执行当前构建产物中的真实函数，仅替换 Electron、安装器与 DSH 进程边界。
 const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8')
@@ -51,6 +54,20 @@ async function harness(t: TestContext, options: { installError?: Error; loadErro
   const errors: unknown[][] = []
   const timers: Array<{ callback(): void; delay: number }> = []
   const server = { url: 'http://127.0.0.1:43210', stop: async () => { events.push('stop') } }
+  // The extracted functions read mutable state through the shared store, so the VM
+  // scope must expose the same shape the real main process creates.
+  const state = createDesktopState({
+    notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
+    updatePreferences: DEFAULT_UPDATE_PREFERENCES,
+    initialColorScheme: 'light',
+  })
+  state.launch.lastStartOptions = { bootstrapPath: '', nodeExecutable: '', runtime: {} as never }
+  state.launch.lastSeedOptions = { nodeExecutable: '', pluginStoreDir: '', profileDir: profile }
+  state.diagnostics.stage = 'renderer-loading'
+  // The recycle path stops the previous server and syncs the profile watcher, so both
+  // handles must live in the store for the extracted code to reach them.
+  state.runtime.server = server as never
+  state.launch.profileWatcher = { sync: () => events.push('sync'), stop: () => events.push('stop-watcher') }
   const scope = vm.createContext({
     ...recovery, ...diagnostics, captureProfileHealthCheckpoint, readProfileHealthCheckpoint,
     startAfterPluginUpdates, startWithProfileSelfRepair, findRecoveryCandidates,
@@ -58,13 +75,9 @@ async function harness(t: TestContext, options: { installError?: Error; loadErro
     console: { error: (...args: unknown[]) => errors.push(args), log: () => {}, warn: () => {} },
     app: { getPath: () => logs }, desktopText: (zh: string) => zh,
     startupErrorLogPath: () => join(profile, '.dsh-desktop-startup-error.log'),
-    profileDir: profile, server, startupDiagnosticStage: 'renderer-loading',
-    lastStartOptions: {}, lastSeedOptions: { profileDir: profile },
-    isQuitting: false, isRecycling: false, handlingRendererBootFailure: false,
-    rendererHealthTimer: undefined, recoveryFailureMessage: undefined,
-    recoveryFailurePlugin: undefined, recoveryFailurePlugins: [],
-    presentation: 'workbench', allowedOrigin: undefined,
-    profileWatcher: { sync: () => events.push('sync') }, broadcastShellState: () => {},
+    profileDir: profile, server, state,
+    presentation: 'workbench',
+    broadcastShellState: () => {},
     handleUnexpectedDshExit: () => {}, handleDshIpc: () => {},
     applyPendingProfileUpdates: async () => { events.push('install'); if (options.installError) throw options.installError; return [] },
     startDsh: async () => { events.push('start'); if (options.loadError) throw options.loadError; return server },
@@ -74,9 +87,9 @@ async function harness(t: TestContext, options: { installError?: Error; loadErro
     showRecoveryWindow: async (_profile: string, failure?: { failureMessage: string; failurePlugins: string[] }) => {
       scope.presentation = 'recovery'; events.push('recovery')
       if (failure !== undefined) {
-        scope.recoveryFailureMessage = failure.failureMessage
-        scope.recoveryFailurePlugins = failure.failurePlugins
-        scope.recoveryFailurePlugin = failure.failurePlugins[0]
+        state.recovery.failureMessage = failure.failureMessage
+        state.recovery.failurePlugins = failure.failurePlugins
+        state.recovery.failurePlugin = failure.failurePlugins[0]
       }
     },
     setTimeout: (callback: () => void, delay: number) => { timers.push({ callback, delay }); return { unref() {} } },
@@ -84,7 +97,7 @@ async function harness(t: TestContext, options: { installError?: Error; loadErro
   })
   vm.runInContext(executable, scope)
   return {
-    profile, logs, scope, events, errors, timers,
+    profile, logs, scope, state, events, errors, timers,
     run: (expression: string): Promise<unknown> => Promise.resolve(vm.runInContext(expression, scope)),
     async changePlugin() {
       const manifest = JSON.parse(await readFile(join(profile, 'package.json'), 'utf8'))
@@ -97,8 +110,8 @@ async function harness(t: TestContext, options: { installError?: Error; loadErro
       timers.at(-1)!.callback()
       // 虚拟推进 30 秒定时器，只等待真实文件 I/O 完成。
       const deadline = Date.now() + 5_000
-      while (scope.handlingRendererBootFailure && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5))
-      assert.equal(scope.handlingRendererBootFailure, false)
+      while (state.recovery.handlingRendererBootFailure && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5))
+      assert.equal(state.recovery.handlingRendererBootFailure, false)
     },
   }
 }
@@ -128,7 +141,7 @@ for (const [id, installError] of [['05', new Error('installation failed')], ['06
     const h = await harness(t, { installError, loadError: new Error('failed to parse overlay /profile/node_modules/broken-plugin/patch.yml') })
     await h.run('recycleDshForPluginUpdate()')
     assert.equal(h.scope.presentation, 'recovery')
-    assert.deepEqual(Array.from(h.scope.recoveryFailurePlugins), ['broken-plugin'])
+    assert.deepEqual(Array.from(h.state.recovery.failurePlugins), ['broken-plugin'])
     assert.equal(recovery.isRecoveryModeActive(h.profile), false, '显示页面不能自动修改隔离状态')
     const manifest = JSON.parse(await readFile(join(h.profile, 'package.json'), 'utf8'))
     assert.equal(manifest.dsh.profile.bundles.includes('healthy-plugin'), true)
@@ -139,7 +152,7 @@ test('场景07：原生传递依赖损坏，仅定位所属插件', async t => {
   const h = await harness(t, { loadError: new Error('Cannot find package \'node-pty\' imported from /profile/node_modules/adapter/index.js') })
   await h.run('recycleDshForPluginUpdate()')
   assert.equal(h.scope.presentation, 'recovery')
-  assert.deepEqual(Array.from(h.scope.recoveryFailurePlugins), ['broken-plugin'])
+  assert.deepEqual(Array.from(h.state.recovery.failurePlugins), ['broken-plugin'])
 })
 
 for (const [id, message] of [['08', 'EADDRINUSE'], ['09', '官方运行时缺少内置 bundle']]) {
@@ -149,7 +162,7 @@ for (const [id, message] of [['08', 'EADDRINUSE'], ['09', '官方运行时缺少
     await h.run('recycleDshForPluginUpdate()')
     assert.equal(h.scope.presentation, 'startup')
     assert.equal(recovery.isRecoveryModeActive(h.profile), false)
-    assert.deepEqual(Array.from(h.scope.recoveryFailurePlugins), [])
+    assert.deepEqual(Array.from(h.state.recovery.failurePlugins), [])
   })
 }
 
@@ -173,7 +186,7 @@ test('场景12：前端实际无法加载且报告故障插件，显示该插件
   h.scope.presentation = 'blank'
   await h.run('handleRendererBootReport({ status: "failed", plugins: ["broken-plugin"], error: "插件加载导致页面初始化中止" }, profileDir)')
   assert.equal(h.scope.presentation, 'recovery')
-  assert.deepEqual(Array.from(h.scope.recoveryFailurePlugins), ['broken-plugin'])
+  assert.deepEqual(Array.from(h.state.recovery.failurePlugins), ['broken-plugin'])
 })
 
 test('场景13：已有未处理的隔离项，应用重开后保留恢复会话', async t => {
@@ -231,7 +244,7 @@ test('场景18：30 秒加载超时且近期有插件变更，进入恢复并列
   await h.changePlugin()
   await h.fireRendererTimeout()
   assert.equal(h.scope.presentation, 'recovery')
-  assert.deepEqual(Array.from(h.scope.recoveryFailurePlugins), ['broken-plugin'])
+  assert.deepEqual(Array.from(h.state.recovery.failurePlugins), ['broken-plugin'])
 })
 
 test('场景19：试恢复插件仍有异常但工作台可用，保留工作台和恢复备份', async t => {

@@ -27,8 +27,8 @@ test('主窗口导航完成前不结束启动或插件热重载', async () => {
   assert.match(source, /function handleDshIpc\(message: unknown\): void \{[\s\S]*?scheduleProfileActivationRecycle\(\)/)
   assert.match(source, /profileActivationRecycleGeneration !== generation\) continue/)
   assert.match(source, /escapeRoute\(/)
-  assert.doesNotMatch(source, /contents === dshView\?\.webContents \|\| contents === mainWindow\?\.webContents/)
-  assert.match(source, /dshSettingsDialogVisible/)
+  assert.doesNotMatch(source, /contents === state\.windows\.dshView\?\.webContents \|\| contents === state\.windows\.mainWindow\?\.webContents/)
+  assert.match(source, /state\.shell\.settingsDialogVisible/)
   assert.match(source, /\[role=\"dialog\"\]\[aria-modal=\"true\"\]/)
   assert.match(source, /\^\(设置\|settings\)\$/)
   assert.match(source, /dismissDshSettingsDialog\(\)/)
@@ -47,11 +47,14 @@ test('桌面壳与 DSH 内容分层并复用托盘重载实现', async () => {
 test('插件恢复页使用独立内容视图和受限 preload，不复用 DSH 侧栏', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   const recovery = await readFile(new URL('../../assets/recovery.html', import.meta.url), 'utf8')
-  assert.match(main, /let recoveryView: WebContentsView \| undefined/)
+  // The recovery view is declared on the state store (it is shared mutable state),
+  // so assert the declaration there rather than in main.ts.
+  const stateSource = await readFile(new URL('../../src/desktop/desktop-state.ts', import.meta.url), 'utf8')
+  assert.match(stateSource, /recoveryView: WebContentsView \| undefined/)
   assert.match(main, /preload: resolvePreload\('recovery-preload\.cjs'\)/)
   assert.match(main, /function showRecoveryWindow/)
   assert.match(main, /window\.unmaximize\(\)\s+window\.setSize\(920, 680\)/)
-  assert.match(main, /dshView\?\.setVisible\(false\)/)
+  assert.match(main, /state\.windows\.dshView\?\.setVisible\(false\)/)
   assert.match(recovery, /恢复模式/)
   assert.doesNotMatch(recovery, /dshShell/)
   assert.doesNotMatch(recovery, /class="titlebar"/)
@@ -66,11 +69,11 @@ test('插件恢复页使用独立内容视图和受限 preload，不复用 DSH �
 test('恢复页返回工作台会先确认 DSH 页面可用再切换视图', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   assert.match(main, /async function returnToWorkbenchFromRecovery\(\): Promise<void>/)
-  assert.match(main, /running: server !== undefined/)
+  assert.match(main, /running: state\.runtime\.server !== undefined/)
   assert.match(main, /await windowNavigation\.navigate\(view, \(\) => view\.webContents\.loadURL\(running\.url\)\)/)
   assert.match(main, /advanceDshStartupDiagnostic\(profileDir, 'renderer-loading'\)/)
   assert.match(main, /startRendererHealthTimer\(profileDir\)/)
-  assert.match(main, /showDshContentView\(\)\s+mainWindow\?\.maximize\(\)\s+mainWindow\?\.show\(\)\s+mainWindow\?\.focus\(\)\s+if \(profileDir !== undefined\) await maybeLeaveRecoveryMode\(profileDir\)/)
+  assert.match(main, /showDshContentView\(\)\s+state\.windows\.mainWindow\?\.maximize\(\)\s+state\.windows\.mainWindow\?\.show\(\)\s+state\.windows\.mainWindow\?\.focus\(\)\s+if \(profileDir !== undefined\) await maybeLeaveRecoveryMode\(profileDir\)/)
 })
 
 test('恢复最近正常配置成功后退出恢复状态并直接进入工作台', async () => {
@@ -83,8 +86,8 @@ test('没有隔离插件时启动会自动退出恢复模式并进入工作台',
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   assert.match(main, /async function openWorkbenchOrRecovery\(profileDir: string, serverUrl: string\): Promise<void>/)
   assert.match(main, /if \(isRecoveryModeActive\(profileDir\)\) \{\s+if \(await maybeLeaveRecoveryMode\(profileDir\)\) \{\s+await createMainWindow\(serverUrl\)\s+return\s+\}\s+await showRecoveryWindow\(profileDir\)/)
-  assert.match(main, /await openWorkbenchOrRecovery\(profileDir, server\.url\)/)
-  assert.match(main, /await openWorkbenchOrRecovery\(seedOptions\.profileDir, server\.url\)/)
+  assert.match(main, /await openWorkbenchOrRecovery\(profileDir, state\.runtime\.server\.url\)/)
+  assert.match(main, /await openWorkbenchOrRecovery\(seedOptions\.profileDir, state\.runtime\.server\.url\)/)
 })
 
 test('恢复模式中的健康启动不会覆盖最近正常配置检查点', async () => {
@@ -94,7 +97,7 @@ test('恢复模式中的健康启动不会覆盖最近正常配置检查点', as
   assert.match(healthyBranch, /await completeStartupDiagnostic/)
   assert.match(healthyBranch, /await maybeLeaveRecoveryMode\(profileDir\)/)
   assert.match(healthyBranch, /if \(!isRecoveryModeActive\(profileDir\)\) \{\s+await captureProfileHealthCheckpoint\(profileDir\)/)
-  assert.match(main, /beginStartupDiagnostic\(startupDiagnosticPath\(profileDir\), startupDiagnosticStage, \{\s+mode: isRecoveryModeActive\(profileDir\) \? 'recovery' : 'normal',?\s+\}\)/)
+  assert.match(main, /beginStartupDiagnostic\(startupDiagnosticPath\(profileDir\), state\.diagnostics\.stage, \{\s+mode: isRecoveryModeActive\(profileDir\) \? 'recovery' : 'normal',?\s+\}\)/)
 })
 
 test('恢复页只有在 DSH 服务就绪后才显示进入工作台操作', async () => {
@@ -248,5 +251,5 @@ test('DSH 主题变化同步到桌面外壳、原生菜单和辅助窗口', asyn
     assert.match(source, /data-color-scheme="light"/)
   }
   for (const source of [shell, settings, shortcuts, about]) assert.match(source, /dataset\.colorScheme=value\.colorScheme/)
-  assert.match(main, /loadFile\(html, \{ query: \{ theme: activeDshColorScheme \} \}\)/)
+  assert.match(main, /loadFile\(html, \{ query: \{ theme: state\.shell\.colorScheme \} \}\)/)
 })

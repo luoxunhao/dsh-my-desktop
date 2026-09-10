@@ -109,10 +109,10 @@ test('主进程在窗口稳定后按策略安排启动检查', async () => {
   assert.doesNotMatch(main, /import \{ autoUpdater \} from 'electron-updater'/)
   assert.match(main, /autoDownload = false/)
   assert.match(main, /function checkDesktopUpdate/)
-  const startupView = main.indexOf('await openWorkbenchOrRecovery(profileDir, server.url)')
+  const startupView = main.indexOf('await openWorkbenchOrRecovery(profileDir, state.runtime.server.url)')
   const startupCheck = main.indexOf('scheduleStartupUpdateCheck()', startupView)
   assert.equal(startupView >= 0 && startupCheck > startupView, true)
-  assert.match(main, /shouldCheckForUpdatesOnStartup\(updatePreferences, app\.isPackaged\)/)
+  assert.match(main, /shouldCheckForUpdatesOnStartup\(state\.update\.preferences, app\.isPackaged\)/)
   assert.match(main, /checkDesktopUpdate\('background'\)/)
 })
 
@@ -138,8 +138,8 @@ test('主进程遵循更新库可用标志，旧版和受策略限制的新版�
     }
     // 执行实际编译后的检查函数，覆盖状态转换与后台自动下载分支。
     await runInNewContext(`(async () => { ${check}; await checkDesktopUpdate('background') })()`, {
-      updateStatus: status,
-      updatePreferences: { policy: 'auto-download' },
+      // The compiled function reads mutable state through the shared store.
+      state: { update: { status, preferences: { policy: 'auto-download' } } },
       app: { isPackaged: true, getVersion: () => '1.0.48' },
       autoUpdater: { checkForUpdates: async () => result },
       setDesktopUpdateStatus: (next: typeof status) => { status = next },

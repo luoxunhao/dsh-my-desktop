@@ -34,6 +34,7 @@ import { captureProfileHealthCheckpoint, readProfileHealthCheckpoint, restorePro
 import { resolveBundledPluginStore, resolvePluginBinDir } from './runtime/plugin-toolchain.js'
 import { resolveDshBootstrap, resolveDshRuntime, resolveNodeExecutable } from './runtime/runtime.js'
 import { renderTerminalEntry } from './desktop/dsh-term.js'
+import { createDesktopState, type DesktopState } from './desktop/desktop-state.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -47,10 +48,10 @@ import { SHELL_BAR_HEIGHT, SHELL_IPC, type DshNavigationState, type DshShellActi
 import { mayAccessDesktopUpdates, mayAccessNotificationPreferences, mayCloseDesktopSettings, mayGetShellBootstrap, mayInvokeShellAction, mayPopupShellMenu, mayReportDshBoot, mayReportDshLocale, mayReportDshNotification, mayReportDshState, mayReportDshTheme, mayReportDshSettingsVisibility, type ShellRendererKind } from './desktop/shell-ipc-policy.js'
 import { DESKTOP_THEME_PALETTES, normalizeDesktopThemeSnapshot, type DesktopColorScheme, type DesktopThemePreference } from './desktop/desktop-theme.js'
 import { DSH_MARKET_STATUS_PATH, waitForDshMarketBatchToSettle } from './desktop/dshmarket-batch.js'
-import { DEFAULT_NOTIFICATION_PREFERENCES, buildWindowsReplyToastXml, loadNotificationPreferences, parseDesktopNotificationBridgeEvent, parseWindowsNotificationReplyActivation, saveNotificationPreferences, shouldShowDesktopNotification, windowsNotificationReplyArguments, type DesktopNotificationEvent, type DesktopNotificationPreferences } from './desktop/desktop-notifications.js'
+import { buildWindowsReplyToastXml, loadNotificationPreferences, parseDesktopNotificationBridgeEvent, parseWindowsNotificationReplyActivation, saveNotificationPreferences, shouldShowDesktopNotification, windowsNotificationReplyArguments, type DesktopNotificationEvent, type DesktopNotificationPreferences } from './desktop/desktop-notifications.js'
 import { watchProfileActivation } from './profiles/profile-watch.js'
 import updater from 'electron-updater'
-import { DEFAULT_UPDATE_PREFERENCES, STARTUP_UPDATE_CHECK_DELAY_MS, buildDesktopTrayItems, desktopUpdateChannel, desktopUpdatePrompt, formatDesktopReleaseNotes, loadUpdatePreferences, publicDesktopUpdateError, saveUpdatePreferences, shouldCheckForUpdatesOnStartup, shouldDownloadUpdateAutomatically, type DesktopUpdateAction, type DesktopUpdatePreferences, type DesktopUpdateSnapshot, type DesktopUpdateStatus } from './desktop/desktop-updater.js'
+import { STARTUP_UPDATE_CHECK_DELAY_MS, buildDesktopTrayItems, desktopUpdateChannel, desktopUpdatePrompt, formatDesktopReleaseNotes, loadUpdatePreferences, publicDesktopUpdateError, saveUpdatePreferences, shouldCheckForUpdatesOnStartup, shouldDownloadUpdateAutomatically, type DesktopUpdateAction, type DesktopUpdatePreferences, type DesktopUpdateSnapshot, type DesktopUpdateStatus } from './desktop/desktop-updater.js'
 
 interface DshProcessModule {
   isApplyPluginUpdatesIpc: (message: unknown) => boolean
@@ -62,47 +63,16 @@ const dshProcessModule = await import(app.isPackaged
   : './dsh-process.js') as DshProcessModule
 const { isApplyPluginUpdatesIpc, startDsh } = dshProcessModule
 
-let mainWindow: BrowserWindow | undefined
-let dshView: WebContentsView | undefined
-let recoveryView: WebContentsView | undefined
-let shortcutsWindow: BrowserWindow | undefined
-let aboutWindow: BrowserWindow | undefined
-let settingsWindow: BrowserWindow | undefined
-let server: DshServer | undefined
-let tray: Tray | undefined
-let isQuitting = false
-let isRecycling = false
-let runtimeExtractionAbortController: AbortController | undefined
-let runtimeExtractionTask: Promise<void> | undefined
-let lastStartOptions: Omit<StartDshOptions, 'onUnexpectedExit' | 'onIpcMessage'> | undefined
-let lastSeedOptions: Parameters<typeof applyPendingProfileUpdates>[0] | undefined
-let profileWatcher: { stop: () => void; sync: () => void } | undefined
-let profileActivationRecyclePending = false
-let profileActivationRecycleTask: Promise<void> | undefined
-let profileActivationRecycleGeneration = 0
-let updateStatus: DesktopUpdateStatus = { kind: 'idle' }
-let updatePreferences: DesktopUpdatePreferences = DEFAULT_UPDATE_PREFERENCES
-let lastUpdateCheckAt: string | undefined
-let startupUpdateTimer: NodeJS.Timeout | undefined
 const { autoUpdater } = updater
-let isReportingUnexpectedError = false
 const windowNavigation = new WindowNavigationCoordinator()
-let dshNavigationState: DshNavigationState = { canBack: false, canForward: false, canNextChat: false, canPreviousChat: false }
-let notificationPreferences: DesktopNotificationPreferences = DEFAULT_NOTIFICATION_PREFERENCES
-const activeNotifications = new Map<string, Notification>()
-let unreadCompletionCount = 0
-let activeDshLocale: 'zh' | 'en' | undefined
-let activeDshColorScheme: DesktopColorScheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
-let activeDshThemePreference: DesktopThemePreference = 'system'
-let dshSettingsDialogVisible = false
-let recoveryProfileDir: string | undefined
-let recoveryFailureMessage: string | undefined
-let recoveryFailurePlugin: string | undefined
-let recoveryFailurePlugins: string[] = []
-let startupDiagnosticStage: Exclude<StartupDiagnosticStage, 'healthy'> = 'server-starting'
-let rendererHealthTimer: NodeJS.Timeout | undefined
-let handlingRendererBootFailure = false
 const shellActionIds = new Set<string>(SHELL_ACTIONS.map(action => action.id))
+
+/**
+ * Explicit mutable state. Assigned in `startApplication()` after preferences load
+ * and before IPC registration — see `desktop/desktop-state.ts` for why the fields
+ * must stay mutable rather than becoming a snapshot.
+ */
+let state: DesktopState
 
 function startupErrorLogPath(profileDir?: string): string {
   return profileDir === undefined
@@ -111,7 +81,7 @@ function startupErrorLogPath(profileDir?: string): string {
 }
 
 function desktopLocale(): string {
-  return activeDshLocale ?? app.getLocale()
+  return state.shell.locale ?? app.getLocale()
 }
 
 function desktopText(zh: string, en: string): string {
@@ -137,7 +107,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => showMainWindow())
   app.on('activate', () => showMainWindow())
   app.on('before-quit', event => {
-    if (isQuitting) return
+    if (state.runtime.isQuitting) return
     event.preventDefault()
     runMainTask(requestQuit())
   })
@@ -151,22 +121,22 @@ async function requestQuit(): Promise<void> {
 
 async function shutdownDesktop(exit: () => void): Promise<void> {
   await quitDesktopApp({
-    isQuitting,
-    markQuitting: () => { isQuitting = true },
+    isQuitting: state.runtime.isQuitting,
+    markQuitting: () => { state.runtime.isQuitting = true },
     destroyTray: () => {
-      if (startupUpdateTimer !== undefined) clearTimeout(startupUpdateTimer)
-      startupUpdateTimer = undefined
-      tray?.destroy()
-      tray = undefined
-      profileWatcher?.stop()
-      profileWatcher = undefined
+      if (state.update.startupUpdateTimer !== undefined) clearTimeout(state.update.startupUpdateTimer)
+      state.update.startupUpdateTimer = undefined
+      state.runtime.tray?.destroy()
+      state.runtime.tray = undefined
+      state.launch.profileWatcher?.stop()
+      state.launch.profileWatcher = undefined
     },
     stopServer: async () => {
-      const extraction = runtimeExtractionTask
-      runtimeExtractionAbortController?.abort()
+      const extraction = state.runtime.runtimeExtractionTask
+      state.runtime.runtimeExtractionAbortController?.abort()
       await extraction?.catch(() => undefined)
-      const current = server
-      server = undefined
+      const current = state.runtime.server
+      state.runtime.server = undefined
       await current?.stop()
     },
     exit,
@@ -177,8 +147,16 @@ async function startApplication(): Promise<void> {
   await app.whenReady()
   ensureWindowsNotificationIdentity()
   installWindowsNotificationActivationHandler()
-  notificationPreferences = await loadNotificationPreferences(notificationPreferencesPath())
-  updatePreferences = await loadUpdatePreferences(updatePreferencesPath())
+  // Load preferences BEFORE creating the store and registering IPC: the shell
+  // handlers read these values at call time and would otherwise see defaults.
+  const notificationPreferences = await loadNotificationPreferences(notificationPreferencesPath())
+  const updatePreferences = await loadUpdatePreferences(updatePreferencesPath())
+  state = createDesktopState({
+    notificationPreferences,
+    updatePreferences,
+    initialColorScheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
+    NotificationCtor: Notification,
+  })
   installShellIpc()
   installRecoveryIpc()
   installDesktopFaviconReplacement()
@@ -210,7 +188,7 @@ async function startApplication(): Promise<void> {
       if (firstInitialization) {
         await updateStartupMessage(firstInitializationMessage())
         const controller = new AbortController()
-        runtimeExtractionAbortController = controller
+        state.runtime.runtimeExtractionAbortController = controller
         const extraction = extractPackagedRuntimesInChild({
           nodeExecutable,
           scriptPath: join(process.resourcesPath, 'extract-runtime.mjs'),
@@ -219,12 +197,12 @@ async function startApplication(): Promise<void> {
           signal: controller.signal,
           onProgress: progress => { void updateStartupMessage(runtimeExtractionMessage(progress)) },
         })
-        runtimeExtractionTask = extraction
+        state.runtime.runtimeExtractionTask = extraction
         try {
           await extraction
         } finally {
-          if (runtimeExtractionTask === extraction) runtimeExtractionTask = undefined
-          if (runtimeExtractionAbortController === controller) runtimeExtractionAbortController = undefined
+          if (state.runtime.runtimeExtractionTask === extraction) state.runtime.runtimeExtractionTask = undefined
+          if (state.runtime.runtimeExtractionAbortController === controller) state.runtime.runtimeExtractionAbortController = undefined
         }
         await updateStartupMessage(desktopText(
           '正在初始化插件和工作区…\n首次启动可能需要 1–3 分钟，请勿关闭应用。',
@@ -272,7 +250,7 @@ async function startApplication(): Promise<void> {
       await writeTextFile(join(app.getPath('userData'), 'plugin-update.log'), ` ${message}\n`, 'utf8').catch(() => undefined)
 
     }
-    lastSeedOptions = seedOptions
+    state.launch.lastSeedOptions = seedOptions
     const runtime = resolveDshRuntime({ ...runtimeOptions, profileDir, desktopRuntimeDir })
     const startOptions = {
       bootstrapPath: resolveDshBootstrap(runtimeOptions),
@@ -295,7 +273,7 @@ async function startApplication(): Promise<void> {
         ...(profileStoreDir === undefined ? {} : { DSH_PNPM_STORE_DIR: profileStoreDir }),
       },
     }
-    lastStartOptions = startOptions
+    state.launch.lastStartOptions = startOptions
     let started: { result: DshServer; repaired: string[] }
     try {
       await beginDshStartupDiagnostic(profileDir)
@@ -309,22 +287,22 @@ async function startApplication(): Promise<void> {
         }),
       })
     } catch (error) {
-      if (!isQuitting) await reportStartupFailure(error, profileDir)
+      if (!state.runtime.isQuitting) await reportStartupFailure(error, profileDir)
       return
     }
-    server = started.result
-    await advanceDshStartupDiagnostic(profileDir, 'server-ready')
+    state.runtime.server = started.result
+    await advanceDshStartupDiagnostic(profileDir, 'server-starting')
     if (started.repaired.length > 0) console.log('已自我修复损坏的插件清单：' + started.repaired.join('、'))
-    profileWatcher?.stop()
-    profileWatcher = watchProfileActivation(profileDir, scheduleProfileActivationRecycle, { onError: handleUnexpectedMainError })
-    await openWorkbenchOrRecovery(profileDir, server.url)
+    state.launch.profileWatcher?.stop()
+    state.launch.profileWatcher = watchProfileActivation(profileDir, scheduleProfileActivationRecycle, { onError: handleUnexpectedMainError })
+    await openWorkbenchOrRecovery(profileDir, state.runtime.server.url)
     const smokeReadyFile = process.env.DSH_DESKTOP_SMOKE_READY_FILE
     if (smokeReadyFile !== undefined && smokeReadyFile !== '') {
       await writeTextFile(smokeReadyFile, 'ready\n', 'utf8')
     }
     scheduleStartupUpdateCheck()
   } catch (error) {
-    if (!isQuitting) await reportStartupFailure(error)
+    if (!state.runtime.isQuitting) await reportStartupFailure(error)
   }
 }
 
@@ -344,7 +322,6 @@ function resolveRecoveryHtml(): string | undefined {
   return undefined
 }
 
-let cachedWindowIcon: Electron.NativeImage | undefined
 
 function resolveWindowIconFilePath(): string | undefined {
   return resolveRasterIconPath({
@@ -355,7 +332,7 @@ function resolveWindowIconFilePath(): string | undefined {
 }
 
 function resolveWindowIconImage(): Electron.NativeImage | undefined {
-  if (cachedWindowIcon !== undefined && !cachedWindowIcon.isEmpty()) return cachedWindowIcon
+  if (state.chrome.cachedWindowIcon !== undefined && !state.chrome.cachedWindowIcon.isEmpty()) return state.chrome.cachedWindowIcon
   const iconPath = resolveWindowIconFilePath()
   if (iconPath === undefined) return undefined
   const source = nativeImage.createFromPath(iconPath)
@@ -371,8 +348,8 @@ function resolveWindowIconImage(): Electron.NativeImage | undefined {
       scaleFactor: 1,
     })
   }
-  cachedWindowIcon = icon.isEmpty() ? source : icon
-  return cachedWindowIcon
+  state.chrome.cachedWindowIcon = icon.isEmpty() ? source : icon
+  return state.chrome.cachedWindowIcon
 }
 
 function installDesktopFaviconReplacement(): void {
@@ -390,14 +367,14 @@ function installDesktopFaviconReplacement(): void {
 }
 
 async function showStartupWindow(message: string): Promise<void> {
-  const window = mainWindow ??= createWindow()
+  const window = state.windows.mainWindow ??= createWindow()
   const view = requireDshView()
   showDshContentView()
   const html = resolveStartupHtml()
   if (html !== undefined) {
     await windowNavigation.navigate(
       view,
-      () => view.webContents.loadFile(html, { query: { theme: activeDshColorScheme } }),
+      () => view.webContents.loadFile(html, { query: { theme: state.shell.colorScheme } }),
       () => view.webContents.executeJavaScript('document.getElementById("msg").textContent = ' + JSON.stringify(message)),
     )
     return
@@ -431,13 +408,12 @@ function runtimeExtractionMessage(progress: RuntimeExtractionProgress): string {
   return desktopText('正在准备内置插件仓库…', 'Preparing the bundled plugin store…') + hint
 }
 
-let allowedOrigin = ''
 
 async function createMainWindow(serverUrl: string): Promise<void> {
-  allowedOrigin = new URL(serverUrl).origin
-  mainWindow ??= createWindow()
+  state.shell.allowedOrigin = new URL(serverUrl).origin
+  state.windows.mainWindow ??= createWindow()
   const view = requireDshView()
-  const profileDir = lastSeedOptions?.profileDir
+  const profileDir = state.launch.lastSeedOptions?.profileDir
   if (profileDir !== undefined) {
     await advanceDshStartupDiagnostic(profileDir, 'renderer-loading')
     startRendererHealthTimer(profileDir)
@@ -451,8 +427,8 @@ function startupDiagnosticPath(profileDir: string): string {
 }
 
 async function beginDshStartupDiagnostic(profileDir: string): Promise<void> {
-  startupDiagnosticStage = 'server-starting'
-  await beginStartupDiagnostic(startupDiagnosticPath(profileDir), startupDiagnosticStage, {
+  state.diagnostics.stage = 'server-starting'
+  await beginStartupDiagnostic(startupDiagnosticPath(profileDir), state.diagnostics.stage, {
     mode: isRecoveryModeActive(profileDir) ? 'recovery' : 'normal',
   }).catch(error => {
     console.error('无法记录 DSH 启动诊断。', error)
@@ -460,27 +436,27 @@ async function beginDshStartupDiagnostic(profileDir: string): Promise<void> {
 }
 
 async function advanceDshStartupDiagnostic(profileDir: string, stage: Exclude<StartupDiagnosticStage, 'healthy'>): Promise<void> {
-  startupDiagnosticStage = stage
+  state.diagnostics.stage = stage
   await advanceStartupDiagnostic(startupDiagnosticPath(profileDir), stage).catch(error => {
     console.error('无法更新 DSH 启动诊断。', error)
   })
 }
 
 function stopRendererHealthTimer(): void {
-  if (rendererHealthTimer !== undefined) clearTimeout(rendererHealthTimer)
-  rendererHealthTimer = undefined
+  if (state.diagnostics.rendererHealthTimer !== undefined) clearTimeout(state.diagnostics.rendererHealthTimer)
+  state.diagnostics.rendererHealthTimer = undefined
 }
 
 function startRendererHealthTimer(profileDir: string): void {
   stopRendererHealthTimer()
-  rendererHealthTimer = setTimeout(() => {
-    rendererHealthTimer = undefined
+  state.diagnostics.rendererHealthTimer = setTimeout(() => {
+    state.diagnostics.rendererHealthTimer = undefined
     void handleRendererBootReport({ status: 'failed', plugins: [], error: 'DSH 页面未能在 30 秒内完成插件加载。' }, profileDir, 'renderer-timeout')
   }, 30_000)
-  rendererHealthTimer.unref()
+  state.diagnostics.rendererHealthTimer.unref()
 }
 
-async function handleRendererBootReport(value: unknown, profileDir = lastSeedOptions?.profileDir, source: 'renderer' | 'renderer-timeout' = 'renderer'): Promise<void> {
+async function handleRendererBootReport(value: unknown, profileDir = state.launch.lastSeedOptions?.profileDir, source: 'renderer' | 'renderer-timeout' = 'renderer'): Promise<void> {
   const report = parseRendererBootReport(value)
   if (report === undefined || profileDir === undefined) return
   stopRendererHealthTimer()
@@ -499,8 +475,8 @@ async function handleRendererBootReport(value: unknown, profileDir = lastSeedOpt
     }
     return
   }
-  if (handlingRendererBootFailure || isQuitting || isRecycling) return
-  handlingRendererBootFailure = true
+  if (state.recovery.handlingRendererBootFailure || state.runtime.isQuitting || state.runtime.isRecycling) return
+  state.recovery.handlingRendererBootFailure = true
   const plugins = report.plugins ?? []
   const message = report.error ?? (plugins.length === 0
     ? 'DSH 客户端未能完成插件加载。'
@@ -520,7 +496,7 @@ async function handleRendererBootReport(value: unknown, profileDir = lastSeedOpt
   } catch (error) {
     console.error('无法处理 DSH 客户端启动失败。', error)
   } finally {
-    handlingRendererBootFailure = false
+    state.recovery.handlingRendererBootFailure = false
   }
 }
 
@@ -529,27 +505,27 @@ async function handleRendererBootReport(value: unknown, profileDir = lastSeedOpt
  * 再切换可见视图，避免用户看到按钮点击后页面停留在原处。
  */
 async function returnToWorkbenchFromRecovery(): Promise<void> {
-  const running = server
+  const running = state.runtime.server
   if (running === undefined) throw new Error('DSH 尚未成功启动，无法进入工作台。')
   const view = requireDshView()
-  const profileDir = recoveryProfileDir
+  const profileDir = state.recovery.profileDir
   if (profileDir !== undefined) {
     await advanceDshStartupDiagnostic(profileDir, 'renderer-loading')
     startRendererHealthTimer(profileDir)
   }
-  allowedOrigin = new URL(running.url).origin
+  state.shell.allowedOrigin = new URL(running.url).origin
   await windowNavigation.navigate(view, () => view.webContents.loadURL(running.url))
   showDshContentView()
-  mainWindow?.maximize()
-  mainWindow?.show()
-  mainWindow?.focus()
+  state.windows.mainWindow?.maximize()
+  state.windows.mainWindow?.show()
+  state.windows.mainWindow?.focus()
   if (profileDir !== undefined) await maybeLeaveRecoveryMode(profileDir)
 }
 
 function clearRecoverySessionHints(): void {
-  recoveryFailureMessage = undefined
-  recoveryFailurePlugin = undefined
-  recoveryFailurePlugins = []
+  state.recovery.failureMessage = undefined
+  state.recovery.failurePlugin = undefined
+  state.recovery.failurePlugins = []
 }
 
 async function maybeLeaveRecoveryMode(profileDir: string): Promise<boolean> {
@@ -572,18 +548,18 @@ async function openWorkbenchOrRecovery(profileDir: string, serverUrl: string): P
 
 async function showRecoveryWindow(profileDir: string, failure?: { failureMessage: string, failurePlugins: string[] }): Promise<void> {
   stopRendererHealthTimer()
-  mainWindow ??= createWindow()
-  const window = mainWindow
+  state.windows.mainWindow ??= createWindow()
+  const window = state.windows.mainWindow
   window.setMinimumSize(720, 520)
   if (window.isMaximized()) window.unmaximize()
   window.setSize(920, 680)
   window.center()
   const view = requireRecoveryView()
-  recoveryProfileDir = profileDir
+  state.recovery.profileDir = profileDir
   if (failure !== undefined) {
-    recoveryFailureMessage = failure.failureMessage
-    recoveryFailurePlugins = failure.failurePlugins
-    recoveryFailurePlugin = failure.failurePlugins[0]
+    state.recovery.failureMessage = failure.failureMessage
+    state.recovery.failurePlugins = failure.failurePlugins
+    state.recovery.failurePlugin = failure.failurePlugins[0]
   }
   showRecoveryContentView()
   const html = resolveRecoveryHtml()
@@ -619,7 +595,7 @@ async function reportStartupFailure(error: unknown, profileDir?: string): Promis
   const candidates = profileDir === undefined ? [] : await startupRecoveryCandidates(profileDir, message)
   if (profileDir !== undefined) {
     await failStartupDiagnostic(startupDiagnosticPath(profileDir), {
-      stage: startupDiagnosticStage,
+      stage: state.diagnostics.stage,
       source: 'process',
       message,
       plugins: candidates,
@@ -637,11 +613,11 @@ async function reportStartupFailure(error: unknown, profileDir?: string): Promis
 
 function handleUnexpectedMainError(error: unknown): void {
   console.error('主进程发生未处理异常。', error)
-  if (!app.isReady() || isQuitting || isReportingUnexpectedError) return
-  isReportingUnexpectedError = true
+  if (!app.isReady() || state.runtime.isQuitting || state.launch.isReportingUnexpectedError) return
+  state.launch.isReportingUnexpectedError = true
   void reportStartupFailure(error)
     .catch(reportError => { console.error('主进程异常报告失败。', reportError) })
-    .finally(() => { isReportingUnexpectedError = false })
+    .finally(() => { state.launch.isReportingUnexpectedError = false })
 }
 
 function runMainTask(task: Promise<unknown>): void {
@@ -672,7 +648,7 @@ function handleDshIpc(message: unknown): void {
   // Profile create/select/delete requested by the in-profile settings section.
   const requestId = message.requestId
   const reply = (ok: boolean, error?: string): void => {
-    server?.send({ type: 'desktop/profile/result', requestId, ok, ...(error === undefined ? {} : { error }) })
+    state.runtime.server?.send({ type: 'desktop/profile/result', requestId, ok, ...(error === undefined ? {} : { error }) })
   }
   runMainTask((async () => {
     try {
@@ -698,17 +674,17 @@ const DSH_MARKET_BATCH_POLL_MS = 750
 const DSH_MARKET_BATCH_MAX_WAIT_MS = 10 * 60 * 1_000
 
 function scheduleProfileActivationRecycle(): void {
-  if (isQuitting || isRecycling) return
-  profileActivationRecyclePending = true
-  profileActivationRecycleGeneration += 1
-  if (profileActivationRecycleTask !== undefined) return
+  if (state.runtime.isQuitting || state.runtime.isRecycling) return
+  state.launch.profileActivationRecyclePending = true
+  state.launch.profileActivationRecycleGeneration += 1
+  if (state.launch.profileActivationRecycleTask !== undefined) return
   const task = recycleAfterDshMarketBatch()
-  profileActivationRecycleTask = task
-  runMainTask(task.finally(() => { profileActivationRecycleTask = undefined }))
+  state.launch.profileActivationRecycleTask = task
+  runMainTask(task.finally(() => { state.launch.profileActivationRecycleTask = undefined }))
 }
 
 async function dshMarketOperationStatus(): Promise<unknown> {
-  const url = server?.url
+  const url = state.runtime.server?.url
   if (url === undefined) return undefined
   try {
     const response = await fetch(new URL(DSH_MARKET_STATUS_PATH, url), { signal: AbortSignal.timeout(1_000) })
@@ -722,34 +698,34 @@ async function dshMarketOperationStatus(): Promise<unknown> {
 }
 
 async function recycleAfterDshMarketBatch(): Promise<void> {
-  while (profileActivationRecyclePending && !isQuitting && !isRecycling) {
-    profileActivationRecyclePending = false
-    const generation = profileActivationRecycleGeneration
+  while (state.launch.profileActivationRecyclePending && !state.runtime.isQuitting && !state.runtime.isRecycling) {
+    state.launch.profileActivationRecyclePending = false
+    const generation = state.launch.profileActivationRecycleGeneration
     const settled = await waitForDshMarketBatchToSettle(
       dshMarketOperationStatus,
       () => new Promise(resolve => setTimeout(resolve, DSH_MARKET_BATCH_POLL_MS)),
       { maxWaitMs: DSH_MARKET_BATCH_MAX_WAIT_MS, pollIntervalMs: DSH_MARKET_BATCH_POLL_MS },
     )
     if (!settled) console.warn(`dshmarket 批量更新等待超时（${DSH_MARKET_BATCH_MAX_WAIT_MS}ms），继续重载插件。`)
-    if (isQuitting || isRecycling) return
+    if (state.runtime.isQuitting || state.runtime.isRecycling) return
     // Another profile change or update-all IPC arrived during the quiet
     // check. Start the check over rather than restarting a just-continued
     // batch from its first completion boundary.
-    if (profileActivationRecycleGeneration !== generation) continue
+    if (state.launch.profileActivationRecycleGeneration !== generation) continue
     await recycleDshForPluginUpdate()
   }
 }
 
 async function recycleDshForPluginUpdate(): Promise<void> {
-  if (isQuitting || isRecycling || lastStartOptions === undefined || lastSeedOptions === undefined) return
-  const startOptions = lastStartOptions
-  const seedOptions = lastSeedOptions
-  isRecycling = true
+  if (state.runtime.isQuitting || state.runtime.isRecycling || state.launch.lastStartOptions === undefined || state.launch.lastSeedOptions === undefined) return
+  const startOptions = state.launch.lastStartOptions
+  const seedOptions = state.launch.lastSeedOptions
+  state.runtime.isRecycling = true
   broadcastShellState()
   try {
     await showStartupWindow(desktopText('加载中', 'Loading'))
-    const current = server
-    server = undefined
+    const current = state.runtime.server
+    state.runtime.server = undefined
     await current?.stop()
     const started = await startAfterPluginUpdates({
       applyUpdates: async () => {
@@ -774,38 +750,38 @@ async function recycleDshForPluginUpdate(): Promise<void> {
         })
       },
     })
-    server = started.result
-    await advanceDshStartupDiagnostic(seedOptions.profileDir, 'server-ready')
-    await openWorkbenchOrRecovery(seedOptions.profileDir, server.url)
+    state.runtime.server = started.result
+    await advanceDshStartupDiagnostic(seedOptions.profileDir, 'server-starting')
+    await openWorkbenchOrRecovery(seedOptions.profileDir, state.runtime.server.url)
   } catch (error) {
     await reportStartupFailure(error, seedOptions.profileDir)
   } finally {
-    profileWatcher?.sync()
-    isRecycling = false
+    state.launch.profileWatcher?.sync()
+    state.runtime.isRecycling = false
     broadcastShellState()
   }
 }
 
 function handleUnexpectedDshExit(message: string): void {
-  if (isQuitting || isRecycling) return
-  server = undefined
+  if (state.runtime.isQuitting || state.runtime.isRecycling) return
+  state.runtime.server = undefined
   stopRendererHealthTimer()
-  if (lastSeedOptions !== undefined) {
-    void failStartupDiagnostic(startupDiagnosticPath(lastSeedOptions.profileDir), {
-      stage: startupDiagnosticStage,
+  if (state.launch.lastSeedOptions !== undefined) {
+    void failStartupDiagnostic(startupDiagnosticPath(state.launch.lastSeedOptions.profileDir), {
+      stage: state.diagnostics.stage,
       source: 'process',
       message,
       plugins: [],
     }).catch(error => { console.error('无法记录 DSH 异常退出。', error) })
   }
   const missing = parseUnresolvedBundleError(message)
-  if (missing !== undefined && lastSeedOptions !== undefined) {
-    runMainTask(removeProfileBundle(lastSeedOptions.profileDir, missing).then((removed) => {
+  if (missing !== undefined && state.launch.lastSeedOptions !== undefined) {
+    runMainTask(removeProfileBundle(state.launch.lastSeedOptions.profileDir, missing).then((removed) => {
       if (removed) runMainTask(recycleDshForPluginUpdate())
     }))
     return
   }
-  void writeTextFile(startupErrorLogPath(lastSeedOptions?.profileDir), `${message}\n`, 'utf8').catch(() => undefined)
+  void writeTextFile(startupErrorLogPath(state.launch.lastSeedOptions?.profileDir), `${message}\n`, 'utf8').catch(() => undefined)
   runMainTask(showStartupWindow(desktopText('DSH 已停止运行。请重新启动应用。', 'DSH has stopped. Restart the app.')))
 }
 
@@ -827,39 +803,39 @@ function resolvePreload(name: 'shell-preload.cjs' | 'dsh-view-preload.cjs' | 're
 }
 
 function requireDshView(): WebContentsView {
-  if (dshView === undefined) throw new Error('DSH 内容视图尚未创建。')
-  return dshView
+  if (state.windows.dshView === undefined) throw new Error('DSH 内容视图尚未创建。')
+  return state.windows.dshView
 }
 
 function requireRecoveryView(): WebContentsView {
-  if (recoveryView === undefined) throw new Error('恢复内容视图尚未创建。')
-  return recoveryView
+  if (state.windows.recoveryView === undefined) throw new Error('恢复内容视图尚未创建。')
+  return state.windows.recoveryView
 }
 
 function showDshContentView(): void {
-  if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.setMinimumSize(960, 640)
-  recoveryView?.setVisible(false)
-  dshView?.setVisible(true)
+  if (state.windows.mainWindow !== undefined && !state.windows.mainWindow.isDestroyed()) state.windows.mainWindow.setMinimumSize(960, 640)
+  state.windows.recoveryView?.setVisible(false)
+  state.windows.dshView?.setVisible(true)
 }
 
 function showRecoveryContentView(): void {
-  dshView?.setVisible(false)
-  recoveryView?.setVisible(true)
+  state.windows.dshView?.setVisible(false)
+  state.windows.recoveryView?.setVisible(true)
 }
 
 function layoutDshView(window: BrowserWindow): void {
   const bounds = window.getContentBounds()
-  dshView?.setBounds({ x: 0, y: SHELL_BAR_HEIGHT, width: bounds.width, height: Math.max(0, bounds.height - SHELL_BAR_HEIGHT) })
+  state.windows.dshView?.setBounds({ x: 0, y: SHELL_BAR_HEIGHT, width: bounds.width, height: Math.max(0, bounds.height - SHELL_BAR_HEIGHT) })
 }
 
 function layoutRecoveryView(window: BrowserWindow): void {
   const bounds = window.getContentBounds()
-  recoveryView?.setBounds({ x: 0, y: 0, width: bounds.width, height: bounds.height })
+  state.windows.recoveryView?.setBounds({ x: 0, y: 0, width: bounds.width, height: bounds.height })
 }
 
 function createWindow(): BrowserWindow {
   const windowIcon = resolveWindowIconImage()
-  const palette = DESKTOP_THEME_PALETTES[activeDshColorScheme]
+  const palette = DESKTOP_THEME_PALETTES[state.shell.colorScheme]
   const window = new BrowserWindow({
     width: 1360,
     height: 900,
@@ -893,8 +869,8 @@ function createWindow(): BrowserWindow {
     preload: resolvePreload('recovery-preload.cjs'),
     sandbox: true,
   } })
-  dshView = view
-  recoveryView = recovery
+  state.windows.dshView = view
+  state.windows.recoveryView = recovery
   window.contentView.addChildView(view)
   window.contentView.addChildView(recovery)
   recovery.setVisible(false)
@@ -903,26 +879,26 @@ function createWindow(): BrowserWindow {
   window.on('resize', () => { layoutDshView(window); layoutRecoveryView(window) })
   window.on('maximize', () => { layoutDshView(window); layoutRecoveryView(window) })
   window.on('unmaximize', () => { layoutDshView(window); layoutRecoveryView(window) })
-  runMainTask(window.loadFile(resolveShellAsset('shell.html'), { query: { theme: activeDshColorScheme } }))
+  runMainTask(window.loadFile(resolveShellAsset('shell.html'), { query: { theme: state.shell.colorScheme } }))
 
   view.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternalOpenUrl(url, allowedOrigin)) runMainTask(shell.openExternal(url))
+    if (isExternalOpenUrl(url, state.shell.allowedOrigin)) runMainTask(shell.openExternal(url))
     return { action: 'deny' }
   })
-  view.webContents.on('did-start-navigation', () => { dshSettingsDialogVisible = false })
+  view.webContents.on('did-start-navigation', () => { state.shell.settingsDialogVisible = false })
   view.webContents.on('will-navigate', (event, url) => {
     if (windowNavigation.isNavigating()) {
       event.preventDefault()
       return
     }
-    if (isSameOrigin(url, allowedOrigin)) return
+    if (isSameOrigin(url, state.shell.allowedOrigin)) return
     event.preventDefault()
-    if (isExternalOpenUrl(url, allowedOrigin)) runMainTask(shell.openExternal(url))
+    if (isExternalOpenUrl(url, state.shell.allowedOrigin)) runMainTask(shell.openExternal(url))
   })
   view.webContents.on('will-redirect', (event, url) => {
-    if (isSameOrigin(url, allowedOrigin)) return
+    if (isSameOrigin(url, state.shell.allowedOrigin)) return
     event.preventDefault()
-    if (isExternalOpenUrl(url, allowedOrigin)) runMainTask(shell.openExternal(url))
+    if (isExternalOpenUrl(url, state.shell.allowedOrigin)) runMainTask(shell.openExternal(url))
   })
   recovery.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   installShortcutHandler(window.webContents)
@@ -931,30 +907,30 @@ function createWindow(): BrowserWindow {
   window.on('enter-full-screen', broadcastShellState)
   window.on('leave-full-screen', broadcastShellState)
   window.on('close', event => {
-    if (!shouldHideInsteadOfClose(isQuitting)) return
+    if (!shouldHideInsteadOfClose(state.runtime.isQuitting)) return
     event.preventDefault()
     window.hide()
   })
   window.on('closed', () => {
-    if (mainWindow === window) {
-      mainWindow = undefined
-      dshView = undefined
-      recoveryView = undefined
-      recoveryProfileDir = undefined
-      recoveryFailureMessage = undefined
-      dshSettingsDialogVisible = false
+    if (state.windows.mainWindow === window) {
+      state.windows.mainWindow = undefined
+      state.windows.dshView = undefined
+      state.windows.recoveryView = undefined
+      state.recovery.profileDir = undefined
+      state.recovery.failureMessage = undefined
+      state.shell.settingsDialogVisible = false
     }
   })
   return window
 }
 
 function currentShellState(): ShellState {
-  const window = mainWindow
-  const zoomFactor = dshView?.webContents.getZoomFactor() ?? 1
+  const window = state.windows.mainWindow
+  const zoomFactor = state.windows.dshView?.webContents.getZoomFactor() ?? 1
   return {
-    ...dshNavigationState,
+    ...state.shell.navigationState,
     fullscreen: window?.isFullScreen() ?? false,
-    reloading: isRecycling,
+    reloading: state.runtime.isRecycling,
     zoomPercent: Math.round(zoomFactor * 100),
   }
 }
@@ -963,7 +939,7 @@ function shellBootstrap(): ShellBootstrap {
   const locale = desktopLocale()
   return {
     actions: localizedShellActions(locale, process.platform),
-    colorScheme: activeDshColorScheme,
+    colorScheme: state.shell.colorScheme,
     locale,
     menus: localizedShellMenus(locale),
     platform: process.platform,
@@ -975,7 +951,7 @@ function shellBootstrap(): ShellBootstrap {
 
 function broadcastShellBootstrap(): void {
   const bootstrap = shellBootstrap()
-  for (const window of [mainWindow, shortcutsWindow, aboutWindow, settingsWindow]) {
+  for (const window of [state.windows.mainWindow, state.windows.shortcutsWindow, state.windows.aboutWindow, state.windows.settingsWindow]) {
     if (window !== undefined && !window.isDestroyed()) window.webContents.send(SHELL_IPC.bootstrap, bootstrap)
   }
 }
@@ -985,25 +961,25 @@ function setWindowBackground(window: BrowserWindow | undefined, color: string): 
 }
 
 function applyDesktopTheme(colorScheme: DesktopColorScheme, preference?: DesktopThemePreference): void {
-  activeDshColorScheme = colorScheme
+  state.shell.colorScheme = colorScheme
   if (preference !== undefined) {
-    activeDshThemePreference = preference
+    state.shell.themePreference = preference
     nativeTheme.themeSource = preference
   }
   const palette = DESKTOP_THEME_PALETTES[colorScheme]
-  setWindowBackground(mainWindow, palette.titleBarBackground)
-  setWindowBackground(settingsWindow, palette.settingsBackground)
-  setWindowBackground(shortcutsWindow, palette.shortcutsBackground)
-  setWindowBackground(aboutWindow, palette.aboutBackground)
-  if (process.platform !== 'darwin' && mainWindow !== undefined && !mainWindow.isDestroyed()) {
-    mainWindow.setTitleBarOverlay({ color: palette.titleBarBackground, symbolColor: palette.titleBarSymbol, height: SHELL_BAR_HEIGHT })
+  setWindowBackground(state.windows.mainWindow, palette.titleBarBackground)
+  setWindowBackground(state.windows.settingsWindow, palette.settingsBackground)
+  setWindowBackground(state.windows.shortcutsWindow, palette.shortcutsBackground)
+  setWindowBackground(state.windows.aboutWindow, palette.aboutBackground)
+  if (process.platform !== 'darwin' && state.windows.mainWindow !== undefined && !state.windows.mainWindow.isDestroyed()) {
+    state.windows.mainWindow.setTitleBarOverlay({ color: palette.titleBarBackground, symbolColor: palette.titleBarSymbol, height: SHELL_BAR_HEIGHT })
   }
 }
 
 function broadcastShellState(): void {
-  const state = currentShellState()
-  for (const window of [mainWindow, shortcutsWindow, aboutWindow, settingsWindow]) {
-    if (window !== undefined && !window.isDestroyed()) window.webContents.send(SHELL_IPC.state, state)
+  const shellState = currentShellState()
+  for (const window of [state.windows.mainWindow, state.windows.shortcutsWindow, state.windows.aboutWindow, state.windows.settingsWindow]) {
+    if (window !== undefined && !window.isDestroyed()) window.webContents.send(SHELL_IPC.state, shellState)
   }
 }
 
@@ -1011,20 +987,20 @@ function desktopUpdateSnapshot(): DesktopUpdateSnapshot {
   return {
     currentVersion: app.getVersion(),
     packaged: app.isPackaged,
-    status: updateStatus,
-    ...(lastUpdateCheckAt === undefined ? {} : { lastCheckedAt: lastUpdateCheckAt }),
+    status: state.update.status,
+    ...(state.update.lastUpdateCheckAt === undefined ? {} : { lastCheckedAt: state.update.lastUpdateCheckAt }),
   }
 }
 
 function broadcastDesktopUpdateState(): void {
-  if (settingsWindow !== undefined && !settingsWindow.isDestroyed()) {
-    settingsWindow.webContents.send(SHELL_IPC.desktopUpdateState, desktopUpdateSnapshot())
+  if (state.windows.settingsWindow !== undefined && !state.windows.settingsWindow.isDestroyed()) {
+    state.windows.settingsWindow.webContents.send(SHELL_IPC.desktopUpdateState, desktopUpdateSnapshot())
   }
 }
 
 function setDesktopUpdateStatus(status: DesktopUpdateStatus, checked = false): void {
-  updateStatus = status
-  if (checked) lastUpdateCheckAt = new Date().toISOString()
+  state.update.status = status
+  if (checked) state.update.lastUpdateCheckAt = new Date().toISOString()
   refreshTrayMenu()
   broadcastDesktopUpdateState()
 }
@@ -1041,21 +1017,21 @@ const RECOVERY_IPC = {
 } as const
 
 function requireRecoveryProfile(sender: WebContents): string {
-  if (sender !== recoveryView?.webContents) throw new Error('恢复操作仅允许由恢复页面发起。')
-  if (recoveryProfileDir === undefined) throw new Error('恢复页面尚未准备完成。')
-  return recoveryProfileDir
+  if (sender !== state.windows.recoveryView?.webContents) throw new Error('恢复操作仅允许由恢复页面发起。')
+  if (state.recovery.profileDir === undefined) throw new Error('恢复页面尚未准备完成。')
+  return state.recovery.profileDir
 }
 
 async function recoveryPageStatus(profileDir: string): Promise<object> {
   const status = await getRecoveryStatus(profileDir)
   const diagnostic = await readStartupDiagnostic(startupDiagnosticPath(profileDir))
   const checkpoint = await readProfileHealthCheckpoint(profileDir)
-  const suspectedPlugin = status.suspectedPlugin ?? recoveryFailurePlugin
-  const failureMessage = recoveryFailureMessage ?? status.failureMessage
+  const suspectedPlugin = status.suspectedPlugin ?? state.recovery.failurePlugin
+  const failureMessage = state.recovery.failureMessage ?? status.failureMessage
   return {
     ...status,
-    running: server !== undefined,
-    candidates: recoveryFailurePlugins.map(packageName => ({ packageName })),
+    running: state.runtime.server !== undefined,
+    candidates: state.recovery.failurePlugins.map(packageName => ({ packageName })),
     ...(failureMessage === undefined ? {} : { failureMessage }),
     ...(suspectedPlugin === undefined ? {} : { suspectedPlugin }),
     ...(diagnostic === undefined ? {} : { diagnostic }),
@@ -1064,28 +1040,28 @@ async function recoveryPageStatus(profileDir: string): Promise<object> {
 }
 
 async function restartDshInRecoveryMode(profileDir: string, destination: 'recovery' | 'workbench' = 'recovery'): Promise<void> {
-  if (lastStartOptions === undefined || lastSeedOptions === undefined) throw new Error('恢复环境尚未准备完成。')
-  const startOptions = lastStartOptions
-  isRecycling = true
+  if (state.launch.lastStartOptions === undefined || state.launch.lastSeedOptions === undefined) throw new Error('恢复环境尚未准备完成。')
+  const startOptions = state.launch.lastStartOptions
+  state.runtime.isRecycling = true
   broadcastShellState()
   try {
-    const current = server
-    server = undefined
+    const current = state.runtime.server
+    state.runtime.server = undefined
     await current?.stop()
     await beginDshStartupDiagnostic(profileDir)
     const started = await startWithProfileSelfRepair({
       profileDir,
-      extraDirs: lastSeedOptions.desktopRuntimeDir === undefined ? [] : [lastSeedOptions.desktopRuntimeDir],
+      extraDirs: state.launch.lastSeedOptions.desktopRuntimeDir === undefined ? [] : [state.launch.lastSeedOptions.desktopRuntimeDir],
       start: () => startDsh({
         ...startOptions,
         onUnexpectedExit: handleUnexpectedDshExit,
         onIpcMessage: handleDshIpc,
       }),
     })
-    server = started.result
-    allowedOrigin = new URL(server.url).origin
-    await advanceDshStartupDiagnostic(profileDir, 'server-ready')
-    recoveryFailureMessage = undefined
+    state.runtime.server = started.result
+    state.shell.allowedOrigin = new URL(state.runtime.server.url).origin
+    await advanceDshStartupDiagnostic(profileDir, 'server-starting')
+    state.recovery.failureMessage = undefined
     if (destination === 'workbench') {
       await returnToWorkbenchFromRecovery()
     } else {
@@ -1095,8 +1071,8 @@ async function restartDshInRecoveryMode(profileDir: string, destination: 'recove
     await reportStartupFailure(error, profileDir)
     throw error
   } finally {
-    profileWatcher?.sync()
-    isRecycling = false
+    state.launch.profileWatcher?.sync()
+    state.runtime.isRecycling = false
     broadcastShellState()
   }
 }
@@ -1108,8 +1084,8 @@ function installRecoveryIpc(): void {
     const profileDir = requireRecoveryProfile(event.sender)
     const current = await getRecoveryStatus(profileDir)
     if (!current.active) await enterRecoveryMode(profileDir, {
-      suspectedPlugins: recoveryFailurePlugins,
-      failureMessage: recoveryFailureMessage,
+      suspectedPlugins: state.recovery.failurePlugins,
+      failureMessage: state.recovery.failureMessage,
     })
     await restartDshInRecoveryMode(profileDir)
     return recoveryPageStatus(profileDir)
@@ -1133,7 +1109,7 @@ function installRecoveryIpc(): void {
     const profileDir = requireRecoveryProfile(event.sender)
     if (typeof packageName !== 'string') throw new Error('插件名称不合法。')
     const status = await uninstallRecoveryPlugin(profileDir, packageName)
-    if (recoveryFailurePlugin === packageName) recoveryFailurePlugin = undefined
+    if (state.recovery.failurePlugin === packageName) state.recovery.failurePlugin = undefined
     return status
   })
   ipcMain.handle(RECOVERY_IPC.restoreHealthyConfig, async event => {
@@ -1195,24 +1171,24 @@ function installShellIpc(): void {
   })
   ipcMain.handle(SHELL_IPC.getNotificationPreferences, event => {
     if (!mayAccessNotificationPreferences(shellRendererKind(event.sender))) return
-    return notificationPreferences
+    return state.notifications.preferences
   })
   ipcMain.handle(SHELL_IPC.updateNotificationPreferences, async (event, value: unknown) => {
     if (!mayAccessNotificationPreferences(shellRendererKind(event.sender))) return
-    notificationPreferences = await saveNotificationPreferences(notificationPreferencesPath(), value)
-    return notificationPreferences
+    state.notifications.preferences = await saveNotificationPreferences(notificationPreferencesPath(), value)
+    return state.notifications.preferences
   })
   ipcMain.handle(SHELL_IPC.getUpdatePreferences, event => {
     if (!mayAccessDesktopUpdates(shellRendererKind(event.sender))) return
-    return updatePreferences
+    return state.update.preferences
   })
   ipcMain.handle(SHELL_IPC.updateUpdatePreferences, async (event, value: unknown) => {
     if (!mayAccessDesktopUpdates(shellRendererKind(event.sender))) return
-    updatePreferences = await saveUpdatePreferences(updatePreferencesPath(), value)
-    if (shouldDownloadUpdateAutomatically(updatePreferences) && updateStatus.kind === 'available') {
+    state.update.preferences = await saveUpdatePreferences(updatePreferencesPath(), value)
+    if (shouldDownloadUpdateAutomatically(state.update.preferences) && state.update.status.kind === 'available') {
       runMainTask(downloadDesktopUpdate('settings'))
     }
-    return updatePreferences
+    return state.update.preferences
   })
   ipcMain.handle(SHELL_IPC.getDesktopUpdateState, event => {
     if (!mayAccessDesktopUpdates(shellRendererKind(event.sender))) return
@@ -1226,17 +1202,17 @@ function installShellIpc(): void {
   })
   ipcMain.handle(SHELL_IPC.closeDesktopSettings, event => {
     if (!mayCloseDesktopSettings(shellRendererKind(event.sender))) return
-    settingsWindow?.close()
+    state.windows.settingsWindow?.close()
   })
   ipcMain.removeAllListeners(SHELL_IPC.dshState)
-  ipcMain.on(SHELL_IPC.dshState, (event, state: Partial<DshNavigationState>) => {
+  ipcMain.on(SHELL_IPC.dshState, (event, navigation: Partial<DshNavigationState>) => {
     if (!mayReportDshState(shellRendererKind(event.sender))) return
-    if (typeof state !== 'object' || state === null) return
-    dshNavigationState = {
-      canBack: state.canBack === true,
-      canForward: state.canForward === true,
-      canNextChat: state.canNextChat === true,
-      canPreviousChat: state.canPreviousChat === true,
+    if (typeof navigation !== 'object' || navigation === null) return
+    state.shell.navigationState = {
+      canBack: navigation.canBack === true,
+      canForward: navigation.canForward === true,
+      canNextChat: navigation.canNextChat === true,
+      canPreviousChat: navigation.canPreviousChat === true,
     }
     broadcastShellState()
   })
@@ -1249,18 +1225,18 @@ function installShellIpc(): void {
   ipcMain.on(SHELL_IPC.dshLocale, (event, value: unknown) => {
     if (!mayReportDshLocale(shellRendererKind(event.sender))) return
     const locale = normalizeShellLocale(value)
-    if (locale === undefined || locale === activeDshLocale) return
-    activeDshLocale = locale
+    if (locale === undefined || locale === state.shell.locale) return
+    state.shell.locale = locale
     broadcastShellBootstrap()
-    updateUnreadCompletionBadge(unreadCompletionCount)
+    updateUnreadCompletionBadge(state.notifications.unreadCompletionCount)
   })
   ipcMain.removeAllListeners(SHELL_IPC.dshTheme)
   ipcMain.on(SHELL_IPC.dshTheme, (event, value: unknown) => {
     if (!mayReportDshTheme(shellRendererKind(event.sender))) return
     const snapshot = normalizeDesktopThemeSnapshot(value)
     if (snapshot === undefined) return
-    const colorSchemeChanged = snapshot.colorScheme !== activeDshColorScheme
-    const preferenceChanged = snapshot.preference !== undefined && snapshot.preference !== activeDshThemePreference
+    const colorSchemeChanged = snapshot.colorScheme !== state.shell.colorScheme
+    const preferenceChanged = snapshot.preference !== undefined && snapshot.preference !== state.shell.themePreference
     if (!colorSchemeChanged && !preferenceChanged) return
     applyDesktopTheme(snapshot.colorScheme, snapshot.preference)
     if (colorSchemeChanged) broadcastShellBootstrap()
@@ -1268,7 +1244,7 @@ function installShellIpc(): void {
   ipcMain.removeAllListeners(SHELL_IPC.dshSettingsVisibility)
   ipcMain.on(SHELL_IPC.dshSettingsVisibility, (event, value: unknown) => {
     if (!mayReportDshSettingsVisibility(shellRendererKind(event.sender))) return
-    dshSettingsDialogVisible = value === true
+    state.shell.settingsDialogVisible = value === true
   })
   ipcMain.removeAllListeners(SHELL_IPC.dshNotification)
   ipcMain.on(SHELL_IPC.dshNotification, (event, value: unknown) => {
@@ -1292,20 +1268,20 @@ function installShellIpc(): void {
 }
 
 function shellRendererKind(sender: WebContents): ShellRendererKind {
-  if (sender === mainWindow?.webContents) return 'main'
-  if (sender === shortcutsWindow?.webContents) return 'shortcuts'
-  if (sender === aboutWindow?.webContents) return 'about'
-  if (sender === settingsWindow?.webContents) return 'settings'
-  if (sender === dshView?.webContents) return 'dsh'
+  if (sender === state.windows.mainWindow?.webContents) return 'main'
+  if (sender === state.windows.shortcutsWindow?.webContents) return 'shortcuts'
+  if (sender === state.windows.aboutWindow?.webContents) return 'about'
+  if (sender === state.windows.settingsWindow?.webContents) return 'settings'
+  if (sender === state.windows.dshView?.webContents) return 'dsh'
   return 'unknown'
 }
 
 function isActionEnabled(id: ShellActionId): boolean {
-  if (id === 'reload') return !isRecycling && lastStartOptions !== undefined && lastSeedOptions !== undefined
-  if (id === 'back') return dshNavigationState.canBack
-  if (id === 'forward') return dshNavigationState.canForward
-  if (id === 'previous-chat') return dshNavigationState.canPreviousChat
-  if (id === 'next-chat') return dshNavigationState.canNextChat
+  if (id === 'reload') return !state.runtime.isRecycling && state.launch.lastStartOptions !== undefined && state.launch.lastSeedOptions !== undefined
+  if (id === 'back') return state.shell.navigationState.canBack
+  if (id === 'forward') return state.shell.navigationState.canForward
+  if (id === 'previous-chat') return state.shell.navigationState.canPreviousChat
+  if (id === 'next-chat') return state.shell.navigationState.canNextChat
   return true
 }
 
@@ -1313,7 +1289,7 @@ function popupShellMenu(request: ShellMenuPopupRequest): Promise<void> {
   return new Promise(resolve => {
     if (request === null || typeof request !== 'object') { resolve(); return }
     if (!Number.isFinite(request.x) || !Number.isFinite(request.y)) { resolve(); return }
-    const window = mainWindow
+    const window = state.windows.mainWindow
     if (window === undefined || window.isDestroyed()) { resolve(); return }
     const menuId = request.menu as ShellMenuId
     const actions = localizedShellActions(desktopLocale(), process.platform).filter(action => action.menu === menuId)
@@ -1368,7 +1344,7 @@ const DISMISS_DSH_SETTINGS_DIALOG_SCRIPT = `(() => {
 })()`
 
 function dismissDshSettingsDialog(): void {
-  const contents = dshView?.webContents
+  const contents = state.windows.dshView?.webContents
   if (contents === undefined || contents.isDestroyed()) return
   void contents.executeJavaScript(DISMISS_DSH_SETTINGS_DIALOG_SCRIPT).catch(() => undefined)
 }
@@ -1376,13 +1352,13 @@ function dismissDshSettingsDialog(): void {
 function installShortcutHandler(contents: Electron.WebContents): void {
   contents.on('before-input-event', (event, input: Input) => {
     if (input.type !== 'keyDown') return
-    const auxiliaryWindow = [shortcutsWindow, aboutWindow, settingsWindow].find(window => window?.webContents === contents)
+    const auxiliaryWindow = [state.windows.shortcutsWindow, state.windows.aboutWindow, state.windows.settingsWindow].find(window => window?.webContents === contents)
     const route = escapeRoute({
       key: input.key,
       isAuxiliaryWindow: auxiliaryWindow !== undefined,
-      isDesktopSettingsWindow: auxiliaryWindow === settingsWindow,
-      isMainShell: contents === mainWindow?.webContents,
-      isDshSettingsDialogVisible: dshSettingsDialogVisible,
+      isDesktopSettingsWindow: auxiliaryWindow === state.windows.settingsWindow,
+      isMainShell: contents === state.windows.mainWindow?.webContents,
+      isDshSettingsDialogVisible: state.shell.settingsDialogVisible,
     })
     if (route === 'close-auxiliary') {
       event.preventDefault()
@@ -1406,17 +1382,17 @@ function installShortcutHandler(contents: Electron.WebContents): void {
 }
 
 function sendDshAction(id: DshShellActionId): void {
-  if (dshView !== undefined && !dshView.webContents.isDestroyed()) dshView.webContents.send(SHELL_IPC.dshAction, id)
+  if (state.windows.dshView !== undefined && !state.windows.dshView.webContents.isDestroyed()) state.windows.dshView.webContents.send(SHELL_IPC.dshAction, id)
 }
 
 async function executeShellAction(id: ShellActionId): Promise<void> {
   if (!isActionEnabled(id)) return
-  const contents = dshView?.webContents
+  const contents = state.windows.dshView?.webContents
   if (id === 'new-chat' || id === 'open-folder' || id === 'settings' || id === 'toggle-sidebar' || id === 'find' || id === 'previous-chat' || id === 'next-chat' || id === 'back' || id === 'forward') {
     sendDshAction(id)
     return
   }
-  if (id === 'close-window') { mainWindow?.hide(); return }
+  if (id === 'close-window') { state.windows.mainWindow?.hide(); return }
   if (id === 'desktop-settings') { showDesktopSettingsWindow(); return }
   if (id === 'quit') { await requestQuit(); return }
   if (contents === undefined) return
@@ -1430,7 +1406,7 @@ async function executeShellAction(id: ShellActionId): Promise<void> {
   else if (id === 'zoom-in') contents.setZoomFactor(Math.min(2, contents.getZoomFactor() + 0.1))
   else if (id === 'zoom-out') contents.setZoomFactor(Math.max(0.5, contents.getZoomFactor() - 0.1))
   else if (id === 'zoom-reset') contents.setZoomFactor(1)
-  else if (id === 'toggle-fullscreen') mainWindow?.setFullScreen(!(mainWindow?.isFullScreen() ?? false))
+  else if (id === 'toggle-fullscreen') state.windows.mainWindow?.setFullScreen(!(state.windows.mainWindow?.isFullScreen() ?? false))
   else if (id === 'show-shortcuts') showShortcutsWindow()
   else if (id === 'reload') await recycleDshForPluginUpdate()
   else if (id === 'check-updates') await checkDesktopUpdate()
@@ -1443,14 +1419,14 @@ async function executeShellAction(id: ShellActionId): Promise<void> {
 /** Open the DSH terminal bound to the active profile directory with `dsh` on PATH. */
 function openDshTerminal(): void {
   try {
-    const profileDir = lastSeedOptions?.profileDir ?? resolveWebProfileDir()
+    const profileDir = state.launch.lastSeedOptions?.profileDir ?? resolveWebProfileDir()
     // The app launches DSH with DSH_HOME = the `.dsh` root two levels above the
     // profile dir (see startDsh). Mirror that so `dsh` resolves the same home.
-    const home = lastSeedOptions?.profileDir !== undefined ? resolve(profileDir, '..', '..') : app.getPath('home')
+    const home = state.launch.lastSeedOptions?.profileDir !== undefined ? resolve(profileDir, '..', '..') : app.getPath('home')
     const cwd = existsSync(profileDir) ? profileDir : existsSync(home) ? home : app.getPath('temp')
     // dsh CLI operates on the currently launched profile (the active profile).
-    const profileName = lastSeedOptions?.profileDir !== undefined
-      ? basename(lastSeedOptions.profileDir)
+    const profileName = state.launch.lastSeedOptions?.profileDir !== undefined
+      ? basename(state.launch.lastSeedOptions.profileDir)
       : readActiveProfile(launcherProfileRoots())
     const zh = isChineseLocale(desktopLocale())
 
@@ -1464,7 +1440,7 @@ function openDshTerminal(): void {
     const nodeBinDir = dirname(node)
     let entry: string | undefined
     const entryCandidates = [
-      lastSeedOptions?.desktopRuntimeDir,
+      state.launch.lastSeedOptions?.desktopRuntimeDir,
       profileDir,
     ].filter((dir): dir is string => dir !== undefined)
     for (const root of entryCandidates) {
@@ -1609,7 +1585,7 @@ function logTerminalError(detail: string): void {
 
 /** Restart the whole desktop application (clean shutdown, then relaunch). */
 async function restartDesktop(): Promise<void> {
-  if (isQuitting) return
+  if (state.runtime.isQuitting) return
   await shutdownDesktop(() => { app.relaunch(); app.exit() })
 }
 
@@ -1634,7 +1610,7 @@ async function createWebProfile(name: string): Promise<void> {
   assertProfileName(name)
   const roots = launcherProfileRoots()
   createProfileDirectory(roots, name)
-  const seed = lastSeedOptions
+  const seed = state.launch.lastSeedOptions
   if (seed === undefined) throw new Error('启动尚未完成，无法创建 profile。')
   // Reuse the current node/pnpm/store plumbing against the new profile dir.
   await seedBundledPlugins({ ...seed, profileDir: profileDirFor(roots.home, name) })
@@ -1684,16 +1660,16 @@ interface ProfileOperationView {
 
 /** Enter recovery isolation and restart DSH into the recovery window. */
 async function restartIntoRecoveryFromShell(): Promise<void> {
-  const profileDir = lastSeedOptions?.profileDir
-  const seedOptions = lastSeedOptions
-  if (profileDir === undefined || seedOptions === undefined || lastStartOptions === undefined) return
+  const profileDir = state.launch.lastSeedOptions?.profileDir
+  const seedOptions = state.launch.lastSeedOptions
+  if (profileDir === undefined || seedOptions === undefined || state.launch.lastStartOptions === undefined) return
   await enterRecoveryMode(profileDir, { force: true })
   await restartDshInRecoveryMode(profileDir)
 }
 
 /** Toggle DevTools on the DSH renderer (and the shell page when focused). */
 function toggleDeveloperTools(): void {
-  const contents = dshView?.webContents
+  const contents = state.windows.dshView?.webContents
   if (contents !== undefined && !contents.isDestroyed()) contents.toggleDevTools()
 }
 
@@ -1708,7 +1684,7 @@ function runShellTool(tool: ShellToolId): Promise<void> | undefined {
 
 /** Popup a native menu for a title-bar tool that exposes a small action menu. */
 async function popupShellTool(tool: ShellToolPopupId, x: number, y: number): Promise<void> {
-  const window = mainWindow
+  const window = state.windows.mainWindow
   if (window === undefined || window.isDestroyed()) return
   const zh = isChineseLocale(desktopLocale())
   const items: MenuItemConstructorOptions[] = []
@@ -1717,8 +1693,8 @@ async function popupShellTool(tool: ShellToolPopupId, x: number, y: number): Pro
   }
   if (tool === 'reload') {
     push(zh ? '重载' : 'Reload', isActionEnabled('reload'), () => executeShellAction('reload'))
-    push(zh ? '重启' : 'Restart', !isQuitting, () => restartDesktop())
-    push(zh ? '重启到恢复模式' : 'Restart in Recovery Mode', !isQuitting && lastSeedOptions !== undefined, () => restartIntoRecoveryFromShell())
+    push(zh ? '重启' : 'Restart', !state.runtime.isQuitting, () => restartDesktop())
+    push(zh ? '重启到恢复模式' : 'Restart in Recovery Mode', !state.runtime.isQuitting && state.launch.lastSeedOptions !== undefined, () => restartIntoRecoveryFromShell())
   } else {
     push(zh ? '切换开发者工具' : 'Toggle Developer Tools', true, () => toggleDeveloperTools())
   }
@@ -1791,11 +1767,11 @@ function ensureWindowsNotificationIdentity(): void {
 }
 
 function sendNotificationReplyToDsh(sessionId: string, text: string): void {
-  if (dshView === undefined || dshView.webContents.isDestroyed()) {
+  if (state.windows.dshView === undefined || state.windows.dshView.webContents.isDestroyed()) {
     showNotificationReplyError(sessionId)
     return
   }
-  dshView.webContents.send(SHELL_IPC.dshNotificationReply, { sessionId, text })
+  state.windows.dshView.webContents.send(SHELL_IPC.dshNotificationReply, { sessionId, text })
 }
 
 function installWindowsNotificationActivationHandler(): void {
@@ -1827,16 +1803,16 @@ function notificationCopy(event: DesktopNotificationEvent): { title: string; bod
 }
 
 function updateUnreadCompletionBadge(count: number): void {
-  unreadCompletionCount = count
-  if (process.platform === 'win32' && mainWindow !== undefined && !mainWindow.isDestroyed()) {
+  state.notifications.unreadCompletionCount = count
+  if (process.platform === 'win32' && state.windows.mainWindow !== undefined && !state.windows.mainWindow.isDestroyed()) {
     if (count === 0) {
-      mainWindow.setOverlayIcon(null, '')
+      state.windows.mainWindow.setOverlayIcon(null, '')
     } else {
       const iconPath = resolveTaskBadgeIconPath({ appPath: app.getAppPath(), isPackaged: app.isPackaged, resourcesPath: process.resourcesPath }, count)
       const overlay = nativeImage.createFromPath(iconPath)
       if (!overlay.isEmpty()) {
         const description = isChineseLocale(desktopLocale()) ? `${count} 个已完成任务` : `${count} completed tasks`
-        mainWindow.setOverlayIcon(overlay, description)
+        state.windows.mainWindow.setOverlayIcon(overlay, description)
       }
     }
   } else if (process.platform === 'darwin' || process.platform === 'linux') {
@@ -1846,25 +1822,25 @@ function updateUnreadCompletionBadge(count: number): void {
 }
 
 function dismissNotificationsForSession(sessionId: string): void {
-  for (const [id, notification] of activeNotifications) {
+  for (const [id, notification] of state.notifications.active) {
     if (!id.endsWith(`:${sessionId}`)) continue
     notification.close()
-    activeNotifications.delete(id)
+    state.notifications.active.delete(id)
   }
 }
 
 function focusMainWindowForNotification(): void {
   showMainWindow()
-  if (process.platform !== 'win32' || mainWindow === undefined) return
-  mainWindow.setAlwaysOnTop(true)
-  mainWindow.focus()
-  mainWindow.setAlwaysOnTop(false)
+  if (process.platform !== 'win32' || state.windows.mainWindow === undefined) return
+  state.windows.mainWindow.setAlwaysOnTop(true)
+  state.windows.mainWindow.focus()
+  state.windows.mainWindow.setAlwaysOnTop(false)
 }
 
 function openNotificationSession(sessionId: string): void {
   focusMainWindowForNotification()
-  if (dshView !== undefined && !dshView.webContents.isDestroyed()) {
-    dshView.webContents.send(SHELL_IPC.dshOpenSession, sessionId)
+  if (state.windows.dshView !== undefined && !state.windows.dshView.webContents.isDestroyed()) {
+    state.windows.dshView.webContents.send(SHELL_IPC.dshOpenSession, sessionId)
   }
 }
 
@@ -1872,28 +1848,28 @@ function showNotificationReplyError(sessionId: string): void {
   if (!Notification.isSupported()) return
   const zh = isChineseLocale(desktopLocale())
   const id = `reply-error:${sessionId}`
-  activeNotifications.get(id)?.close()
+  state.notifications.active.get(id)?.close()
   const notification = new Notification({
     title: zh ? '回复发送失败' : 'Reply not sent',
     body: zh ? '未能将回复发送到这个任务。请打开任务后重试。' : 'The reply could not be sent to this task. Open it and try again.',
     timeoutType: 'never',
   })
-  activeNotifications.set(id, notification)
+  state.notifications.active.set(id, notification)
   notification.on('click', () => {
     openNotificationSession(sessionId)
     dismissNotificationsForSession(sessionId)
   })
   notification.on('close', () => {
-    if (activeNotifications.get(id) === notification) activeNotifications.delete(id)
+    if (state.notifications.active.get(id) === notification) state.notifications.active.delete(id)
   })
   notification.show()
 }
 
 function showDesktopNotification(event: DesktopNotificationEvent): void {
   if (!Notification.isSupported()) return
-  if (!shouldShowDesktopNotification(event, notificationPreferences, mainWindow?.isFocused() ?? false)) return
+  if (!shouldShowDesktopNotification(event, state.notifications.preferences, state.windows.mainWindow?.isFocused() ?? false)) return
   const id = `${event.kind}:${event.sessionId}`
-  activeNotifications.get(id)?.close()
+  state.notifications.active.get(id)?.close()
   const copy = notificationCopy(event)
   const supportsReply = event.kind !== 'approval' && (process.platform === 'win32' || process.platform === 'darwin')
   const zh = isChineseLocale(desktopLocale())
@@ -1919,7 +1895,7 @@ function showDesktopNotification(event: DesktopNotificationEvent): void {
     } : {}),
     ...(event.kind === 'turn-complete' ? {} : { timeoutType: 'never' }),
   })
-  activeNotifications.set(id, notification)
+  state.notifications.active.set(id, notification)
   notification.on('click', () => {
     openNotificationSession(event.sessionId)
     dismissNotificationsForSession(event.sessionId)
@@ -1932,7 +1908,7 @@ function showDesktopNotification(event: DesktopNotificationEvent): void {
     })
   }
   notification.on('close', () => {
-    if (activeNotifications.get(id) === notification) activeNotifications.delete(id)
+    if (state.notifications.active.get(id) === notification) state.notifications.active.delete(id)
   })
   notification.show()
 }
@@ -1954,41 +1930,41 @@ function preventWindowsOwnedWindowFlash(window: BrowserWindow): void {
 }
 
 function showDesktopSettingsWindow(section: DesktopSettingsSection = 'notifications'): void {
-  if (settingsWindow !== undefined && !settingsWindow.isDestroyed()) {
-    settingsWindow.show()
-    settingsWindow.focus()
-    settingsWindow.webContents.send(SHELL_IPC.settingsSection, section)
+  if (state.windows.settingsWindow !== undefined && !state.windows.settingsWindow.isDestroyed()) {
+    state.windows.settingsWindow.show()
+    state.windows.settingsWindow.focus()
+    state.windows.settingsWindow.webContents.send(SHELL_IPC.settingsSection, section)
     return
   }
   const window = new BrowserWindow({
-    parent: mainWindow,
+    parent: state.windows.mainWindow,
     width: 760,
     height: 620,
     minWidth: 680,
     minHeight: 540,
     title: desktopText('桌面端设置', 'Desktop Settings'),
     autoHideMenuBar: true,
-    backgroundColor: DESKTOP_THEME_PALETTES[activeDshColorScheme].settingsBackground,
+    backgroundColor: DESKTOP_THEME_PALETTES[state.shell.colorScheme].settingsBackground,
     webPreferences: { contextIsolation: true, nodeIntegration: false, preload: resolvePreload('shell-preload.cjs'), sandbox: true },
   })
   removeNativeWindowMenu(window)
   preventWindowsOwnedWindowFlash(window)
-  settingsWindow = window
-  window.on('closed', () => { if (settingsWindow === window) settingsWindow = undefined })
+  state.windows.settingsWindow = window
+  window.on('closed', () => { if (state.windows.settingsWindow === window) state.windows.settingsWindow = undefined })
   installShortcutHandler(window.webContents)
   window.webContents.once('did-finish-load', () => {
     window.webContents.send(SHELL_IPC.settingsSection, section)
     window.webContents.send(SHELL_IPC.desktopUpdateState, desktopUpdateSnapshot())
   })
-  runMainTask(window.loadFile(resolveShellAsset('settings.html'), { query: { theme: activeDshColorScheme } }))
+  runMainTask(window.loadFile(resolveShellAsset('settings.html'), { query: { theme: state.shell.colorScheme } }))
 }
 
 function showShortcutsWindow(): void {
-  if (shortcutsWindow !== undefined && !shortcutsWindow.isDestroyed()) {
-    shortcutsWindow.show(); shortcutsWindow.focus(); return
+  if (state.windows.shortcutsWindow !== undefined && !state.windows.shortcutsWindow.isDestroyed()) {
+    state.windows.shortcutsWindow.show(); state.windows.shortcutsWindow.focus(); return
   }
   const window = new BrowserWindow({
-    parent: mainWindow,
+    parent: state.windows.mainWindow,
     modal: true,
     width: 620,
     height: 650,
@@ -1996,26 +1972,26 @@ function showShortcutsWindow(): void {
     minHeight: 480,
     title: desktopText('键盘快捷键', 'Keyboard Shortcuts'),
     autoHideMenuBar: true,
-    backgroundColor: DESKTOP_THEME_PALETTES[activeDshColorScheme].shortcutsBackground,
+    backgroundColor: DESKTOP_THEME_PALETTES[state.shell.colorScheme].shortcutsBackground,
     webPreferences: { contextIsolation: true, nodeIntegration: false, preload: resolvePreload('shell-preload.cjs'), sandbox: true },
   })
   removeNativeWindowMenu(window)
   preventWindowsOwnedWindowFlash(window)
-  shortcutsWindow = window
-  window.on('closed', () => { if (shortcutsWindow === window) shortcutsWindow = undefined })
+  state.windows.shortcutsWindow = window
+  window.on('closed', () => { if (state.windows.shortcutsWindow === window) state.windows.shortcutsWindow = undefined })
   installShortcutHandler(window.webContents)
-  runMainTask(window.loadFile(resolveShellAsset('shortcuts.html'), { query: { theme: activeDshColorScheme } }))
+  runMainTask(window.loadFile(resolveShellAsset('shortcuts.html'), { query: { theme: state.shell.colorScheme } }))
 }
 
 function showAboutWindow(): void {
-  if (aboutWindow !== undefined && !aboutWindow.isDestroyed()) {
-    aboutWindow.show()
-    aboutWindow.focus()
+  if (state.windows.aboutWindow !== undefined && !state.windows.aboutWindow.isDestroyed()) {
+    state.windows.aboutWindow.show()
+    state.windows.aboutWindow.focus()
     return
   }
   const icon = resolveWindowIconImage()
   const window = new BrowserWindow({
-    parent: mainWindow,
+    parent: state.windows.mainWindow,
     modal: true,
     width: 560,
     height: 680,
@@ -2030,16 +2006,16 @@ function showAboutWindow(): void {
     fullscreenable: false,
     title: desktopText(`关于 ${DESKTOP_APP_NAME}`, `About ${DESKTOP_APP_NAME}`),
     autoHideMenuBar: true,
-    backgroundColor: DESKTOP_THEME_PALETTES[activeDshColorScheme].aboutBackground,
+    backgroundColor: DESKTOP_THEME_PALETTES[state.shell.colorScheme].aboutBackground,
     ...(icon === undefined ? {} : { icon }),
     webPreferences: { contextIsolation: true, nodeIntegration: false, preload: resolvePreload('shell-preload.cjs'), sandbox: true },
   })
   removeNativeWindowMenu(window)
   preventWindowsOwnedWindowFlash(window)
-  aboutWindow = window
-  window.on('closed', () => { if (aboutWindow === window) aboutWindow = undefined })
+  state.windows.aboutWindow = window
+  window.on('closed', () => { if (state.windows.aboutWindow === window) state.windows.aboutWindow = undefined })
   installShortcutHandler(window.webContents)
-  runMainTask(window.loadFile(resolveShellAsset('about.html'), { query: { theme: activeDshColorScheme } }))
+  runMainTask(window.loadFile(resolveShellAsset('about.html'), { query: { theme: state.shell.colorScheme } }))
 }
 
 function configureDesktopUpdater(): void {
@@ -2063,17 +2039,17 @@ function configureDesktopUpdater(): void {
 }
 
 function scheduleStartupUpdateCheck(): void {
-  if (startupUpdateTimer !== undefined || !shouldCheckForUpdatesOnStartup(updatePreferences, app.isPackaged)) return
-  startupUpdateTimer = setTimeout(() => {
-    startupUpdateTimer = undefined
-    if (!isQuitting && shouldCheckForUpdatesOnStartup(updatePreferences, app.isPackaged)) {
+  if (state.update.startupUpdateTimer !== undefined || !shouldCheckForUpdatesOnStartup(state.update.preferences, app.isPackaged)) return
+  state.update.startupUpdateTimer = setTimeout(() => {
+    state.update.startupUpdateTimer = undefined
+    if (!state.runtime.isQuitting && shouldCheckForUpdatesOnStartup(state.update.preferences, app.isPackaged)) {
       runMainTask(checkDesktopUpdate('background'))
     }
   }, STARTUP_UPDATE_CHECK_DELAY_MS)
 }
 
 function createTray(): void {
-  if (tray !== undefined) {
+  if (state.runtime.tray !== undefined) {
     refreshTrayMenu()
     return
   }
@@ -2089,27 +2065,27 @@ function createTray(): void {
         .crop(resolveCompactIconCrop(source.getSize()))
         .resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE, quality: 'best' })
   try {
-    tray = new Tray(icon)
+    state.runtime.tray = new Tray(icon)
   } catch {
     return
   }
-  tray.on('click', () => showMainWindow())
+  state.runtime.tray.on('click', () => showMainWindow())
   refreshTrayMenu()
 }
 
 function refreshTrayMenu(): void {
-  if (tray === undefined) return
-  const badgeSuffix = unreadCompletionCount > 0
-    ? (isChineseLocale(desktopLocale()) ? ` · ${unreadCompletionCount} 个已完成任务` : ` · ${unreadCompletionCount} completed tasks`)
+  if (state.runtime.tray === undefined) return
+  const badgeSuffix = state.notifications.unreadCompletionCount > 0
+    ? (isChineseLocale(desktopLocale()) ? ` · ${state.notifications.unreadCompletionCount} 个已完成任务` : ` · ${state.notifications.unreadCompletionCount} completed tasks`)
     : ''
-  tray.setToolTip(DESKTOP_APP_NAME + badgeSuffix)
+  state.runtime.tray.setToolTip(DESKTOP_APP_NAME + badgeSuffix)
   const items = buildDesktopTrayItems({
-    status: updateStatus,
+    status: state.update.status,
     currentVersion: app.getVersion(),
     packaged: app.isPackaged,
     locale: desktopLocale(),
   })
-  tray.setContextMenu(Menu.buildFromTemplate(items.map(item => {
+  state.runtime.tray.setContextMenu(Menu.buildFromTemplate(items.map(item => {
     if (item.type === 'separator') return { type: 'separator' }
     return {
       label: item.label,
@@ -2148,7 +2124,7 @@ async function handleTrayUpdateAction(id: string): Promise<void> {
 type DesktopUpdateInteraction = 'interactive' | 'background' | 'settings'
 
 async function checkDesktopUpdate(interaction: DesktopUpdateInteraction = 'interactive'): Promise<void> {
-  if (updateStatus.kind === 'checking' || updateStatus.kind === 'downloading') return
+  if (state.update.status.kind === 'checking' || state.update.status.kind === 'downloading') return
   if (!app.isPackaged) {
     if (interaction === 'interactive') {
       await dialog.showMessageBox({
@@ -2178,7 +2154,7 @@ async function checkDesktopUpdate(interaction: DesktopUpdateInteraction = 'inter
     const available: Extract<DesktopUpdateStatus, { kind: 'available' }> = { kind: 'available', version, releaseNotes: formatDesktopReleaseNotes(result?.updateInfo.releaseNotes) }
     setDesktopUpdateStatus(available, true)
     if (interaction === 'background') {
-      if (shouldDownloadUpdateAutomatically(updatePreferences)) await downloadDesktopUpdate('background')
+      if (shouldDownloadUpdateAutomatically(state.update.preferences)) await downloadDesktopUpdate('background')
       else showDesktopUpdateNotification('available', version)
       return
     }
@@ -2206,8 +2182,8 @@ async function checkDesktopUpdate(interaction: DesktopUpdateInteraction = 'inter
 }
 
 async function downloadDesktopUpdate(interaction: DesktopUpdateInteraction = 'interactive'): Promise<void> {
-  if (updateStatus.kind !== 'available') return
-  const version = updateStatus.version
+  if (state.update.status.kind !== 'available') return
+  const version = state.update.status.version
   setDesktopUpdateStatus({ kind: 'downloading', percent: 0 })
   try {
     await autoUpdater.downloadUpdate()
@@ -2249,8 +2225,8 @@ async function handleDesktopUpdateSettingsAction(action: DesktopUpdateAction): P
 const DESKTOP_UPDATE_NOTIFICATION_ID = 'desktop-update'
 
 function dismissDesktopUpdateNotification(): void {
-  activeNotifications.get(DESKTOP_UPDATE_NOTIFICATION_ID)?.close()
-  activeNotifications.delete(DESKTOP_UPDATE_NOTIFICATION_ID)
+  state.notifications.active.get(DESKTOP_UPDATE_NOTIFICATION_ID)?.close()
+  state.notifications.active.delete(DESKTOP_UPDATE_NOTIFICATION_ID)
 }
 
 function showDesktopUpdateNotification(kind: 'available' | 'ready', version: string): void {
@@ -2264,13 +2240,13 @@ function showDesktopUpdateNotification(kind: 'available' | 'ready', version: str
       : desktopText(`发现桌面端 ${version}，点击查看更新。`, `Desktop ${version} is available. Click to review the update.`),
     ...(icon === undefined ? {} : { icon }),
   })
-  activeNotifications.set(DESKTOP_UPDATE_NOTIFICATION_ID, notification)
+  state.notifications.active.set(DESKTOP_UPDATE_NOTIFICATION_ID, notification)
   notification.on('click', () => {
     showDesktopSettingsWindow('updates')
     dismissDesktopUpdateNotification()
   })
   notification.on('close', () => {
-    if (activeNotifications.get(DESKTOP_UPDATE_NOTIFICATION_ID) === notification) activeNotifications.delete(DESKTOP_UPDATE_NOTIFICATION_ID)
+    if (state.notifications.active.get(DESKTOP_UPDATE_NOTIFICATION_ID) === notification) state.notifications.active.delete(DESKTOP_UPDATE_NOTIFICATION_ID)
   })
   notification.show()
 }
@@ -2280,8 +2256,8 @@ async function installDesktopUpdate(): Promise<void> {
 }
 
 function showMainWindow(): void {
-  if (mainWindow === undefined) return
-  if (mainWindow.isMinimized()) mainWindow.restore()
-  mainWindow.show()
-  mainWindow.focus()
+  if (state.windows.mainWindow === undefined) return
+  if (state.windows.mainWindow.isMinimized()) state.windows.mainWindow.restore()
+  state.windows.mainWindow.show()
+  state.windows.mainWindow.focus()
 }

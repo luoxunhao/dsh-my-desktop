@@ -29,13 +29,72 @@
 
 **Blocked by:** 02 — 建分层目录 + 纯移动
 
-**Status:** ready-for-agent
+**Status:** done — 见下方「执行结果」
 
-- [ ] 定义可变 store 及其分子域（窗口 / 运行时 / 启动 / 更新 / 壳 / 通知 / 恢复 / 诊断 / 窗口装饰）
-- [ ] store 在 IPC 注册之前创建，且为 `async`（偏好加载先于注册）
-- [ ] 39 个模块级可变变量全部搬入 store，原 `let` 声明删除
-- [ ] 各模块签名只声明自己需要的字段（窄接口 / `Pick`），不使用统一的宽类型
-- [ ] 三个"非状态"绑定不进入 store（见上）
-- [ ] `check:all` 通过、全量测试仍为 326 / 320 / 5
-- [ ] `dist-local` 出包成功，且**打包产物哈希与 01 基线逐字节一致**
-- [ ] 人工启动应用确认窗口正常显示、顶栏可用（晚绑定若出错会在这里暴露）
+- [x] 定义可变 store 及其分子域：`windows` / `runtime` / `launch` / `update` / `shell` /
+      `notifications` / `recovery` / `diagnostics` / `chrome`（`src/desktop/desktop-state.ts`）
+- [x] store 在 IPC 注册之前创建；偏好加载先于创建（出厂函数改为**同步**并接收已加载的偏好，
+      见下方说明）
+- [x] 39 个模块级 `let` 全部搬入 store + `activeNotifications` Map；`main.ts` 仅剩
+      `let state: DesktopState` 一处声明
+- [ ] **窄接口签名：部分完成**（见下方「未完成项」）
+- [x] 三个"非状态"绑定不进入 store（已逐项验证：`windowNavigation` / `shellActionIds` /
+      `dshProcessModule` 均仅在 main.ts）
+- [x] `check:all` 通过、全量测试 **327 / 321 / 5**（与 01 基线一致，无新增失败）
+- [x] `dist-local` 出包成功；插件哈希与基线一致，bridge **14/15 一致**
+- [ ] 人工启动应用确认 —— **待用户执行**（agent 无法启动 Electron）
+
+## 执行结果
+
+### 实现方式
+
+`createDesktopState()` 是**同步**工厂，接收调用方已加载的偏好：
+
+```ts
+const notificationPreferences = await loadNotificationPreferences(...)
+const updatePreferences = await loadUpdatePreferences(...)
+state = createDesktopState({ notificationPreferences, updatePreferences,
+                             initialColorScheme, NotificationCtor })
+installShellIpc()
+```
+
+这样保持了「偏好加载 → 建 store → 注册 IPC」的顺序，同时让工厂本身保持简单。
+`initialColorScheme` 与 `NotificationCtor` 也是注入的——否则该模块会在 import 时
+依赖 Electron，而测试环境无法加载 Electron（`vm` scope 里是 stub）。
+
+### 可变性设计（关键约束的落实）
+
+`DesktopState` 的分组引用是 `readonly`，**但字段本身是可变的普通属性**，无 getter：
+
+```ts
+readonly windows: WindowsState        // 分组引用不可换
+  mainWindow: BrowserWindow | undefined   // 字段可写 —— 晚绑定所必需
+```
+
+已确认无 getter（`get` 计数为 0）。`??=` 仍可用于 `state.windows.mainWindow`，
+与重构前语义一致。
+
+### 未完成项：窄接口签名
+
+ticket 要求「各模块签名只声明自己需要的字段」。**目前只完成了 store 侧**——所有状态访问
+统一为 `state.<group>.<field>`；但**消费者侧仍是 `main.ts` 单文件内的自由函数**，它们直接
+闭包引用模块级 `state`，还没有自己的签名可声明。
+
+窄接口是**模块抽取时**才能落地的：只有当 `openDshTerminal` 被移到独立模块，它才需要一个
+接收 1 个字段的 deps 参数。因此这条留到 ticket 04~07 落实，届时按 plan 的实测数据
+（terminal 1 组、profiles-ipc 2 组、shell-ipc/window 9 组）逐个收窄。
+
+### 产物哈希
+
+插件 2/2 与基线一致。bridge 15 个文件中 14 个一致，仅 `desktop-host.js` 不同——已确认该差异
+来自 **ticket 02**（dev 模式改读 `dist/bridge-flat`），本次 ticket 03 未触碰该文件。
+
+### 过程中修正的问题
+
+机械重写脚本产生了几类错误，均已修复：
+1. 简写对象属性 `{ isQuitting }` 被改成 `{ state.runtime.isQuitting }`（非法语法）
+2. 局部变量 `state`（`currentShellState()` 的返回值、IPC payload 参数）与 store 同名冲突
+3. 二次遍历导致 `state.runtime.state.runtime...` 双重前缀（155 处）
+4. 分组名与字段名相同的重复：`state.chrome.chrome.cachedWindowIcon`（2 处）
+5. `Notification` 误用 DOM 类型而非 Electron 类型
+
