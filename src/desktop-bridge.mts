@@ -20,6 +20,37 @@ export function apply(ctx: CordisLike): void {
   const pnpmEntry = process.env.DSH_PNPM_ENTRY
   if (!pnpmEntry || !existsSync(pnpmEntry)) return
   const profileDir = process.env.DSH_PROFILE_DIR ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles', 'web')
+
+  // 子进程 → 主进程的 profile 操作请求/应答通道：delete 必须等主进程真正删完目录，
+  // 下一次 read() 才不会读到残留。
+  const pending = new Map<string, { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+  const onMessage = (message: unknown): void => {
+    if (typeof message !== 'object' || message === null) return
+    const record = message as Record<string, unknown>
+    if (record.type !== 'desktop/profile/result' || typeof record.requestId !== 'string') return
+    const entry = pending.get(record.requestId)
+    if (entry === undefined) return
+    pending.delete(record.requestId)
+    clearTimeout(entry.timer)
+    if (record.ok === true) entry.resolve()
+    else entry.reject(new Error(typeof record.error === 'string' ? record.error : 'profile operation failed'))
+  }
+  process.on('message', onMessage)
+  const request = (message: { requestId: string }, timeoutMs = 60_000): Promise<void> => new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pending.delete(message.requestId)
+      reject(new Error('profile operation timed out'))
+    }, timeoutMs)
+    pending.set(message.requestId, { resolve, reject, timer })
+    try {
+      process.send?.(message)
+    } catch (error) {
+      pending.delete(message.requestId)
+      clearTimeout(timer)
+      reject(error instanceof Error ? error : new Error(String(error)))
+    }
+  })
+
   const host = createDesktopHostServices({
     profileName: process.env.DSH_PROFILE_NAME ?? 'web',
     profileDir,
@@ -29,6 +60,7 @@ export function apply(ctx: CordisLike): void {
     },
     ...(process.env.DSH_RUNTIME_DIR === undefined ? {} : { desktopRuntimeDir: process.env.DSH_RUNTIME_DIR }),
     send: typeof process.send === 'function' ? process.send.bind(process) : undefined,
+    request: (message, timeoutMs) => request(message, timeoutMs),
   })
 
   // 运行标记，便于诊断桥是否执行到 provide。

@@ -16,6 +16,8 @@ const forcedShutdownDeadlineMs = 2_000
 export interface DshServer {
   stop: () => Promise<void>
   url: string
+  /** Send a message to the DSH child over its IPC channel (no-op if closed). */
+  send: (message: unknown) => void
 }
 
 export interface StartDshOptions {
@@ -142,6 +144,13 @@ function createServer(child: ChildProcess, url: string, onUnexpectedExit?: (mess
 
   return {
     url,
+    send: (message: unknown) => {
+      if (child.connected && typeof child.send === 'function') {
+        // The IPC channel only carries serializable values; callers pass plain
+        // JSON-shaped messages (profile/action requests and results).
+        child.send(message as Parameters<ChildProcess['send']>[0], () => { /* ignore a closed-channel callback error */ })
+      }
+    },
     stop: () => {
       stopping = true
       stopPromise ??= stopChild(child)

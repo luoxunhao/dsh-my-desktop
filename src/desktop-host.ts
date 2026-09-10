@@ -34,26 +34,50 @@ export interface DesktopHostOptions {
   isInstalled?: (packageName: string) => boolean
   /** Registry roots used to list/create/select/delete profiles. */
   profileRoots?: { home: string; stateDir: string }
+  /**
+   * Request/response channel to the Electron main for profile operations.
+   * Resolves once main has finished the operation (so a delete is reflected by
+   * the next `list()`). When absent, operations fall back to fire-and-forget.
+   */
+  request?: (message: DesktopProfileActionMessage, timeoutMs?: number) => Promise<void>
 }
 
 /**
  * Child→main request telling the Electron main to perform a profile operation
  * that must own the filesystem seed and/or relaunch (create seeds the new dir,
- * select persists active + relaunches, delete removes a dir). Fire-and-forget:
- * main runs the operation in the background.
+ * select persists active + relaunches, delete removes a dir). Main replies with
+ * {@link DesktopProfileResultMessage} carrying the same `requestId`, so the
+ * child can await completion (a delete must be finished before the next read).
  */
 export type DesktopProfileActionMessage =
-  | { type: 'desktop/profile/create'; name: string }
-  | { type: 'desktop/profile/select'; name: string }
-  | { type: 'desktop/profile/delete'; name: string }
+  | { type: 'desktop/profile/create'; requestId: string; name: string }
+  | { type: 'desktop/profile/select'; requestId: string; name: string }
+  | { type: 'desktop/profile/delete'; requestId: string; name: string }
+
+/** Main→child reply for one profile operation. */
+export interface DesktopProfileResultMessage {
+  readonly type: 'desktop/profile/result'
+  readonly requestId: string
+  readonly ok: boolean
+  readonly error?: string
+}
 
 export function isDesktopProfileActionMessage(value: unknown): value is DesktopProfileActionMessage {
   if (typeof value !== 'object' || value === null) return false
   const message = value as Record<string, unknown>
   if (message.type === 'desktop/profile/create' || message.type === 'desktop/profile/select' || message.type === 'desktop/profile/delete') {
     return typeof message.name === 'string' && isSafeProfileName(message.name)
+      && typeof message.requestId === 'string' && message.requestId.length > 0
   }
   return false
+}
+
+export function isDesktopProfileResultMessage(value: unknown): value is DesktopProfileResultMessage {
+  if (typeof value !== 'object' || value === null) return false
+  const message = value as Record<string, unknown>
+  return message.type === 'desktop/profile/result'
+    && typeof message.requestId === 'string' && message.requestId.length > 0
+    && typeof message.ok === 'boolean'
 }
 
 /** Renderer-safe profile projection consumed by the settings section. */
@@ -230,10 +254,20 @@ export function createDesktopHostServices(options: DesktopHostOptions) {
     stateDir: dirname(options.profileDir),
   })
   const activeName = readActiveProfile(roots)
-  const emitProfileAction = (message: DesktopProfileActionMessage): void => {
-    // Fire-and-forget to the Electron main; select triggers a relaunch so no
-    // reply is needed, and create/delete are reflected by the next read().
-    options.send?.(message)
+  let requestSeq = 0
+  const nextRequestId = (): string => `p${String(++requestSeq)}-${Date.now().toString(36)}`
+  /** Run a profile op via main; falls back to fire-and-forget without a channel. */
+  const runProfileOp = async (
+    type: DesktopProfileActionMessage['type'],
+    name: string,
+  ): Promise<void> => {
+    assertProfileName(name)
+    if (options.request !== undefined) {
+      await options.request({ type, requestId: nextRequestId(), name } as DesktopProfileActionMessage)
+      return
+    }
+    // Legacy fire-and-forget (no reply channel available).
+    options.send?.({ type, requestId: nextRequestId(), name })
   }
   return {
     desktopProfiles: {
@@ -245,22 +279,21 @@ export function createDesktopHostServices(options: DesktopHostOptions) {
       },
       active: activeName,
       list() {
-        return listProfiles(roots, activeName).map((profile) => toDesktopProfileBridgeView(profile, activeName))
+        // Re-read the active profile so a switch performed by main is reflected.
+        const active = readActiveProfile(roots)
+        return listProfiles(roots, active).map((profile) => toDesktopProfileBridgeView(profile, active))
       },
       async create(name: string) {
-        assertProfileName(name)
-        emitProfileAction({ type: 'desktop/profile/create', name })
+        await runProfileOp('desktop/profile/create', name)
       },
       async select(name: string) {
-        assertProfileName(name)
-        emitProfileAction({ type: 'desktop/profile/select', name })
+        await runProfileOp('desktop/profile/select', name)
       },
       async delete(name: string) {
-        assertProfileName(name)
-        emitProfileAction({ type: 'desktop/profile/delete', name })
+        await runProfileOp('desktop/profile/delete', name)
       },
       canDelete(name: string) {
-        return isSafeProfileName(name) && name !== activeName
+        return isSafeProfileName(name) && name !== readActiveProfile(roots)
       },
     },
     desktopPnpm: {

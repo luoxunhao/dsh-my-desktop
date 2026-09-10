@@ -669,15 +669,26 @@ function handleDshIpc(message: unknown): void {
     return
   }
   // Profile create/select/delete requested by the in-profile settings section.
+  const requestId = message.requestId
+  const reply = (ok: boolean, error?: string): void => {
+    server?.send({ type: 'desktop/profile/result', requestId, ok, ...(error === undefined ? {} : { error }) })
+  }
   runMainTask((async () => {
-    if (message.type === 'desktop/profile/create') {
-      await createWebProfile(message.name)
-      console.log(`已创建 profile：${message.name}`)
-    } else if (message.type === 'desktop/profile/select') {
-      await switchWebProfile(message.name)
-    } else if (message.type === 'desktop/profile/delete') {
-      deleteWebProfile(message.name)
-      console.log(`已删除 profile：${message.name}`)
+    try {
+      if (message.type === 'desktop/profile/create') {
+        await createWebProfile(message.name)
+        console.log(`已创建 profile：${message.name}`)
+      } else if (message.type === 'desktop/profile/select') {
+        await switchWebProfile(message.name)
+      } else if (message.type === 'desktop/profile/delete') {
+        deleteWebProfile(message.name)
+        console.log(`已删除 profile：${message.name}`)
+      }
+      reply(true)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      console.error(`profile 操作失败：${detail}`)
+      reply(false, detail)
     }
   })())
 }
