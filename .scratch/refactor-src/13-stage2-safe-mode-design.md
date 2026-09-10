@@ -172,3 +172,147 @@ Safe Mode 下我们要覆盖哪些设置时，再按我们的设置模型定义�
 - 全量测试基线不破（当前 341 / 335 / 5）
 - 新增 safe-mode 用例全绿
 - **不做** `dist-local` 出包（本阶段无调用方，出包无验证价值；接入后才需要）
+
+---
+
+## 六、实施结果（已完成）
+
+`src/recovery/safe-mode.ts`（约 200 行）+ `test/safe-mode.test.ts`（13 条）。
+全量测试 **354 / 348 / 5**（新增 13 条，5 项已知缺口不变），`check:all` 通过。
+
+### 6.1 移植的函数
+
+`DESKTOP_SAFE_MODE_PROFILE_NAME`、`desktopSafeModePaths`、
+`cleanupDesktopSafeModeEnvironment`、`resetDesktopSafeModeEnvironment`、
+`ensureDesktopSafeModeEnvironment`、`prepareDesktopSafeModeEnvironment`
+（全部与参考实现同名），外加一个便于调用的 `desktopSafeModeProfileDir`。
+
+`prepareDesktopSafeModeEnvironment` 适配了我们的 profile API：
+`createProfileDirectory(roots, name)` + `writeActiveProfile(roots, name)`。
+实测确认它建出 profile（含 `package.json` 等声明式文件）并把隔离注册表指向
+`desktop-safe-mode`。**注意：依赖尚未 seed**（见 6.4 缺陷 2），seed 需要 `desktopRuntimeDir`
+等启动期信息，属阶段 5。
+
+### 6.2 ⚠️ 一次「反向验证失败」的如实记录
+
+按 TDD 纪律我做了变异测试：删掉实现里的安全检查，看测试是否会失败。
+**第一轮两个变异都没被测试抓住**，追查后发现两个不同原因：
+
+**变异 1（去掉 `isRealDirectory` 的 `!isSymbolicLink()`）——测试通过，但原因不是缺陷。**
+
+原因：`ensure` 的判定是 `isRealDirectory(rootDir) && validMarker && ...` 的**与**关系。
+我最初的测试里，符号链接目标**没有** `environment.json`，所以 `validMarker` 本就会失败、
+`ensure` 本就会重建——**符号链接这条路径根本没被走到**，测试是"因为别的原因通过"的。
+
+修正：让链接目标变成一个**完整可采纳的环境**（正确版本的 marker + 两个子目录），
+这样唯一的拒绝理由就是符号链接本身。
+
+**变异 2（去掉 `removeSafeModeEntry` 的 `isSymbolicLink()`）——测试仍然通过，这次是
+平台语义导致的。**
+
+实测确认：**Windows 上 junction 的 `lstatSync().isDirectory()` 返回 `false`**，
+所以即使删掉显式的符号链接判断，它也会落到 `unlinkSync` 分支、不会递归穿透。
+而真正的目录符号链接在 Windows 上**无法创建**（`EPERM`，需提权）。
+
+**结论：这个显式判断在当前平台上测不到（unreachable），它真正保护的是 POSIX** ——
+在 POSIX 上目录符号链接的 `isDirectory()` 为 `true`，没有该判断就会被递归进去。
+
+处理方式：**不假装它被测试覆盖**，而是新增一条测试把平台事实**断言下来**
+（`isSymbolicLink()===true` 且 Windows 下 `isDirectory()===false`），
+并在注释里写明「别因为测试全绿就把这个判断删掉」。这样后来者不会误删一个
+在 Linux/macOS 上真正救命的检查。
+
+同时把「rootDir 是符号链接」那条测试的注释改为如实描述：它**固定的是可观测契约**，
+而保护由两个机制共同提供（纵深防御），去掉任一个单测仍会通过。
+
+### 6.3 仍然有效的两条边界
+
+- **rootDir 是符号链接 → 绝不采纳**（`ensure` 会重建为真实目录）
+- **清理遇到符号链接 → unlink，不递归进目标**
+
+两条都由测试固定其**可观测结果**（受害者文件存活、rootDir 不再是链接）。
+
+### 6.4 代码评审发现的两个真实缺陷（已修）
+
+对阶段 2 做了双轴评审（Standards + Spec 并行子代理）。Spec 轴抓到一个
+**会让整个功能静默失效**的缺陷，我实测确认后修复。
+
+#### 缺陷 1（HIGH，已修）：隔离在真实启动路径上被完全绕过
+
+原来 `prepareDesktopSafeModeEnvironment` 是这样写的：
+
+```ts
+const roots = resolveProfileRoots({ stateDir: paths.userDataDir, home: paths.homeDir })
+```
+
+**问题**：真实启动器（`main.ts:319`）是这样解析的 ——
+
+```ts
+resolveProfileRoots({ stateDir: app.getPath('userData') })   // 不传 home！
+```
+
+不传 `home` 时，`resolveProfileRoots` 回退到
+`process.env.DSH_HOME ?? ~/.dsh`。所以真实启动时会解析到**真实的 `~/.dsh`**，
+读到（或不读到）隔离注册表后选中**真实的 profile** —— 隔离被完全绕过，
+正是本功能最不能发生的事。
+
+**实测证据**（修复前）：
+
+```
+真实启动器 home:     C:\Users\admin\.dsh          ← 逃出隔离
+真实启动器选中的 profile: web                      ← 真实 profile
+隔离环境本意应在: <ud>\safe-mode\dsh-home\profiles\desktop-safe-mode
+```
+
+**为什么测试没抓住**：我原来的测试直接断言
+`<stateDir>/profile-registry.json` 存在且 `active === 'desktop-safe-mode'`，
+而 `writeActiveProfile` 确实是写到那里的——**测试断言的是实现，而不是启动器的
+真实解析路径**，所以它天然为绿。
+
+**修复**：`prepare` 在解析 roots **之前**设置 `process.env.DSH_HOME = paths.homeDir`，
+使任何后续 `resolveProfileRoots()`（传不传 `home`）都落在隔离边界内。
+并新增回归测试**按启动器的方式**调用 `resolveProfileRoots({ stateDir })`（不传 home），
+断言解析出的 home 与最终 profile 目录都在隔离根内。
+
+**反向验证**：移除 `DSH_HOME` 注入后，两条新测试均失败 —— 回归确实被抓住。
+
+#### 缺陷 2（MED，已修）：seed 缺失
+
+设计 3.1 要求 `createProfileDirectory` + `seedBundledPlugins`（"需在 Safe Mode 下也能 seed"），
+但实现只调了前者，而 `createProfileDirectory` 的文档明说是
+"scaffold only; no seed/selection yet"。真实调用方（`profile-actions-service.ts:98,102`）
+是两者都做的。
+
+**处理**：这是**有意的阶段切分**，但原文档 6.1 声称 prepare「实测确认建出可用 profile」
+**属于措辞过度**。已在文档中改为准确描述：prepare 建出的是**已 scaffold、已选中**的
+profile，**依赖尚未 seed**；seed 需要 `desktopRuntimeDir` 等启动期信息，属阶段 5。
+
+#### 评审同时确认无问题的部分
+
+- 设计 2.2 的**七条 marker 采纳条件全部实现且与参考实现逐字一致**
+- `CLEANUP_RETRY_CODES` + `Atomics.wait` 退避、`wx` 标志、两处回滚
+  **均与参考实现一致，无静默删减**
+- `DESKTOP_SAFE_MODE_DEFAULTS` 确实未移植，理由仍成立
+- 无启动/重启/UI 接线泄漏（模块在测试外零引用方）
+
+### 6.5 评审提出、我核实后处理的其他项
+
+- **移除** `export { DEFAULT_PROFILE_NAME }`：零引用方的多余公开面，且让
+  `profiles.ts` 的常量有了第二条 import 路径（Divergent Change 磁石）。
+- **修复** 隔离测试里的 `path.startsWith(rootDir)` **假通过**：它会接受
+  `<root>-evil/...` 这样的兄弟目录。改为 `relative()` + 检查是否以 `..` 开头。
+- **`now: () => Date` 从「未付费的缝」变成「唯一可达的失败注入点」**：
+  实测确认 `reset` 的 cleanup-first 语义会擦掉一切外部植入的 blocker，
+  只有注入的 `now()` 能真正触达 catch 分支。用它补上了**回滚测试**。
+- **降级** Windows junction 语义测试为注释：它从不调用被测模块、断言的是
+  Node/Windows 语义、实现无法使其失败 —— 作为"别删这个判断"的绊线有价值，
+  但**以测试形式存在会给后来者绿灯**，故改为注释。
+- 移除与常量重复的**同义反复断言** `assert.equal(DESKTOP_SAFE_MODE_PROFILE_NAME, 'desktop-safe-mode')`。
+
+### 6.6 本阶段未做（与设计的差异）
+
+
+- `DESKTOP_SAFE_MODE_DEFAULTS` 仍未移植（理由见 3.2，等阶段 5 定设置模型）
+- 未接入启动流程
+- 未做 Safe Mode 的重启入口
+
