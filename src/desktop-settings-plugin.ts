@@ -29,7 +29,7 @@ export const DESKTOP_SETTINGS_PACKAGE = 'dsh-my-desktop-setting'
 
 /**
  * Read the shipped plugin's own version so the materialized manifest never
- * drifts from `plugins/desktop-settings/package.json`. Falls back to the app
+ * drifts from `plugins/dsh-my-desktop-settings/package.json`. Falls back to the app
  * version when the manifest is absent (a dev checkout without the plugin).
  */
 export function resolveDesktopSettingsVersion(sourceDir: string, fallback: string): string {
@@ -54,7 +54,7 @@ export function resolveDesktopSettingsDir(options: { isPackaged: boolean; appPat
     // Dev run: an explicit override wins; otherwise use the in-repo plugin
     // checkout so the plugin works out of the box.
     if (options.pluginDevDir !== undefined && options.pluginDevDir !== '') return options.pluginDevDir
-    const inRepo = join(options.appPath, 'plugins', 'desktop-settings')
+    const inRepo = join(options.appPath, 'plugins', 'dsh-my-desktop-settings')
     if (existsSync(join(inRepo, 'lib', 'index.js'))) return inRepo
     // No built plugin: dev without the plugin is a no-op.
     return options.pluginDevDir ?? join(options.appPath, 'desktop-settings-plugin')

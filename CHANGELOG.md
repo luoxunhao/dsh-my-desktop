@@ -8,7 +8,7 @@ The desktop settings plugin moved into this repository, and the launcher and
 plugin now build as one unit.
 
 - **Plugin source moved in-repo**: `dsh-my-desktop-setting` now lives in
-  `plugins/desktop-settings/` as a pnpm workspace member, built and released
+  `plugins/dsh-my-desktop-settings/` as a pnpm workspace member, built and released
   together with the launcher (no longer published to npm on its own). Its
   planning and gap-analysis docs (`PLAN.md`, `DESIGN-align-dsh-desktop.md`)
   moved with it.

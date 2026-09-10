@@ -26,7 +26,7 @@ DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工�
 
 - 默认不随包任何社区插件（`BUNDLED_PLUGINS` 为空）；
 - 随包一个**内置的桌面设置页**（`dsh-my-desktop-setting` 插件，源码在
-  `plugins/desktop-settings/`），启动时注入——见下文；
+  `plugins/dsh-my-desktop-settings/`），启动时注入——见下文；
 - 支持**多 profile 管理**：列出、新建、删除、切换，选中态跨重启保留；
 - 在本地经校验的 `127.0.0.1` 回环地址启动所选 profile（`dsh-base` +
   `dsh-web-app`），并把 Web UI 放进 Electron 窗口；
@@ -66,7 +66,7 @@ Profile 是受管对象，不是写死的 `web` 目录：
 ## 内置的桌面设置页
 
 安装包随带一个私有插件 `dsh-my-desktop-setting`，源码就在本仓库
-`plugins/desktop-settings/`。它与启动器一起构建、一起打包，并向 DSH 设置壳注册一个
+`plugins/dsh-my-desktop-settings/`。它与启动器一起构建、一起打包，并向 DSH 设置壳注册一个
 「桌面设置」区块。
 
 它**不会安装进任何 profile**。启动器每次启动时把它物化到

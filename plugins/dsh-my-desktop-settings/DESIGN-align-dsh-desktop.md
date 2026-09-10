@@ -6,7 +6,7 @@
 > 窗口材质/模式、浏览器 + LAN/HTTPS、通知、devtools/restart/recovery/updates/diagnostics）。
 >
 > 本文是**差距分析与实施方案**，作为实现前的批准门。改动横跨启动器与插件两侧，量大、分阶段。
-> （迁移后两者已同处 dsh-my-desktop 一个仓库：启动器在 `src/`，插件在 `plugins/desktop-settings/`。）
+> （迁移后两者已同处 dsh-my-desktop 一个仓库：启动器在 `src/`，插件在 `plugins/dsh-my-desktop-settings/`。）
 
 ---
 
@@ -53,7 +53,7 @@ live LAN 状态 + localUrl/lanUrls + CA 指纹/下载)、Notifications(总开关
 - 没有 `desktopRuntime` 服务 / devtools/terminal/diagnostics/updates/notifications 桥（多数只有
   `openDshTerminal`、托盘、updater 的局部实现，未作为 ctx 服务暴露）。
 - 随包插件注入：`src/desktop-settings-plugin.ts` `prepareDesktopSettings` 每次启动把
-  `dist/desktop-settings-plugin`（dev 下为仓库内 `plugins/desktop-settings/lib`）物化到
+  `dist/desktop-settings-plugin`（dev 下为仓库内 `plugins/dsh-my-desktop-settings/lib`）物化到
   `%APPDATA%\DSH My Desktop\desktop-settings-plugin` 并 `--patch` 注入 `file:///...lib/index.js`。
 
 ### dsh-my-desktop-setting（插件）现状
@@ -178,7 +178,7 @@ IPC/stdin/HTTP），这是参考实现不需要的额外层。因此方案里「
 
 ## 5. 文件级改动点（示意，随调研子代理精修）
 
-> 迁移后两侧同处一个仓库；下方按「启动器侧 / 插件侧」区分，插件侧路径前缀为 `plugins/desktop-settings/`。
+> 迁移后两侧同处一个仓库；下方按「启动器侧 / 插件侧」区分，插件侧路径前缀为 `plugins/dsh-my-desktop-settings/`。
 
 - 启动器侧：`src/plugin-seed.ts`(profile 根/清单)、新增 `src/profiles.ts`、`src/profile-scaffold.ts`、
   `src/profile-switch.ts`、`src/main.ts`(launch 参数化 + switchProfile + openWorkbenchOrRecovery)、

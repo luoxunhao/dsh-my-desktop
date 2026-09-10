@@ -108,7 +108,7 @@ export async function stageDesktopSettingsPlugin(): Promise<void> {
   const sourceEnv = process.env.DSH_DESKTOP_SETTINGS_DIR
   const source = sourceEnv !== undefined && sourceEnv !== ''
     ? resolve(sourceEnv)
-    : join(projectRoot, 'plugins', 'desktop-settings')
+    : join(projectRoot, 'plugins', 'dsh-my-desktop-settings')
   for (const file of ['lib/index.js', 'lib/client.js'] as const) {
     if (!existsSync(join(source, file))) {
       throw new Error(

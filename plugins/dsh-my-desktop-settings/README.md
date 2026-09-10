@@ -4,7 +4,7 @@ DSH My Desktop 的**定制**「桌面设置」插件（host+client）。注册�
 `settings.section`，提供 Profile 管理、插件市场选择、AA 开关、外观/材质、浏览器/LAN 访问、
 通知等设置区块。
 
-本插件是 DSH My Desktop 的一部分，源码位于本仓库 `plugins/desktop-settings/`，
+本插件是 DSH My Desktop 的一部分，源码位于本仓库 `plugins/dsh-my-desktop-settings/`，
 **随 desktop 一起构建、一起发布，不单独发 npm**。
 
 ## 特性与边界
@@ -20,7 +20,7 @@ DSH My Desktop 的**定制**「桌面设置」插件（host+client）。注册�
 在本仓库**根目录**构建（本目录是 pnpm workspace 成员，不要在子目录单独 install）：
 
 ```bash
-pnpm install              # 根目录；官方 client 类型来自 plugins/desktop-settings/vendor/0.1.2-rc.1 tgz（与 dsh 0.1.2-rc.1 对齐）
+pnpm install              # 根目录；官方 client 类型来自 plugins/dsh-my-desktop-settings/vendor/0.1.2-rc.1 tgz（与 dsh 0.1.2-rc.1 对齐）
 pnpm run build:plugin     # tsdown 出 lib/index.js + lib/client.js，tsc 双 program 出 lib/types
 pnpm run check:plugin     # 双 program noEmit
 ```

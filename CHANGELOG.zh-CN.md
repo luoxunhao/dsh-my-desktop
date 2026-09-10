@@ -6,7 +6,7 @@
 
 桌面设置插件并入本仓库，启动器与插件改为一体构建。
 
-- **插件源码并入仓库**：`dsh-my-desktop-setting` 迁到 `plugins/desktop-settings/`，
+- **插件源码并入仓库**：`dsh-my-desktop-setting` 迁到 `plugins/dsh-my-desktop-settings/`，
   成为 pnpm workspace 成员，随 desktop 一起构建、一起发布（不再单独发 npm）。
   其规划与差距分析文档（`PLAN.md`、`DESIGN-align-dsh-desktop.md`）一并迁入。
 - **一体化构建**：新增 `build:all`（插件 → 启动器）。所有出包路径（`dist` / `pack` /

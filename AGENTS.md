@@ -62,7 +62,7 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
 ## package.json scripts
 
 - `build` = `tsc`（只编译启动器到 `dist/`）；`check` = `tsc --noEmit`
-- `build:plugin` = `pnpm --dir plugins/desktop-settings run build`；`check:plugin` = 同目录 `typecheck`
+- `build:plugin` = `pnpm --dir plugins/dsh-my-desktop-settings run build`；`check:plugin` = 同目录 `typecheck`
 - **`build:all` = 插件 → 启动器**（一体化的默认构建入口）；`check:all` = 两侧一起 typecheck
 - `start` = `build:all && electron .`（开发运行，不打包）
 - `prepare-runtime` = `build:all && node dist/scripts/prepare-runtime.js`
@@ -77,21 +77,21 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
 > 插件产物缺失时 `stageDesktopSettingsPlugin()` 会**直接抛错**而不是警告跳过，
 > 避免产出一个设置页消失、却看起来正常的安装包。
 
-## 随包私有插件：`plugins/desktop-settings`
+## 随包私有插件：`plugins/dsh-my-desktop-settings`
 
 桌面设置插件（包名仍为 `dsh-my-desktop-setting`）是 DSH My Desktop 的**定制插件**，
-源码就在本仓库 `plugins/desktop-settings/`，随 desktop 一起构建、一起发布，**不单独发 npm**。
+源码就在本仓库 `plugins/dsh-my-desktop-settings/`，随 desktop 一起构建、一起发布，**不单独发 npm**。
 
 - 它是 pnpm workspace 成员（根 `pnpm-workspace.yaml` 的 `packages: [plugins/*]`），
   根目录 `pnpm install` 会一并装好它的依赖；**不要**在该子目录里单独 `pnpm install`
   （子目录没有自己的 `pnpm-workspace.yaml`/lockfile）。
-- 构建：`pnpm run build:plugin` → 产出 `plugins/desktop-settings/lib/{index.js,client.js}`。
+- 构建：`pnpm run build:plugin` → 产出 `plugins/dsh-my-desktop-settings/lib/{index.js,client.js}`。
   `lib/` 是构建产物（已 gitignore），只在打包时装配。
 - 装配：`scripts/prepare-runtime.ts` 的 `stageDesktopSettingsPlugin()` 把 `lib/` +
   `package.json` 拷到 `dist/desktop-settings-plugin`，再由 `package.json` 的 `extraResources`
   落到安装包的 `resources/dsh-my-desktop-setting/`。
 - 它只依赖 `@deepseek-ai/dsh-client-*` 的**类型**（运行时 externals 由 client module table 提供）。
-  版本对齐用的 tarball 在 `plugins/desktop-settings/vendor/<dsh-version>/`，**需入库**。
+  版本对齐用的 tarball 在 `plugins/dsh-my-desktop-settings/vendor/<dsh-version>/`，**需入库**。
 
 ### 插件不装进任何 profile（重要）
 

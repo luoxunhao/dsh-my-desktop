@@ -112,11 +112,11 @@ test('解析桌面设置插件源目录：打包读资源，dev 优先显式覆�
   )
 })
 
-test('解析桌面设置插件源目录：dev 命中仓库内 plugins/desktop-settings', () => {
+test('解析桌面设置插件源目录：dev 命中仓库内 plugins/dsh-my-desktop-settings', () => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-settings-dev-'))
   try {
-    // The in-repo plugin checkout lives at <appPath>/plugins/desktop-settings.
-    const inRepo = join(root, 'plugins', 'desktop-settings')
+    // The in-repo plugin checkout lives at <appPath>/plugins/dsh-my-desktop-settings.
+    const inRepo = join(root, 'plugins', 'dsh-my-desktop-settings')
     mkdirSync(join(inRepo, 'lib'), { recursive: true })
     writeFileSync(join(inRepo, 'lib', 'index.js'), 'export const name = "dsh-my-desktop-setting";\n', 'utf8')
     assert.equal(

@@ -1,6 +1,6 @@
 # dsh-my-desktop-setting — DSH My Desktop 的定制「桌面设置」插件
 
-> **现状（已迁移）**：本插件源码现在位于 dsh-my-desktop 仓库内 `plugins/desktop-settings/`，
+> **现状（已迁移）**：本插件源码现在位于 dsh-my-desktop 仓库内 `plugins/dsh-my-desktop-settings/`，
 > 是 pnpm workspace 成员，随 desktop 一起构建、一起发布，**不单独发 npm**。
 > 下文「独立仓库 / 宿主无关 / BUNDLED_PLUGINS 预装」等表述是迁移前的历史规划，
 > 实际落地路线已改为「随包 `--patch` 注入」；目录布局已按新位置更新。
@@ -38,7 +38,7 @@
 
 ```
 dsh-my-desktop/
-  plugins/desktop-settings/     # ← 本插件（pnpm workspace 成员）
+  plugins/dsh-my-desktop-settings/     # ← 本插件（pnpm workspace 成员）
     package.json          # host+client 双面、dsh.client.platform=web、dsh.bundle.patch
     tsconfig.json         # host program（src/*.ts）
     tsconfig.client.json  # client program（src/client/**）

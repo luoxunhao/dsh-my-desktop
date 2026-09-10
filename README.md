@@ -28,7 +28,7 @@ This version (0.1.3):
 
 - bundles **no community plugin** (`BUNDLED_PLUGINS` is empty);
 - ships a **built-in desktop settings page** (the `dsh-my-desktop-setting`
-  plugin, source in `plugins/desktop-settings/`), injected at launch — see below;
+  plugin, source in `plugins/dsh-my-desktop-settings/`), injected at launch — see below;
 - manages **multiple profiles**: list, create, delete and switch, with the
   selection persisted across restarts;
 - starts the selected profile (`dsh-base` + `dsh-web-app`) on a validated
@@ -76,7 +76,7 @@ Profiles are managed objects, not a hardcoded `web` directory:
 ## The built-in desktop settings page
 
 The installer ships a private plugin, `dsh-my-desktop-setting`, whose source
-lives in this repository under `plugins/desktop-settings/`. It is built and
+lives in this repository under `plugins/dsh-my-desktop-settings/`. It is built and
 packaged together with the launcher and registers a "Desktop Settings" section
 in the DSH settings shell.
 

@@ -13,7 +13,7 @@ import { startDsh } from '../dist/src/dsh-process.js'
 
 const project = process.cwd()
 const runtime = join(project, 'runtime-dsh')
-const pluginRepo = process.env.DSH_SETTINGS_PLUGIN_REPO ?? join(project, 'plugins', 'desktop-settings')
+const pluginRepo = process.env.DSH_SETTINGS_PLUGIN_REPO ?? join(project, 'plugins', 'dsh-my-desktop-settings')
 
 const root = mkdtempSync(join(tmpdir(), 'dsh-settings-boot-'))
 const home = join(root, 'home')
