@@ -51,6 +51,7 @@ import { createRestartService, type RestartService } from './recovery/restart-se
 import { resolveLauncherProfileRoots } from './desktop/launcher-roots.js'
 import { createDesktopProfileCheckpoint, DESKTOP_PROFILE_CHECKPOINT_SLOT_IDS, type DesktopProfileCheckpointSlotId } from './recovery/profile-checkpoint.js'
 import { projectCheckpointSlots } from './recovery/renderer-views.js'
+import { dismissDshSettingsDialog as _ipcDismissDshSettingsDialog, sendDshAction as _ipcSendDshAction, shellRendererKind as _ipcShellRendererKind, isActionEnabled as _ipcIsActionEnabled } from './desktop/ipc-routes.js'
 import { resolveLaunchDecision } from './recovery/launch-mode.js'
 import { createRecoveryService, type RecoveryService } from './recovery/recovery-service.js'
 import { isRecoveryAction, type RecoveryActionId } from './recovery/recovery-actions.js'
@@ -411,6 +412,9 @@ async function startApplication(): Promise<void> {
     // Record WHY we are here: the page's reason card differs between "the user asked
     // for recovery" and "startup failed", and only the launcher knows which.
     state.launch.recoveryRequested = true
+    const _profileRoots = resolveLauncherProfileRoots(app.getPath('userData'))
+    const _activeProfileName = readActiveProfile(_profileRoots)
+    state.recovery.profileDir = profileDirFor(_profileRoots.home, _activeProfileName)
     await runRecoveryLaunch(launch.mode === 'safe-mode' ? 'safe-mode' : 'recovery')
     return
   }
@@ -1338,21 +1342,11 @@ function installShellIpc(): void {
   requireShellIpcRegistrar().installShellIpc()
 }
 function shellRendererKind(sender: WebContents): ShellRendererKind {
-  if (sender === state.windows.mainWindow?.webContents) return 'main'
-  if (sender === state.windows.shortcutsWindow?.webContents) return 'shortcuts'
-  if (sender === state.windows.aboutWindow?.webContents) return 'about'
-  if (sender === state.windows.settingsWindow?.webContents) return 'settings'
-  if (sender === state.windows.dshView?.webContents) return 'dsh'
-  return 'unknown'
+  return _ipcShellRendererKind(state.windows.mainWindow, state.windows.shortcutsWindow, state.windows.aboutWindow, state.windows.settingsWindow, state.windows.dshView, sender) as ShellRendererKind
 }
 
 function isActionEnabled(id: ShellActionId): boolean {
-  if (id === 'reload') return !state.runtime.isRecycling && state.launch.lastStartOptions !== undefined && state.launch.lastSeedOptions !== undefined
-  if (id === 'back') return state.shell.navigationState.canBack
-  if (id === 'forward') return state.shell.navigationState.canForward
-  if (id === 'previous-chat') return state.shell.navigationState.canPreviousChat
-  if (id === 'next-chat') return state.shell.navigationState.canNextChat
-  return true
+  return _ipcIsActionEnabled(state.runtime, state.launch, state.shell, id)
 }
 
 function popupShellMenu(request: ShellMenuPopupRequest): Promise<void> {
@@ -1396,27 +1390,10 @@ function popupShellMenu(request: ShellMenuPopupRequest): Promise<void> {
   })
 }
 
-const DISMISS_DSH_SETTINGS_DIALOG_SCRIPT = `(() => {
-  const label = (element) => ((element.getAttribute('aria-label') || '') + ' ' + (element.textContent || '')).replace(/\s+/g, ' ').trim().toLowerCase()
-  const dialog = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')]
-    .find((element) => {
-      if (element.offsetParent === null) return false
-      const titleId = element.getAttribute('aria-labelledby')
-      const title = titleId === null ? null : document.getElementById(titleId)
-      return title !== null && /^(设置|settings)$/i.test(label(title))
-    })
-  if (!dialog) return false
-  const close = [...dialog.querySelectorAll('button')]
-    .find((element) => /^(关闭|close)$/i.test(label(element)))
-  if (!close) return false
-  close.click()
-  return true
-})()`
+
 
 function dismissDshSettingsDialog(): void {
-  const contents = state.windows.dshView?.webContents
-  if (contents === undefined || contents.isDestroyed()) return
-  void contents.executeJavaScript(DISMISS_DSH_SETTINGS_DIALOG_SCRIPT).catch(() => undefined)
+  _ipcDismissDshSettingsDialog(state.windows.dshView)
 }
 
 function installShortcutHandler(contents: Electron.WebContents): void {
@@ -1452,7 +1429,7 @@ function installShortcutHandler(contents: Electron.WebContents): void {
 }
 
 function sendDshAction(id: DshShellActionId): void {
-  if (state.windows.dshView !== undefined && !state.windows.dshView.webContents.isDestroyed()) state.windows.dshView.webContents.send(SHELL_IPC.dshAction, id)
+  _ipcSendDshAction(state.windows.dshView, id)
 }
 
 async function executeShellAction(id: ShellActionId): Promise<void> {
