@@ -57,27 +57,65 @@ const EXTRACTION_LAYERS: Readonly<Record<string, string>> = {
  * imports is also a member, so flattening cannot orphan a specifier. We assert
  * that after rewriting, so a future member added without updating the map fails
  * the build instead of silently shipping a broken import.
+ *
+ * Two failure modes are guarded explicitly, because both would otherwise ship a
+ * bundle whose imports only fail at RUN time (the exact class of bug this step
+ * exists to prevent):
+ *   - a specifier form the matcher does not recognise (dynamic import, re-export)
+ *   - a basename collision between members, which would silently bind the wrong file
  */
 async function flattenUnit(files: Readonly<Record<string, string>>, destDir: string, sourceRoot: string): Promise<string[]> {
   await rm(destDir, { recursive: true, force: true })
   await mkdir(destDir, { recursive: true })
   const members = new Set(Object.keys(files))
+
+  // Guard 1: basenames must be unique, or `find` would resolve to whichever member
+  // came first and silently rewrite a specifier to the wrong file.
+  const byBase = new Map<string, string>()
+  for (const member of members) {
+    const base = member.replace(/\.[^.]+$/, '')
+    const existing = byBase.get(base)
+    if (existing !== undefined && existing !== member) {
+      throw new Error(
+        `扁平发布单元 ${destDir} 存在同名文件：${existing} 与 ${member}。`
+        + '扁平化后二者会落到同一目录，specifier 无法区分。请重命名其一。',
+      )
+    }
+    byBase.set(base, member)
+  }
+
   const written: string[] = []
   for (const [name, layer] of Object.entries(files)) {
     const from = join(sourceRoot, layer, name)
     let text = await readFile(from, 'utf8')
-    const specifiers = [...text.matchAll(/from '(\.[^']+)'/g)].map(match => match[1]!)
-    for (const spec of specifiers) {
+
+    // Guard 2: every relative specifier form must be rewritten, not just `from '...'`.
+    // Collect them all first so an unrecognised form is a hard error rather than a
+    // silent miss.
+    const relSpecifiers = [...text.matchAll(/(?:from|import)\s*\(?\s*'(\.[^']+)'/g)].map(match => match[1]!)
+    for (const spec of relSpecifiers) {
       const base = spec.replace(/^.*\//, '').replace(/\.[^.]+$/, '')
-      const sibling = [...members].find(member => member.replace(/\.[^.]+$/, '') === base)
+      const sibling = byBase.get(base)
       if (sibling === undefined) {
         throw new Error(
           `扁平发布单元 ${destDir} 缺少依赖：${name} 引用了 ${spec}，`
           + `但 ${base} 不在成员列表里。请把该文件加入对应的 LAYERS 映射。`,
         )
       }
-      text = text.replace(`from '${spec}'`, `from './${sibling}'`)
+      // Replace every occurrence form of this specifier.
+      text = text.split(`'${spec}'`).join(`'./${sibling}'`)
     }
+
+    // Guard 3: no relative specifier may survive with a directory segment. A leftover
+    // `../x.js` means a form we did not match, and it would resolve outside the unit.
+    const leftover = /from\s+'\.\.\//.exec(text) ?? /import\s*\(\s*'\.\.\//.exec(text)
+    if (leftover !== null) {
+      throw new Error(
+        `扁平发布单元 ${destDir} 中 ${name} 仍存在跨目录 specifier：${leftover[0]}。`
+        + '该形式未被重写，发布后会解析失败。',
+      )
+    }
+
     await writeFile(join(destDir, name), text, 'utf8')
     written.push(name)
   }

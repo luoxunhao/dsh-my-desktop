@@ -4,9 +4,21 @@
  * WHY THIS EXISTS
  * ---------------
  * `main.ts` used to hold 39 module-level `let` bindings shared implicitly by 111
- * functions. That made the full set of mutable state invisible — you had to grep
- * `^let` to find it — and made every function's real dependencies unknowable from
- * its signature. This module makes both explicit.
+ * functions. The full set of mutable state was invisible — you had to grep `^let`
+ * to find it — and scattered across the file in no particular order.
+ *
+ * This module gives that state ONE declared home, grouped by sub-domain, so the
+ * complete inventory is readable in one place.
+ *
+ * WHAT THIS DOES NOT (YET) DO
+ * ---------------------------
+ * Consolidating 39 bindings into one store does NOT make per-function dependencies
+ * explicit. `main.ts` still keeps a single module-level `let state`, and the
+ * functions still read it ambiently — so from a signature you still cannot tell
+ * what a function touches. Narrowing those signatures (`Pick<...>` / hand-written
+ * deps interfaces) only becomes possible once the functions move into their own
+ * modules, which is the work of the later extraction tickets. Until then, treat
+ * this module as a readable inventory, not as a dependency-declaration mechanism.
  *
  * MUTABILITY IS THE POINT — NOT WIDTH
  * -----------------------------------
@@ -18,22 +30,18 @@
  *
  * So this is correct:
  *
- *     ctx.windows.mainWindow = createWindow()      // same object, read later
+ *     state.windows.mainWindow = createWindow()     // same object, read later
  *
  * and this is a silent-failure bug:
  *
- *     installShellIpc(ctx.windows.mainWindow)      // captures undefined forever
+ *     installShellIpc(state.windows.mainWindow)     // captures undefined forever
  *
  * The wrong form passes type checking (`BrowserWindow | undefined` widens fine) and
  * fails only at runtime, with every handler quietly doing nothing. `??=` is also
  * used on `mainWindow`, which requires a writable property rather than a getter.
- *
- * NARROW CONSUMER SIGNATURES
- * --------------------------
- * Modules should declare only the slice they actually use (via `Pick<>` or a
- * hand-written narrow interface) rather than taking the whole store. The runtime
- * object is singular, but the signatures stay honest: `openDshTerminal` needs one
- * field, not thirty-nine. Structural typing makes this free.
+ * This hazard is live as soon as a consumer receives a slice by value — which is
+ * exactly what the extraction tickets will introduce, so the rule matters then even
+ * though no consumer takes a slice today.
  *
  * WHAT DOES NOT BELONG HERE
  * -------------------------
@@ -172,8 +180,6 @@ export function createDesktopState(options: {
   updatePreferences: DesktopUpdatePreferences
   /** Initial colour scheme, read from `nativeTheme` by the caller after app ready. */
   initialColorScheme: DesktopColorScheme
-  /** Native notification constructor; injected so the store stays importable without Electron. */
-  NotificationCtor?: new (options: { title: string, body?: string }) => NativeNotification
 }): DesktopState {
   return {
     windows: {

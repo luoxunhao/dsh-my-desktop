@@ -32,7 +32,7 @@
     "build:flat": "node dist/scripts/stage-flat-units.js",
     "build:all": "pnpm run build:plugin && pnpm run build && pnpm run build:flat",
     "check:all": "pnpm run check:plugin && pnpm run check",
-    "test": "pnpm run build && node --test dist/test/*.test.js",
+    "test": "pnpm run build:all && node --test dist/test/*.test.js",
     "start": "pnpm run build:all && electron .",
     "prepare-runtime": "pnpm run build:all && node dist/scripts/prepare-runtime.js",
     "pack": "pnpm run prepare-runtime && electron-builder --dir",

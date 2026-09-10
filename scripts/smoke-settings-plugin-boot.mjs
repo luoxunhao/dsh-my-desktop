@@ -8,8 +8,9 @@ import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { prepareDesktopSettings } from '../src/bridge/desktop-settings-plugin.js'
-import { startDsh } from '../src/bridge/dsh-process.js'
+// Compiled output, not TypeScript sources: this file is run directly by `node`.
+import { prepareDesktopSettings } from '../dist/src/bridge/desktop-settings-plugin.js'
+import { startDsh } from '../dist/src/bridge/dsh-process.js'
 
 const project = process.cwd()
 const runtime = join(project, 'runtime-dsh')

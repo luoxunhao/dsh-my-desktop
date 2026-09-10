@@ -104,7 +104,11 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
 - `prepare-runtime` = `build:all && node dist/scripts/prepare-runtime.js`
 - `dist` = `prepare-runtime && electron-builder --publish never`（经 build.ps1 跑，pnpm 已由脚本定位正确）
 - `pack` = `prepare-runtime && electron-builder --dir`
-- `test` = `build && node --test dist/test/*.test.js`
+- `test` = `build:all && node --test dist/test/*.test.js`
+  （**必须走 `build:all`**：测试会断言 `dist/bridge-flat/` 与 `dist/extract-flat/` 里的暂存产物，
+  而 `dist/` 是 gitignore 的。用 `build` 会让这些断言在干净 clone / CI 上失败。）
+- `build:flat` = 扁平化两个「扁平发布单元」（bridge 15 个 + extract 3 个）到
+  `dist/bridge-flat/`、`dist/extract-flat/`；`build:all` 已包含这一步
 - `dist:local` / `pack:local` = `build:all` + `--stage-plugin` + 打包（**日常出包走这个**）
 
 > **一体化构建**：插件是启动器的定制设置页，所有出包路径最终都会构建它
@@ -216,4 +220,4 @@ Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','By
 导致的已知缺口，不是被测代码的问题。若需要这些 CI 相关用例通过，需补 `.github/workflows/desktop-package.yml`。
 
 另有 1 条与 `.github` 无关的既有失败：`profile-repair.test.ts` 的「官方 Web bundle 缺失时…」。
-当前基线是 **326 项 / 320 通过 / 5 失败**（全部为上述已知项）。
+当前基线是 **330 项 / 324 通过 / 5 失败**（全部为上述已知项）。

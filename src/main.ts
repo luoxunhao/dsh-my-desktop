@@ -155,7 +155,6 @@ async function startApplication(): Promise<void> {
     notificationPreferences,
     updatePreferences,
     initialColorScheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
-    NotificationCtor: Notification,
   })
   installShellIpc()
   installRecoveryIpc()

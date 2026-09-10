@@ -98,3 +98,26 @@ ticket 要求「各模块签名只声明自己需要的字段」。**目前只�
 4. 分组名与字段名相同的重复：`state.chrome.chrome.cachedWindowIcon`（2 处）
 5. `Notification` 误用 DOM 类型而非 Electron 类型
 
+## 代码评审发现的缺陷（已修复）
+
+对 ticket 01+02+03 的 diff 做了双轴评审（Standards + Spec），发现以下真问题并修复：
+
+| # | 问题 | 严重度 | 修复 |
+|---|---|---|---|
+| 1 | **`test` 脚本漏掉 `build:flat`** —— 测试断言 `dist/bridge-flat/`，而 `dist/` 是 gitignored。干净 clone / CI 上必失败（已实测复现） | 高 | `test` 改为 `build:all`；AGENTS.md 同步 |
+| 2 | **`smoke-settings-plugin-boot.mjs` import 路径被改坏** —— 变成 `../src/bridge/*.js`（TS 源码路径），而该脚本由裸 `node` 运行。目标文件不存在，脚本完全失效 | 高 | 改回 `../dist/src/bridge/*.js` |
+| 3 | **spec 要求的晚绑定护栏测试完全缺失** —— spec:176 明确要求，称其为「最容易踩、最难查的坑」 | 高 | 新增 `test/desktop-state-late-binding.test.ts`（3 条用例） |
+| 4 | `NotificationCtor` 是死参数 —— 声明并传参但从未读取；且 ticket 03 给出的理由（避免 import Electron）不成立，该模块只 import Electron **类型** | 中 | 删除参数与传参 |
+| 5 | `desktop-state.ts` 文档过度声明 —— 声称让依赖「从签名可知」，但 39 个 `let` 只是变成 1 个，354 处仍是环境式读取；`NARROW CONSUMER SIGNATURES` 段落描述的是未实现的东西 | 中 | 改为诚实描述，明确「本模块是清单，不是依赖声明机制」 |
+| 6 | `stage-flat-units.ts` 正则只匹配 `from '...'`，漏掉 dynamic import / re-export；且同名 basename 会静默错误绑定 | 中 | 扩展匹配 + 加 basename 唯一性与跨目录残留断言 |
+
+### 护栏测试已做反向验证
+
+不只写了测试，还**故意注入反模式**确认它真能报警：
+
+- 简单形式（`installShellIpc(window)`）：tsc 会报错，护栏也报错
+- **真实形式**（给注册函数加 deps 参数后传窗口值 —— ticket 04~07 会出现）：**tsc 静默通过，护栏报 2 处失败**
+
+第二项证实了 spec 的判断：类型系统抓不住这个坑，护栏不是冗余。
+
+
