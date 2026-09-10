@@ -13,6 +13,7 @@ const RECOVERY_IPC = {
   // had no way to reach the recovery page.
   listCheckpoints: 'dsh-recovery:list-checkpoints',
   inspectCheckpoint: 'dsh-recovery:inspect-checkpoint',
+  restoreCheckpoint: 'dsh-recovery:restore-checkpoint',
   listProfiles: 'dsh-recovery:list-profiles',
   dataDirectory: 'dsh-recovery:data-directory',
   selectDataDirectory: 'dsh-recovery:select-data-directory',
@@ -31,6 +32,7 @@ contextBridge.exposeInMainWorld('dshRecovery', {
   uninstall: (packageName: string) => ipcRenderer.invoke(RECOVERY_IPC.uninstall, packageName),
   listCheckpoints: () => ipcRenderer.invoke(RECOVERY_IPC.listCheckpoints),
   inspectCheckpoint: (slotId: string) => ipcRenderer.invoke(RECOVERY_IPC.inspectCheckpoint, slotId),
+  restoreCheckpoint: (slotId: string) => ipcRenderer.invoke(RECOVERY_IPC.restoreCheckpoint, slotId),
   listProfiles: () => ipcRenderer.invoke(RECOVERY_IPC.listProfiles),
   dataDirectory: () => ipcRenderer.invoke(RECOVERY_IPC.dataDirectory),
   selectDataDirectory: (target: string | null) => ipcRenderer.invoke(RECOVERY_IPC.selectDataDirectory, target),

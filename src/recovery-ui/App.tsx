@@ -170,7 +170,7 @@ export function App(): React.JSX.Element {
             }}
             onRestore={slotId => {
               void run('回滚快照', async () => {
-                await recoveryApi.restoreHealthyConfig()
+                await recoveryApi.restoreCheckpoint(slotId)
                 await refreshStatus()
               })
             }}

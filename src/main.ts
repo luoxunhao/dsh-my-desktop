@@ -167,6 +167,84 @@ async function shutdownDesktop(exit: () => void): Promise<void> {
   })
 }
 
+
+/**
+ * Resolve every piece of launch state the DSH child needs, WITHOUT starting it.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * The recovery page can restart DSH ("restart DSH in recovery mode" and "roll back
+ * to this snapshot" both land in restartDsh), and restartDsh requires
+ * lastStartOptions/lastSeedOptions. Those were only ever assigned on the NORMAL
+ * launch path — a user who entered recovery directly (--dsh-desktop-recovery) never
+ * ran that path, so recovery-mode restarts threw "Startup parameters not yet ready".
+ *
+ * This is the normal path's preparation sequence, extracted verbatim: path/runtime
+ * resolution, bridge + settings-plugin materialization, seed options, start options.
+ * Both callers assign the results to state.launch so restartDsh sees a complete set.
+ */
+async function prepareLaunchOptions(profileDir: string, activeProfileName: string): Promise<void> {
+  const runtimeOptions = {
+    appPath: app.getAppPath(),
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  }
+  const pathPrefix = resolvePluginBinDir(runtimeOptions)
+  const pnpmEntry = pathPrefix === undefined ? process.env.npm_execpath : join(pathPrefix, 'pnpm-package', 'bin', 'pnpm.cjs')
+  const desktopRuntimeDir = resolveDesktopRuntimeDir(app.getPath('userData'), {
+    isPackaged: app.isPackaged,
+    execPath: process.execPath,
+  })
+  const extractedStoreDir = app.isPackaged ? join(dirname(desktopRuntimeDir), 'plugins', 'store') : undefined
+  const nodeExecutable = resolveNodeExecutable(runtimeOptions)
+  const desktopBridgePatch = prepareDesktopBridge(join(app.getPath('userData'), 'desktop-bridge'), resolveDesktopBridgeDir(runtimeOptions))
+  migrateDesktopBridgeProfile(profileDir)
+  const desktopSettingsPatch = prepareDesktopSettings(
+    join(app.getPath('userData'), 'desktop-settings-plugin'),
+    resolveDesktopSettingsDir({ ...runtimeOptions, pluginDevDir: process.env.DSH_DESKTOP_SETTINGS_DIR }),
+    app.getVersion(),
+  )
+  const pluginStoreDir = resolveBundledPluginStore({
+    ...runtimeOptions,
+    ...(extractedStoreDir === undefined ? {} : { extractedStoreDir }),
+  })
+  const profileStoreDir = resolvePnpmStoreDir(profileDir, pluginStoreDir)
+  const prebuiltRuntimeDir = resolvePrebuiltOfficialRuntime(runtimeOptions)
+  const seedOptions = {
+    nodeExecutable,
+    ...(pnpmEntry === undefined ? {} : { pnpmEntry }),
+    profileDir,
+    desktopRuntimeDir,
+    pluginStoreDir: pluginStoreDir ?? '',
+    ...(prebuiltRuntimeDir === undefined ? {} : { prebuiltRuntimeDir }),
+    ...(pathPrefix === undefined ? {} : { pathPrefix }),
+  }
+  const runtime = resolveDshRuntime({ ...runtimeOptions, profileDir, desktopRuntimeDir })
+  const startOptions = {
+    bootstrapPath: resolveDshBootstrap(runtimeOptions),
+    // Boot the persisted active profile explicitly (--profile <name>); the bare
+    // web subcommand is hardcoded to --profile web and would ignore it.
+    profileName: activeProfileName,
+    patches: desktopSettingsPatch === undefined
+      ? [desktopBridgePatch]
+      : [desktopBridgePatch, desktopSettingsPatch],
+    ...(pathPrefix === undefined ? {} : { pathPrefix }),
+    runtime,
+    nodeExecutable,
+    environment: {
+      DSH_HOME: resolve(profileDir, '..', '..'),
+      DSH_PROFILE_DIR: profileDir,
+      DSH_PROFILE_NAME: activeProfileName,
+      DSH_PROFILE_SELECTION_DIR: app.getPath('userData'),
+      DSH_RUNTIME_DIR: desktopRuntimeDir,
+      ...(pnpmEntry === undefined ? {} : { DSH_PNPM_ENTRY: pnpmEntry }),
+      ...(profileStoreDir === undefined ? {} : { DSH_PNPM_STORE_DIR: profileStoreDir }),
+    },
+  }
+  state.launch.lastSeedOptions = seedOptions
+  state.launch.lastStartOptions = startOptions
+}
+
 async function startApplication(): Promise<void> {
   await app.whenReady()
   // Load preferences BEFORE creating the store and registering IPC: the shell
@@ -412,10 +490,15 @@ async function startApplication(): Promise<void> {
     // Record WHY we are here: the page's reason card differs between "the user asked
     // for recovery" and "startup failed", and only the launcher knows which.
     state.launch.recoveryRequested = true
-    const _profileRoots = resolveLauncherProfileRoots(app.getPath('userData'))
-    const _activeProfileName = readActiveProfile(_profileRoots)
-    state.recovery.profileDir = profileDirFor(_profileRoots.home, _activeProfileName)
-    await runRecoveryLaunch(launch.mode === 'safe-mode' ? 'safe-mode' : 'recovery')
+        const recoveryRoots = resolveLauncherProfileRoots(app.getPath('userData'))
+        const recoveryProfileName = readActiveProfile(recoveryRoots)
+        const recoveryProfileDir = profileDirFor(recoveryRoots.home, recoveryProfileName)
+        state.recovery.profileDir = recoveryProfileDir
+        // Prepare the launch state WITHOUT starting DSH: recovery-mode restarts and
+        // checkpoint rollbacks go through restartDsh, which reads lastStartOptions and
+        // lastSeedOptions. Skipping this left those undefined on direct recovery entry.
+        await prepareLaunchOptions(recoveryProfileDir, recoveryProfileName)
+        await runRecoveryLaunch(launch.mode === 'safe-mode' ? 'safe-mode' : 'recovery')
     return
   }
 
@@ -1236,6 +1319,7 @@ const RECOVERY_IPC = {
   uninstall: 'dsh-recovery:uninstall',
   listCheckpoints: 'dsh-recovery:list-checkpoints',
   inspectCheckpoint: 'dsh-recovery:inspect-checkpoint',
+  restoreCheckpoint: 'dsh-recovery:restore-checkpoint',
   listProfiles: 'dsh-recovery:list-profiles',
   dataDirectory: 'dsh-recovery:data-directory',
   selectDataDirectory: 'dsh-recovery:select-data-directory',
@@ -1334,6 +1418,10 @@ function installRecoveryIpc(): void {
     return await action(event.sender, 'inspect-checkpoint', slotId)
   })
   ipcMain.handle(RECOVERY_IPC.listProfiles, async event => await action(event.sender, 'list-profiles'))
+  ipcMain.handle(RECOVERY_IPC.restoreCheckpoint, async (event, slotId: unknown) => {
+    if (typeof slotId !== 'string') throw new Error('槽位标识不合法。')
+    return await action(event.sender, 'restore-checkpoint', slotId)
+  })
   // Data directory, factory reset and "open config file". These reach the same
   // service, so the page's reachable surface stays the action allowlist.
   ipcMain.handle(RECOVERY_IPC.dataDirectory, async event => await action(event.sender, 'data-directory'))

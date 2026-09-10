@@ -29,6 +29,7 @@ const PAYLOAD_ACTIONS = [
   'uninstall',
   'restore',
   'inspect-checkpoint',
+  'restore-checkpoint',
   'select-data-directory',
 ] as const
 

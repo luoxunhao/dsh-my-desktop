@@ -324,6 +324,14 @@ export function createRecoveryService(deps: RecoveryDeps) {
       if (payload === undefined) throw new Error('缺少槽位标识。')
       return checkpointFor(profileDir).inspectSlot(assertSlotId(payload))
     }
+    if (action === 'restore-checkpoint') {
+      if (payload === undefined) throw new Error('缺少槽位标识。')
+      // Two-phase confirmation token is bound to the slot id (expectTarget), so a
+      // stale approval cannot be replayed against a different slot.
+      const restored = checkpointFor(profileDir).restoreSlot(assertSlotId(payload))
+      await restartDsh(profileDir)
+      return { restored, status: pageStatus(profileDir) }
+    }
     if (action === 'list-profiles') return deps.listProfiles()
     if (action === 'data-directory') return dataDirectoryView()
     if (action === 'select-data-directory') {

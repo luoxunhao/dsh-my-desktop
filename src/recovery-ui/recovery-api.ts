@@ -76,6 +76,7 @@ interface RecoveryBridge {
   uninstall: (packageName: string) => Promise<RecoveryStatus>
   listCheckpoints: () => Promise<readonly RecoveryCheckpointSlot[]>
   inspectCheckpoint: (slotId: string) => Promise<RecoveryCheckpointInspection>
+  restoreCheckpoint: (slotId: string) => Promise<unknown>
   listProfiles: () => Promise<readonly RecoveryProfile[]>
 }
 
@@ -116,5 +117,6 @@ export const recoveryApi = {
   uninstall: (packageName: string): Promise<RecoveryStatus> => requireBridge().uninstall(packageName),
   listCheckpoints: (): Promise<readonly RecoveryCheckpointSlot[]> => requireBridge().listCheckpoints(),
   inspectCheckpoint: (slotId: string): Promise<RecoveryCheckpointInspection> => requireBridge().inspectCheckpoint(slotId),
+  restoreCheckpoint: (slotId: string): Promise<unknown> => requireBridge().restoreCheckpoint(slotId),
   listProfiles: (): Promise<readonly RecoveryProfile[]> => requireBridge().listProfiles(),
 }
