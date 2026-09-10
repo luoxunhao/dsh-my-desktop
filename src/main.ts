@@ -47,6 +47,7 @@ import { createDialogService, type DesktopSettingsSection, type DialogService } 
 import { createProfileActionsService, type ProfileActionsService, type ProfileOperationView } from './desktop/profile-actions-service.js'
 import { createShellBroadcastService, type ShellBroadcastService } from './desktop/shell-broadcast-service.js'
 import { createRestartService, type RestartService } from './recovery/restart-service.js'
+import { resolveLaunchDecision } from './recovery/launch-mode.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -318,6 +319,15 @@ async function startApplication(): Promise<void> {
   createTray()
   await showStartupWindow(desktopText('正在启动', 'Starting'))
 
+  // RECOVERY GATE — resolved from the one-shot markers on the command line, BEFORE
+  // anything is started. In recovery the app must be usable when the DSH host
+  // cannot boot at all, so the host is never launched and we return from here.
+  const launch = resolveLaunchDecision(process.argv)
+  if (!launch.startsHost) {
+    await runRecoveryLaunch(launch.mode === 'safe-mode' ? 'safe-mode' : 'recovery')
+    return
+  }
+
   try {
     const runtimeOptions = {
       appPath: app.getAppPath(),
@@ -515,6 +525,40 @@ function installDesktopFaviconReplacement(): void {
     }
     callback({ redirectURL: 'dsh-icon://app/favicon.ico' })
   })
+}
+
+/**
+ * Boot straight into the recovery assistant, without starting the DSH host.
+ *
+ * WHY THE HOST IS SKIPPED
+ * -----------------------
+ * Recovery exists for the case where the host cannot start — a plugin or profile
+ * configuration that breaks DSH itself. Launching it anyway would either hang on the
+ * same fault or take minutes to fail, so the assistant opens immediately and the
+ * recovery IPC (which does not depend on the host) supplies its data.
+ *
+ * The profile directory is resolved the ordinary way: the user is repairing the
+ * profile that was ACTIVE, and that is still recorded in the registry even when the
+ * profile itself is broken.
+ */
+async function runRecoveryLaunch(mode: 'recovery' | 'safe-mode'): Promise<void> {
+  const profileRoots = resolveProfileRoots({ stateDir: app.getPath('userData') })
+  const activeProfileName = readActiveProfile(profileRoots)
+  const profileDir = profileDirFor(profileRoots.home, activeProfileName)
+  try {
+    await showRecoveryWindow(profileDir, {
+      failureMessage: mode === 'recovery'
+        ? desktopText('已按请求进入恢复模式。', 'Recovery Mode was requested.')
+        : desktopText('已进入安全模式。', 'Safe Mode is active.'),
+      failurePlugins: [],
+    })
+  } catch (error) {
+    // The assistant failing to open is itself a startup failure, and the user has
+    // no UI to report it in, so make it loud and exit non-zero.
+    const detail = error instanceof Error ? error.stack ?? error.message : String(error)
+    console.error('无法打开恢复助手：', detail)
+    app.exit(1)
+  }
 }
 
 async function showStartupWindow(message: string): Promise<void> {

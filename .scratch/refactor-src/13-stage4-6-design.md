@@ -261,3 +261,80 @@ main.ts 1575 → **1452 行**。全量 **397 / 391 / 5**。
 
 - **不消费标记**（阶段 5）：现在带标记启动时不会进恢复模式，仍走正常流程
 - 未实现 Safe Mode 的重启入口
+---
+
+## 阶段 5 实施结果（已完成）
+
+新增 `src/recovery/launch-mode.ts`（59 行，纯函数决策）+ 9 条测试。
+main.ts 1452 → **1494 行**。全量 **406 / 400 / 5**。
+
+### 一个重要发现：恢复页的数据通道**不需要**改
+
+设计 5.3 预判"恢复页现在走 DSH 的 HTTP 接口，不启 Host 后必须改为 IPC"，
+并把这列为阶段 5 最大的改造。
+
+**实测发现这个前提不成立**：我们的恢复页**本来就走 IPC**。`recovery-preload.cts`
+早已用 `contextBridge` 暴露 `dshRecovery.*`（`activate` / `getStatus` / `restore` /
+`uninstall` / `restoreHealthyConfig` / `getLog` / `returnToWorkbench`），
+而 `installRecoveryIpc` 的 8 个 handler **完全不依赖 DSH server**（无 `state.runtime.server` 引用）。
+
+所以阶段 5 的"最大改造"实际上**不存在** —— 恢复页在无 Host 时本来就能加载并拿到数据。
+这是设计阶段基于推测写下的结论，实测推翻了它。**如实记录，不再执行原计划的通道改造。**
+
+### 决策逻辑抽成纯函数
+
+`resolveLaunchDecision(argv)` 返回 `{ mode, startsHost, capturesHealthyCheckpoint }`：
+
+- 恢复标记 → `recovery`，不启 Host
+- 安全模式标记 → `safe-mode`，不启 Host
+- 两者同时存在 → **恢复优先**（它是通用修复路径，语义上覆盖较窄的隔离环境模式）
+- `argv[0]` 不参与判定；前缀相似参数不误命中
+- **恢复与安全模式都不拍快照**：checkpoint 记录的是"已知可用"的状态，
+  用用户正在修理的状态覆盖它，会毁掉他进来要用的那个恢复点
+
+一次性语义也有测试：标记只存活**一次**重启，正常重建命令行后不再进入恢复
+（否则每次启动都会陷在恢复模式里出不来）。
+
+### 接入点
+
+`startApplication` 中，**所有窗口/服务就绪之后、启动 DSH 之前**插入闸门
+（与参考实现 `main.ts:1051` 的位置对应）：
+
+```ts
+const launch = resolveLaunchDecision(process.argv)
+if (!launch.startsHost) {
+  await runRecoveryLaunch(...)
+  return          // ← 关键：直接返回，永不启动 Host
+}
+```
+
+`runRecoveryLaunch` 复用现有的 `showRecoveryWindow`（它只需要 `profileDir`，
+不需要运行中的 Host——已核实）。profileDir 按正常方式解析：用户修的就是**当前 active** 的
+profile，即使它已经损坏，注册表里仍记录着它。
+
+### 实测 A/B 对照（决定性验证）
+
+| | 主进程带标记 | DSH host 进程数 | 窗口 |
+|---|---|---|---|
+| **A 正常启动** | no | **1** | DSH My Desktop |
+| **B 恢复模式** | YES | **0** | DSH My Desktop |
+
+恢复模式下**没有任何 DSH host 进程、没有任何监听端口**，但应用进程与渲染进程正常
+（5 个 renderer），恢复页成功加载 —— 证明"Host 起不来时恢复仍可用"这一核心目标达成。
+
+**第一次 A/B 是错的**：两次都显示 host=1。原因是第二次启动撞上了**单实例锁**
+（前一次进程未完全退出），实际跑的还是第一次的实例。改为每次探测前彻底清理并等待，
+才得到上表的正确结果。**记录此坑以免误判。**
+
+### 已知限制（属阶段 6 范围）
+
+恢复页加载成功后，其 `activate` 操作会失败：
+`恢复环境尚未准备完成` —— 因为"进入恢复状态"需要 Host 语境下的准备流程。
+**这不影响阶段 5 的目标**（不启 Host 仍能进恢复页）；恢复页上各操作按钮的完整可用性
+是阶段 6 的工作。
+
+### 本阶段未做
+
+- 未实现 Safe Mode 的隔离环境接线（`launch-mode` 已能识别标记，但 `runRecoveryLaunch`
+  目前对 safe-mode 也只打开恢复助手，未做 userData/DSH_HOME 隔离——留待后续）
+- 未做恢复页 UI 重建（阶段 6）
