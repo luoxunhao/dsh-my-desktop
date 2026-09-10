@@ -46,6 +46,7 @@ import { createTerminalService, type TerminalService } from './desktop/terminal-
 import { createDialogService, type DesktopSettingsSection, type DialogService } from './desktop/dialog-service.js'
 import { createProfileActionsService, type ProfileActionsService, type ProfileOperationView } from './desktop/profile-actions-service.js'
 import { createShellBroadcastService, type ShellBroadcastService } from './desktop/shell-broadcast-service.js'
+import { createRestartService, type RestartService } from './recovery/restart-service.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -278,16 +279,26 @@ async function startApplication(): Promise<void> {
     updateSnapshot: desktopUpdateSnapshot,
     runTask: runMainTask,
   })
-  // Profile ops read launch state at call time; recovery restart arrives as an
-  // injected callback so this module does not depend on the recovery flow.
+  // Restart orchestration lives in its own module and imports nothing from
+  // electron, so it stays testable; the real app hooks are supplied here.
+  restartService = createRestartService({
+    locale: desktopLocale,
+    relaunch: args => { if (args === undefined) app.relaunch(); else app.relaunch({ args }) },
+    exit: code => app.exit(code),
+    shutdown: shutdownDesktop,
+    argv: () => process.argv,
+    // Widen to Electron's own option type; the narrow one exists only so the
+    // restart module stays free of an `electron` import.
+    confirm: async options => dialog.showMessageBox({ ...options, buttons: [...options.buttons] }),
+  })
+  // Profile ops read launch state at call time; the recovery restart is delegated
+  // to the restart service so it relaunches the whole app rather than the child.
   profileActions = createProfileActionsService({
     lastSeedOptions: () => state.launch.lastSeedOptions,
-    lastStartOptions: () => state.launch.lastStartOptions,
     isQuitting: () => state.runtime.isQuitting,
     dshView: () => state.windows.dshView,
     shutdown: shutdownDesktop,
-    enterRecoveryMode: (profileDir, options) => enterRecoveryMode(profileDir, options),
-    restartDshInRecoveryMode,
+    requestRecoveryRestart: () => requireRestartService().requestRecoveryRestart(),
   })
   // Broadcast/theme is the cross-cutting concern; created before the IPC registrar
   // (which dispatches theme reports into it) and before the dialog service.
@@ -1005,6 +1016,15 @@ let shellBroadcast: ShellBroadcastService | undefined
 function requireShellBroadcast(): ShellBroadcastService {
   if (shellBroadcast === undefined) throw new Error('外壳广播服务尚未初始化。')
   return shellBroadcast
+}
+
+// Restart orchestration: confirmation + full-application relaunch (used to enter
+// recovery mode, which is a property of the NEXT process, not this one).
+let restartService: RestartService | undefined
+
+function requireRestartService(): RestartService {
+  if (restartService === undefined) throw new Error('重启服务尚未初始化。')
+  return restartService
 }
 
 let shellIpcRegistrar: ShellIpcRegistrar | undefined

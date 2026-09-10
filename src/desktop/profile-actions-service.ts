@@ -39,7 +39,7 @@ import {
   writeActiveProfile,
 } from '../profiles/profiles.js'
 import { seedBundledPlugins } from '../profiles/plugin-seed.js'
-import type { RetainedSeedOptions, RetainedStartOptions } from './desktop-state.js'
+import type { RetainedSeedOptions } from './desktop-state.js'
 
 /** Renderer-safe view of one managed profile. */
 export interface ProfileOperationView {
@@ -55,17 +55,14 @@ export interface ProfileOperationView {
 export interface ProfileActionsDeps {
   /** Launch state recorded at startup; read at call time (late-bound). */
   lastSeedOptions: () => RetainedSeedOptions | undefined
-  lastStartOptions: () => RetainedStartOptions | undefined
   /** Quitting guard, read at call time. */
   isQuitting: () => boolean
   /** The DSH content view, for toggling DevTools. */
   dshView: () => { webContents: Electron.WebContents } | undefined
   /** Shut the desktop shell down, then run the given action (relaunch). */
   shutdown: (exit: () => void) => Promise<void>
-  /** Enter recovery isolation for a profile. Returns the resulting status. */
-  enterRecoveryMode: (profileDir: string, options: { force: true }) => Promise<unknown>
-  /** Restart DSH into the recovery window (owned by the recovery flow). */
-  restartDshInRecoveryMode: (profileDir: string) => Promise<void>
+  /** Restart the whole application into recovery mode (asks the user first). */
+  requestRecoveryRestart: () => Promise<void>
 }
 
 export function createProfileActionsService(deps: ProfileActionsDeps) {
@@ -135,12 +132,20 @@ export function createProfileActionsService(deps: ProfileActionsDeps) {
   }
 
   /** Enter recovery isolation and restart DSH into the recovery window. */
+  /**
+   * Enter recovery isolation and restart the whole application into recovery mode.
+   *
+   * This used to restart the DSH child IN-PROCESS and write an isolation flag into
+   * the profile. That cannot help when the app itself will not start, and it is not
+   * what the reference implementation does. Recovery is now a property of a NEW
+   * APPLICATION GENERATION: `restartService` relaunches Electron with a one-shot
+   * marker, and the next process boots the recovery assistant instead of the host.
+   *
+   * Note there is therefore no `enterRecoveryMode` call here any more — the new
+   * process decides, from the marker, before any host starts.
+   */
   async function restartIntoRecoveryFromShell(): Promise<void> {
-    const seedOptions = deps.lastSeedOptions()
-    const profileDir = seedOptions?.profileDir
-    if (profileDir === undefined || seedOptions === undefined || deps.lastStartOptions() === undefined) return
-    await deps.enterRecoveryMode(profileDir, { force: true })
-    await deps.restartDshInRecoveryMode(profileDir)
+    await deps.requestRecoveryRestart()
   }
 
   /** Toggle DevTools on the DSH renderer. */

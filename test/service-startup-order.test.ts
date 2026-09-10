@@ -51,14 +51,18 @@ test('每个 require*Service 调用都在其工厂创建之后', () => {
   const violations: string[] = []
   for (const [index, line] of lines.entries()) {
     for (const match of line.matchAll(/require(\w+)\(\)/g)) {
-      const variable = match[1]!
+      // Convention: `requireWindowRegistry()` reads the `windowRegistry` variable,
+      // i.e. the name minus the `require` prefix with a lower-cased first letter.
+      // Without this the lookup would miss every service and report a false
+      // "no factory found" for all of them.
+      const variable = match[1]!.replace(/^./, character => character.toLowerCase())
       const at = created.get(variable)
       if (at === undefined) {
-        violations.push(`第 ${index + 1} 行调用了 require${variable}()，但没有找到它的工厂赋值`)
+        violations.push(`第 ${index + 1} 行调用了 require${match[1]}()，但没有找到 ${variable} 的工厂赋值`)
         continue
       }
       if (index < at) {
-        violations.push(`第 ${index + 1} 行调用 require${variable}()，但它直到第 ${at + 1} 行才被创建`)
+        violations.push(`第 ${index + 1} 行调用 require${match[1]}()，但它直到第 ${at + 1} 行才被创建`)
       }
     }
   }

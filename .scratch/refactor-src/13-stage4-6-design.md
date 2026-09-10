@@ -198,3 +198,66 @@ frame-ancestors 'none'
 
 **阶段 2 / 3 可以并行**（互不依赖，都是纯模块 + 单测）。
 **阶段 5 是风险最高的一步**（换数据通道 + 改启动流程），建议单独一轮、单独验证。
+
+---
+
+## 阶段 4 实施结果（已完成）
+
+新增 `src/recovery/restart-confirmation.ts`（87 行，文案 + 默认按钮）与
+`src/recovery/restart-service.ts`（118 行，确认 + 重启编排）。
+main.ts 1575 → **1452 行**。全量 **397 / 391 / 5**。
+
+### 与设计的差异：本模块不 import electron
+
+设计里说要注入 `showMessageBox`。实施时发现**整个模块都不能 import electron**：
+本仓库的测试跑在裸 `node` 下，而 `electron` 在 Electron 进程外无法 import
+（`does not provide an export named 'app'`），且本仓库**没有 Electron mock 基础设施**
+（现有测试是靠 `vm` 提取源码来绕开）。
+
+因此把**全部** Electron 触点都改为注入：`relaunch` / `exit` / `shutdown` / `argv` / `confirm`。
+`main.ts` 提供真实实现。这样两个新模块能在裸 `node` 下完整测试（17 条）。
+
+这也解释了为什么本模块**不 import `DESKTOP_APP_NAME`**——那是 `electron` 间接依赖。
+最终该常量在本模块没有用到，直接删掉而不是硬留。
+
+### 行为变更：进程内恢复 → 重启整代
+
+`restartIntoRecoveryFromShell` 原本是：写 profile 隔离标志 + **在进程内重启 DSH 子进程**。
+现在改为委托给 `restartService.requestRecoveryRestart()`，即**带一次性标记重启整个应用**。
+
+因此 `ProfileActionsDeps` 里 **`enterRecoveryMode` 与 `restartDshInRecoveryMode` 都被移除**
+（前者不再需要——新进程从标记决定；后者的使用方只剩恢复流程自身），
+`lastStartOptions` 也随之变成死字段并删除。
+
+### 一个被自己的护栏抓到的命名问题
+
+`service-startup-order.test.ts`（阶段 1 加的护栏）在接入后**报错**。排查发现两件事：
+
+1. **护栏本身的约定没写全**：它把 `requireXxx()` 直接当作变量名查表，但实际约定是
+   「去掉 `require` 前缀 + 首字母小写」（`requireWindowRegistry` → `windowRegistry`）。
+   更早没暴露是因为既有服务恰好都满足"去掉 require 就是变量名"。
+   **已修正护栏并补注释**，反向验证：真正把工厂移到使用点之后时，护栏准确报出
+   「第 135 行调用 requireRestartService()，但它直到第 140 行才被创建」。
+
+2. 我一度把变量改名成 `restart` 去迎合护栏的**错误**推导，发现后又改回 `restartService`
+   ——正确的做法是修护栏，而不是让代码去迎合一个有 bug 的检查。
+
+### 顺序与幂等（测试固定）
+
+- **relaunch 早于 exit**：反了会「退出了但没重启」，用户看到的就是崩溃。
+  反向验证：调换顺序后测试失败。
+- **并发只重启一次**：共享 in-flight promise，三个并发请求只弹一次窗、只重启一次。
+- **默认按钮是「取消」**：`defaultId: 1`，回车不会误中断当前会话。
+- **已登记重启后不再弹窗**：对应参考实现的 `quitting` 闸门。
+
+### 实测
+
+打包后干净启动：窗口正常、DSH 服务监听 `127.0.0.1:14533`、首页 401（token 门禁）、
+设置插件 API 200、无 `startup-error.log`。
+**确认干净启动的命令行里没有恢复标记**（曾一度看到标记，追查确认那次是我自己
+早先的探针会话留下的，不是代码行为）。
+
+### 本阶段未做
+
+- **不消费标记**（阶段 5）：现在带标记启动时不会进恢复模式，仍走正常流程
+- 未实现 Safe Mode 的重启入口
