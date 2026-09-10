@@ -21,7 +21,7 @@
  */
 
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 /** Package name of the bundled desktop settings plugin. */
@@ -36,12 +36,12 @@ export const DESKTOP_SETTINGS_FILES = [
 /** Resolve the shipped plugin source directory (packaged resource vs dev checkout). */
 export function resolveDesktopSettingsDir(options: { isPackaged: boolean; appPath: string; resourcesPath: string; pluginDevDir?: string }): string {
   if (!options.isPackaged) {
-    // Dev run: an explicit override wins; otherwise fall back to the sibling
-    // dsh-my-desktop-setting repo checkout so the plugin works out of the box.
+    // Dev run: an explicit override wins; otherwise use the in-repo plugin
+    // checkout so the plugin works out of the box.
     if (options.pluginDevDir !== undefined && options.pluginDevDir !== '') return options.pluginDevDir
-    const sibling = join(dirname(options.appPath), 'dsh-my-desktop-setting')
-    if (existsSync(join(sibling, 'lib', 'index.js'))) return sibling
-    // No dev checkout and no env override: dev without the plugin is a no-op.
+    const inRepo = join(options.appPath, 'plugins', 'desktop-settings')
+    if (existsSync(join(inRepo, 'lib', 'index.js'))) return inRepo
+    // No built plugin: dev without the plugin is a no-op.
     return options.pluginDevDir ?? join(options.appPath, 'desktop-settings-plugin')
   }
   return join(options.resourcesPath, 'dsh-my-desktop-setting')

@@ -1,0 +1,11 @@
+# dsh-my-desktop-setting build artifacts
+lib/
+dist/
+*.tsbuildinfo
+# packaged plugin tarball (build output; vendor/*.tgz deps stay tracked)
+/dsh-my-desktop-setting-*.tgz
+# node
+node_modules/
+# misc
+.DS_Store
+*.log

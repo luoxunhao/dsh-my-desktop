@@ -27,21 +27,26 @@
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
+    "build:plugin": "pnpm --dir plugins/desktop-settings run build",
+    "check:plugin": "pnpm --dir plugins/desktop-settings run typecheck",
     "test": "pnpm run build && node --test dist/test/*.test.js",
     "start": "pnpm run build && electron .",
     "prepare-runtime": "pnpm run build && node dist/scripts/prepare-runtime.js",
     "pack": "pnpm run prepare-runtime && electron-builder --dir",
     "dist": "pnpm run prepare-runtime && electron-builder --publish never",
-    "dist:local": "pnpm run build && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --publish never",
-    "pack:local": "pnpm run build && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --dir",
+    "dist:local": "pnpm run build:plugin && pnpm run build && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --publish never",
+    "pack:local": "pnpm run build:plugin && pnpm run build && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --dir",
     "smoke:mac": "pnpm run build && node dist/scripts/smoke-macos-package.mjs",
     "smoke:linux": "pnpm run build && node dist/scripts/smoke-linux-package.mjs"
   },
   "devDependencies": {
     "@electron/notarize": "3.1.1",
     "@types/node": "26.4.1",
+    "@types/react": "~18.3.1",
     "electron": "44.1.1",
     "electron-builder": "26.15.7",
+    "react": "^18.2.0",
+    "tsdown": "0.22.2",
     "typescript": "7.0.2"
   },
   "build": {

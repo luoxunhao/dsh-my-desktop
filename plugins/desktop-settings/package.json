@@ -1,0 +1,62 @@
+{
+  "name": "dsh-my-desktop-setting",
+  "version": "0.1.2",
+  "description": "DSH My Desktop 的定制桌面设置插件（host+client）：Profile 管理、插件市场选择、外观/材质、浏览器/LAN、通知等设置页，注册进官方 settings.section。随 DSH My Desktop 一起发布，不单独发布到 registry。",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "lib/**/*.js",
+    "lib/**/*.map",
+    "lib/types/**/*.d.ts",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "node scripts/clean.mjs && tsdown && tsc -p tsconfig.json --emitDeclarationOnly && tsc -p tsconfig.client.json --emitDeclarationOnly",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-client-locale": "file:vendor/0.1.2-rc.1/deepseek-ai-dsh-client-locale-0.1.2-rc.1.tgz",
+    "@deepseek-ai/dsh-client-ui-renderer": "file:vendor/0.1.2-rc.1/deepseek-ai-dsh-client-ui-renderer-0.1.2-rc.1.tgz",
+    "@deepseek-ai/dsh-client-ui-settings": "file:vendor/0.1.2-rc.1/deepseek-ai-dsh-client-ui-settings-0.1.2-rc.1.tgz",
+    "@deepseek-ai/dsh-client-ui-slots": "file:vendor/0.1.2-rc.1/deepseek-ai-dsh-client-ui-slots-0.1.2-rc.1.tgz",
+    "@types/node": "^24.0.0",
+    "@types/react": "~18.3.1",
+    "react": "^18.2.0",
+    "tsdown": "0.22.2",
+    "typescript": "6.0.3"
+  },
+  "license": "MIT"
+}

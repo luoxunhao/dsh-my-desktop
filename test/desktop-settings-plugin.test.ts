@@ -60,7 +60,7 @@ test('准备桌面设置插件：源缺 host 入口时返回 undefined（不失�
   }
 })
 
-test('解析桌面设置插件源目录：打包读资源，dev 优先显式覆盖/兄弟仓库', () => {
+test('解析桌面设置插件源目录：打包读资源，dev 优先显式覆盖/仓库内插件', () => {
   // packaged → resources/<pkg>
   assert.equal(
     resolveDesktopSettingsDir({ isPackaged: true, appPath: '/dev', resourcesPath: '/res' }),
@@ -71,9 +71,25 @@ test('解析桌面设置插件源目录：打包读资源，dev 优先显式覆�
     resolveDesktopSettingsDir({ isPackaged: false, appPath: '/dev', resourcesPath: '/res', pluginDevDir: '/my/plugin' }),
     '/my/plugin',
   )
-  // dev without override and no sibling lib falls back to the dev path (no plugin).
+  // dev without override and no in-repo lib falls back to the dev path (no plugin).
   assert.equal(
     resolveDesktopSettingsDir({ isPackaged: false, appPath: '/dev', resourcesPath: '/res' }),
     join('/dev', 'desktop-settings-plugin'),
   )
+})
+
+test('解析桌面设置插件源目录：dev 命中仓库内 plugins/desktop-settings', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-settings-dev-'))
+  try {
+    // The in-repo plugin checkout lives at <appPath>/plugins/desktop-settings.
+    const inRepo = join(root, 'plugins', 'desktop-settings')
+    mkdirSync(join(inRepo, 'lib'), { recursive: true })
+    writeFileSync(join(inRepo, 'lib', 'index.js'), 'export const name = "dsh-my-desktop-setting";\n', 'utf8')
+    assert.equal(
+      resolveDesktopSettingsDir({ isPackaged: false, appPath: root, resourcesPath: '/res' }),
+      inRepo,
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

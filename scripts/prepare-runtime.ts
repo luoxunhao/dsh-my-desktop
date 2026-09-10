@@ -102,9 +102,9 @@ export async function stageDesktopSettingsPlugin(): Promise<void> {
   const sourceEnv = process.env.DSH_DESKTOP_SETTINGS_DIR
   const source = sourceEnv !== undefined && sourceEnv !== ''
     ? resolve(sourceEnv)
-    : join(projectRoot, '..', 'dsh-my-desktop-setting')
+    : join(projectRoot, 'plugins', 'desktop-settings')
   if (!existsSync(join(source, 'lib', 'index.js'))) {
-    console.warn('跳过随包桌面设置插件：未找到构建产物（先构建 dsh-my-desktop-setting，或用 DSH_DESKTOP_SETTINGS_DIR 指向）。')
+    console.warn('跳过随包桌面设置插件：未找到构建产物（先跑 pnpm run build:plugin，或用 DSH_DESKTOP_SETTINGS_DIR 指向）。')
     return
   }
   const dest = join(projectRoot, 'dist', 'desktop-settings-plugin')

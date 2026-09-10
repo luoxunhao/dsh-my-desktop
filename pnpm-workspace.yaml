@@ -1,3 +1,5 @@
+packages:
+  - plugins/*
 allowBuilds:
   electron-winstaller: false
 ignoredBuiltDependencies:

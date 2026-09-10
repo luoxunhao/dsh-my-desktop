@@ -1,0 +1,7 @@
+# dsh-my-desktop-setting — 桌面设置插件 bundle 层。
+# 顶层数组；经 dsh.bundle.patch 指向并被 profile 组合加载。
+# id 是配置树中稳定行身份；name 是 Node 可解析的包名。
+- insert:
+    - id: desktop-settings
+      name: dsh-my-desktop-setting
+      config: {}
