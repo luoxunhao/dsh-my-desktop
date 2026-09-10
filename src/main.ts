@@ -43,6 +43,7 @@ import { createUpdateService, type UpdateService } from './desktop/update-servic
 import { createTrayService, type TrayService } from './desktop/tray-service.js'
 import { createShellIpcRegistrar, type ShellIpcRegistrar } from './desktop/shell-ipc-registrar.js'
 import { createTerminalService, type TerminalService } from './desktop/terminal-service.js'
+import { createDialogService, type DesktopSettingsSection, type DialogService } from './desktop/dialog-service.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -249,6 +250,31 @@ async function startApplication(): Promise<void> {
     lastSeedOptions: () => state.launch.lastSeedOptions,
     locale: desktopLocale,
     profileRoots: launcherProfileRoots,
+  })
+  // Dialog handles live on the store; the service mutates them through accessors so
+  // it never captures a window value at construction time.
+  dialogService = createDialogService({
+    mainWindow: () => state.windows.mainWindow,
+    settingsWindow: {
+      get: () => state.windows.settingsWindow,
+      set: window => { state.windows.settingsWindow = window },
+    },
+    shortcutsWindow: {
+      get: () => state.windows.shortcutsWindow,
+      set: window => { state.windows.shortcutsWindow = window },
+    },
+    aboutWindow: {
+      get: () => state.windows.aboutWindow,
+      set: window => { state.windows.aboutWindow = window },
+    },
+    colorScheme: () => state.shell.colorScheme,
+    text: desktopText,
+    resolveShellAsset,
+    resolvePreload,
+    resolveWindowIconImage,
+    installShortcutHandler,
+    updateSnapshot: desktopUpdateSnapshot,
+    runTask: runMainTask,
   })
   installShellIpc()
   installRecoveryIpc()
@@ -932,6 +958,15 @@ function requireTerminalService(): TerminalService {
   return terminalService
 }
 
+// The three auxiliary windows. Their handles stay on the store; this service reads
+// and writes them through accessors so the late-binding contract is preserved.
+let dialogService: DialogService | undefined
+
+function requireDialogService(): DialogService {
+  if (dialogService === undefined) throw new Error('对话框服务尚未初始化。')
+  return dialogService
+}
+
 let shellIpcRegistrar: ShellIpcRegistrar | undefined
 
 function requireShellIpcRegistrar(): ShellIpcRegistrar {
@@ -1511,8 +1546,6 @@ function handleBridgeNotificationEvent(payload: unknown): void {
   showDesktopNotification(notificationEvent)
 }
 
-type DesktopSettingsSection = 'notifications' | 'updates'
-
 function removeNativeWindowMenu(window: BrowserWindow): void {
   if (process.platform === 'darwin') return
   window.setMenu(null)
@@ -1528,92 +1561,15 @@ function preventWindowsOwnedWindowFlash(window: BrowserWindow): void {
 }
 
 function showDesktopSettingsWindow(section: DesktopSettingsSection = 'notifications'): void {
-  if (state.windows.settingsWindow !== undefined && !state.windows.settingsWindow.isDestroyed()) {
-    state.windows.settingsWindow.show()
-    state.windows.settingsWindow.focus()
-    state.windows.settingsWindow.webContents.send(SHELL_IPC.settingsSection, section)
-    return
-  }
-  const window = new BrowserWindow({
-    parent: state.windows.mainWindow,
-    width: 760,
-    height: 620,
-    minWidth: 680,
-    minHeight: 540,
-    title: desktopText('桌面端设置', 'Desktop Settings'),
-    autoHideMenuBar: true,
-    backgroundColor: DESKTOP_THEME_PALETTES[state.shell.colorScheme].settingsBackground,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, preload: resolvePreload('shell-preload.cjs'), sandbox: true },
-  })
-  removeNativeWindowMenu(window)
-  preventWindowsOwnedWindowFlash(window)
-  state.windows.settingsWindow = window
-  window.on('closed', () => { if (state.windows.settingsWindow === window) state.windows.settingsWindow = undefined })
-  installShortcutHandler(window.webContents)
-  window.webContents.once('did-finish-load', () => {
-    window.webContents.send(SHELL_IPC.settingsSection, section)
-    window.webContents.send(SHELL_IPC.desktopUpdateState, desktopUpdateSnapshot())
-  })
-  runMainTask(window.loadFile(resolveShellAsset('settings.html'), { query: { theme: state.shell.colorScheme } }))
+  requireDialogService().showDesktopSettingsWindow(section)
 }
 
 function showShortcutsWindow(): void {
-  if (state.windows.shortcutsWindow !== undefined && !state.windows.shortcutsWindow.isDestroyed()) {
-    state.windows.shortcutsWindow.show(); state.windows.shortcutsWindow.focus(); return
-  }
-  const window = new BrowserWindow({
-    parent: state.windows.mainWindow,
-    modal: true,
-    width: 620,
-    height: 650,
-    minWidth: 520,
-    minHeight: 480,
-    title: desktopText('键盘快捷键', 'Keyboard Shortcuts'),
-    autoHideMenuBar: true,
-    backgroundColor: DESKTOP_THEME_PALETTES[state.shell.colorScheme].shortcutsBackground,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, preload: resolvePreload('shell-preload.cjs'), sandbox: true },
-  })
-  removeNativeWindowMenu(window)
-  preventWindowsOwnedWindowFlash(window)
-  state.windows.shortcutsWindow = window
-  window.on('closed', () => { if (state.windows.shortcutsWindow === window) state.windows.shortcutsWindow = undefined })
-  installShortcutHandler(window.webContents)
-  runMainTask(window.loadFile(resolveShellAsset('shortcuts.html'), { query: { theme: state.shell.colorScheme } }))
+  requireDialogService().showShortcutsWindow()
 }
 
 function showAboutWindow(): void {
-  if (state.windows.aboutWindow !== undefined && !state.windows.aboutWindow.isDestroyed()) {
-    state.windows.aboutWindow.show()
-    state.windows.aboutWindow.focus()
-    return
-  }
-  const icon = resolveWindowIconImage()
-  const window = new BrowserWindow({
-    parent: state.windows.mainWindow,
-    modal: true,
-    width: 560,
-    height: 680,
-    minWidth: 560,
-    minHeight: 680,
-    maxWidth: 560,
-    maxHeight: 680,
-    frame: false,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    title: desktopText(`关于 ${DESKTOP_APP_NAME}`, `About ${DESKTOP_APP_NAME}`),
-    autoHideMenuBar: true,
-    backgroundColor: DESKTOP_THEME_PALETTES[state.shell.colorScheme].aboutBackground,
-    ...(icon === undefined ? {} : { icon }),
-    webPreferences: { contextIsolation: true, nodeIntegration: false, preload: resolvePreload('shell-preload.cjs'), sandbox: true },
-  })
-  removeNativeWindowMenu(window)
-  preventWindowsOwnedWindowFlash(window)
-  state.windows.aboutWindow = window
-  window.on('closed', () => { if (state.windows.aboutWindow === window) state.windows.aboutWindow = undefined })
-  installShortcutHandler(window.webContents)
-  runMainTask(window.loadFile(resolveShellAsset('about.html'), { query: { theme: state.shell.colorScheme } }))
+  requireDialogService().showAboutWindow()
 }
 
 function configureDesktopUpdater(): void {

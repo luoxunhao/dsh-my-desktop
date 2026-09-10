@@ -158,17 +158,19 @@ test('关于窗口使用独立丰富页面并进入打包资源', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   const manifest = await readFile(new URL('../../package.json', import.meta.url), 'utf8')
   const about = await readFile(new URL('../../assets/about.html', import.meta.url), 'utf8')
+  // Dialog window construction now lives in the dialog service.
+  const dialogs = await readFile(new URL('../../src/desktop/dialog-service.ts', import.meta.url), 'utf8')
   assert.match(main, /showAboutWindow\(\)/)
   assert.match(manifest, /assets\/about\.html/)
   assert.match(about, /关于这个项目/)
   assert.match(about, /runtimeVersion/)
   assert.match(about, /overflow:hidden/)
-  assert.match(main, /resizable: false/)
-  assert.match(main, /frame: false/)
-  assert.match(main, /minimizable: false/)
-  assert.match(main, /maximizable: false/)
-  assert.match(main, /function preventWindowsOwnedWindowFlash/)
-  assert.match(main, /window\.setParentWindow\(null\)/)
+  assert.match(dialogs, /resizable: false/)
+  assert.match(dialogs, /frame: false/)
+  assert.match(dialogs, /minimizable: false/)
+  assert.match(dialogs, /maximizable: false/)
+  assert.match(dialogs, /function preventWindowsOwnedWindowFlash/)
+  assert.match(dialogs, /window\.setParentWindow\(null\)/)
 })
 
 test('桌面通知和更新设置使用独立窗口并进入打包资源', async () => {
@@ -222,10 +224,15 @@ test('桌面通知和更新设置使用独立窗口并进入打包资源', async
   const updateService = await readFile(new URL('../../src/desktop/update-service.ts', import.meta.url), 'utf8')
   assert.match(updateService, /showDesktopSettingsWindow\('updates'\)/)
   assert.match(updateService, /autoInstallOnAppQuit = false/)
-  assert.match(main, /function removeNativeWindowMenu/)
-  assert.match(main, /window\.setMenu\(null\)/)
-  assert.match(main, /window\.setMenuBarVisibility\(false\)/)
-  assert.equal((main.match(/removeNativeWindowMenu\(window\)/g) ?? []).length, 3)
+  // Menu stripping is part of the shared dialog window template.
+  const dialogs = await readFile(new URL('../../src/desktop/dialog-service.ts', import.meta.url), 'utf8')
+  assert.match(dialogs, /function removeNativeWindowMenu/)
+  assert.match(dialogs, /window\.setMenu\(null\)/)
+  assert.match(dialogs, /window\.setMenuBarVisibility\(false\)/)
+  // The template applies it once, and all three dialogs go through the template —
+  // so every created window still gets its menu stripped despite the single call.
+  assert.equal((dialogs.match(/removeNativeWindowMenu\(window\)/g) ?? []).length, 1)
+  assert.equal((dialogs.match(/openDialogWindow\(/g) ?? []).length, 4)
 })
 
 test('shell 在 macOS 为交通灯预留空间且状态早到不会读取空 bootstrap', async () => {

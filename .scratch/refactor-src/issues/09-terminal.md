@@ -12,7 +12,7 @@
 
 **Blocked by:** 05 — 抽 DesktopWindowRegistry
 
-**Status:** 代码完成，**待人工验证**
+**Status:** done — 人工验证通过（终端按钮可打开，`dsh --version` 可用）
 
 - [x] 抽出 `src/desktop/terminal-service.ts`：`openDshTerminal`、`logTerminalError`
 - [x] **首次落地窄接口签名**：`TerminalDeps` 只声明 3 个字段（见下），**不含 `state`**
@@ -20,7 +20,7 @@
 - [x] 保留「不带 `--profile` 即操作当前 profile」的行为与提示文案
 - [x] `check:all` 通过、全量测试 **335 / 329 / 5**（与基线一致，无需改测试）
 - [x] `dist-local` 出包成功
-- [ ] **人工启动确认**：顶栏「终端」按钮能打开终端，且终端内 `dsh --version` 可用
+- [x] **人工启动确认**：终端按钮可打开，终端内 `dsh --version` 可用
 
 ## 执行结果
 
