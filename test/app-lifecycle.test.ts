@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { quitDesktopApp, shouldHideInsteadOfClose } from '../src/app-lifecycle.js'
+import { quitDesktopApp, shouldHideInsteadOfClose } from '../src/app/app-lifecycle.js'
 
 test('未退出时关闭窗口应隐藏到托盘', () => {
   assert.equal(shouldHideInsteadOfClose(false, 'win32'), true)

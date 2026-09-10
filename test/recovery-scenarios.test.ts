@@ -5,11 +5,11 @@ import { join } from 'node:path'
 import test, { type TestContext } from 'node:test'
 import vm from 'node:vm'
 
-import { startAfterPluginUpdates, startWithProfileSelfRepair } from '../src/profile-repair.js'
-import { findRecoveryCandidates } from '../src/recovery-diagnostics.js'
-import { captureProfileHealthCheckpoint, readProfileHealthCheckpoint } from '../src/profile-health-checkpoint.js'
-import * as recovery from '../src/recovery-mode.js'
-import * as diagnostics from '../src/startup-diagnostics.js'
+import { startAfterPluginUpdates, startWithProfileSelfRepair } from '../src/profiles/profile-repair.js'
+import { findRecoveryCandidates } from '../src/recovery/recovery-diagnostics.js'
+import { captureProfileHealthCheckpoint, readProfileHealthCheckpoint } from '../src/profiles/profile-health-checkpoint.js'
+import * as recovery from '../src/recovery/recovery-mode.js'
+import * as diagnostics from '../src/recovery/startup-diagnostics.js'
 
 // 执行当前构建产物中的真实函数，仅替换 Electron、安装器与 DSH 进程边界。
 const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8')

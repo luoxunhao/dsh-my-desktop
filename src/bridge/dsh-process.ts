@@ -1,10 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 
-import { prependPath } from './plugin-toolchain.js'
-import { parseReadyUrl } from './readiness.js'
-import { APPLY_PLUGIN_UPDATES_IPC } from './bundled-plugins.js'
-import { terminateProcessTree } from './process-control.js'
-import type { DshRuntime } from './runtime.js'
+import { prependPath } from '../runtime/plugin-toolchain.js'
+import { parseReadyUrl } from '../infra/readiness.js'
+import { APPLY_PLUGIN_UPDATES_IPC } from '../runtime/bundled-plugins.js'
+import { terminateProcessTree } from '../infra/process-control.js'
+import type { DshRuntime } from '../runtime/runtime.js'
 
 export { APPLY_PLUGIN_UPDATES_IPC }
 

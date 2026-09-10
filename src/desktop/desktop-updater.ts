@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 
-import { writeTextFileAtomic } from './atomic-file.js'
+import { writeTextFileAtomic } from '../infra/atomic-file.js'
 
 export type DesktopUpdateStatus =
   | { kind: 'idle' }

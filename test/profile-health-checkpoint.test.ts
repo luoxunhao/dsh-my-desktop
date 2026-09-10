@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { captureProfileHealthCheckpoint, readProfileHealthCheckpoint, restoreProfileHealthCheckpoint } from '../src/profile-health-checkpoint.js'
+import { captureProfileHealthCheckpoint, readProfileHealthCheckpoint, restoreProfileHealthCheckpoint } from '../src/profiles/profile-health-checkpoint.js'
 
 test('健康检查点仅保存并还原 Profile 配置文件，不处理 node_modules', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-profile-health-'))

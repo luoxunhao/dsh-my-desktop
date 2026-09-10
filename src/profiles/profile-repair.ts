@@ -2,9 +2,9 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { writeTextFileAtomic } from './atomic-file.js'
-import { OFFICIAL_PROFILE_BUNDLES } from './bundled-plugins.js'
-import { migrateDesktopBridgeProfile } from './desktop-bridge-migration.js'
+import { writeTextFileAtomic } from '../infra/atomic-file.js'
+import { OFFICIAL_PROFILE_BUNDLES } from '../runtime/bundled-plugins.js'
+import { migrateDesktopBridgeProfile } from '../bridge/desktop-bridge-migration.js'
 import {
   ensureAutoInstallPeersDisabled,
   assertOfficialProfileBundlesAvailable,

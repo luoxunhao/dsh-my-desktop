@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { isDshMarketOperationBusy, waitForDshMarketBatchToSettle } from '../src/dshmarket-batch.js'
+import { isDshMarketOperationBusy, waitForDshMarketBatchToSettle } from '../src/desktop/dshmarket-batch.js'
 
 test('只将 dshmarket 明确报告的忙碌状态视为批量更新进行中', () => {
   assert.equal(isDshMarketOperationBusy({ busy: true }), true)

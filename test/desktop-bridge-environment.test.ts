@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import test from 'node:test'
 
-import { apply } from '../src/desktop-bridge.mjs'
+import { apply } from '../src/bridge/desktop-bridge.mjs'
 
 for (const scenario of [
   { name: '独立 Web', desktop: undefined, ipc: false, pnpm: undefined, expected: false },

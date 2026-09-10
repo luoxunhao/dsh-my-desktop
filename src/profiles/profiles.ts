@@ -23,9 +23,9 @@ import {
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
-import { writeTextFileAtomicSync } from './atomic-file.js'
-import { OFFICIAL_PROFILE_BUNDLES } from './bundled-plugins.js'
-import { pnpmWorkspaceYaml } from './bundled-plugins.js'
+import { writeTextFileAtomicSync } from '../infra/atomic-file.js'
+import { OFFICIAL_PROFILE_BUNDLES } from '../runtime/bundled-plugins.js'
+import { pnpmWorkspaceYaml } from '../runtime/bundled-plugins.js'
 
 /** Default profile, kept for backward compatibility with existing installs. */
 export const DEFAULT_PROFILE_NAME = 'web'

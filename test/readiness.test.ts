@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { parseReadyUrl } from '../src/readiness.js'
-import { resolveNodeExecutable } from '../src/runtime.js'
+import { parseReadyUrl } from '../src/infra/readiness.js'
+import { resolveNodeExecutable } from '../src/runtime/runtime.js'
 
 test('解析 DSH 输出的本机就绪地址', () => {
   assert.equal(parseReadyUrl('dsh web: http://127.0.0.1:10406\n'), 'http://127.0.0.1:10406/')

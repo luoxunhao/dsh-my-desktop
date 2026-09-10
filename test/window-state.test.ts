@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { applyInitialWindowState, shouldStartMaximized } from '../src/window-state.js'
+import { applyInitialWindowState, shouldStartMaximized } from '../src/desktop/window-state.js'
 
 test('启动默认最大化', () => {
   assert.equal(shouldStartMaximized(), true)

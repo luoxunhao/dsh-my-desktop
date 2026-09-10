@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-import { isExternalOpenUrl, isExternalHttpUrl, isSameOrigin } from '../src/navigation.js'
+import { isExternalOpenUrl, isExternalHttpUrl, isSameOrigin } from '../src/infra/navigation.js'
 
 const localOrigin = 'http://127.0.0.1:10406'
 

@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { profileActivationFingerprint, shouldRecycleForProfileFingerprint, watchProfileActivation } from '../src/profile-watch.js'
+import { profileActivationFingerprint, shouldRecycleForProfileFingerprint, watchProfileActivation } from '../src/profiles/profile-watch.js'
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
   const deadline = Date.now() + timeoutMs

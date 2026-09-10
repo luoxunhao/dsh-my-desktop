@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { extractTarGz, verifyFileSha256 } from './runtime-archive.js'
-import { terminateProcessTree } from './process-control.js'
+import { extractTarGz, verifyFileSha256 } from '../infra/runtime-archive.js'
+import { terminateProcessTree } from '../infra/process-control.js'
 
 export const RUNTIME_EXTRACTION_PROGRESS_PREFIX = 'DSH_EXTRACT_PROGRESS '
 

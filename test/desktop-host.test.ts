@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { APPLY_PLUGIN_UPDATES_IPC, OFFICIAL_DSH_VERSION } from '../src/bundled-plugins.js'
-import { createDesktopHostServices, DESKTOP_BRIDGE_FILES, prepareDesktopBridge, officialPluginUpdateVersion, runBundledPnpm, shouldRecycleAfterPluginArgs, shouldRecycleAfterPluginResult } from '../src/desktop-host.js'
-import { removeDesktopBridgePatch } from '../src/desktop-bridge-migration.js'
+import { APPLY_PLUGIN_UPDATES_IPC, OFFICIAL_DSH_VERSION } from '../src/runtime/bundled-plugins.js'
+import { createDesktopHostServices, DESKTOP_BRIDGE_FILES, prepareDesktopBridge, officialPluginUpdateVersion, runBundledPnpm, shouldRecycleAfterPluginArgs, shouldRecycleAfterPluginResult } from '../src/bridge/desktop-host.js'
+import { removeDesktopBridgePatch } from '../src/bridge/desktop-bridge-migration.js'
 import { pathToFileURL } from 'node:url'
 
 async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 1_000): Promise<void> {

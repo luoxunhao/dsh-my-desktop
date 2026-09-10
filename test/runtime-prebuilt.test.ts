@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { copyPrebuiltOfficialRuntime, resolvePrebuiltOfficialRuntime } from '../src/runtime-prebuilt.js'
+import { copyPrebuiltOfficialRuntime, resolvePrebuiltOfficialRuntime } from '../src/runtime/runtime-prebuilt.js'
 
 async function writeOfficialEntry(dir: string): Promise<void> {
   await mkdir(join(dir, 'node_modules', '@deepseek-ai', 'dsh', 'lib'), { recursive: true })

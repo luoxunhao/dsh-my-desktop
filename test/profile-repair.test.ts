@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { parseUnresolvedBundleError, removeProfileBundle, repairBrokenProfile, startWithProfileSelfRepair } from '../src/profile-repair.js'
+import { parseUnresolvedBundleError, removeProfileBundle, repairBrokenProfile, startWithProfileSelfRepair } from '../src/profiles/profile-repair.js'
 
 test('能从 DSH 缺 bundle 报错里取出包名', () => {
   const message = 'dsh: cannot resolve profile bundle "dsh-file-upload" from the dsh installation or C:\\Users\\demo\\.dsh\\profiles\\web'

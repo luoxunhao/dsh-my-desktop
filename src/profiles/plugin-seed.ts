@@ -5,8 +5,8 @@ import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-import { writeTextFileAtomic, writeTextFileAtomicSync } from './atomic-file.js'
-import { restrictProfileBundlesForRecovery } from './recovery-mode.js'
+import { writeTextFileAtomic, writeTextFileAtomicSync } from '../infra/atomic-file.js'
+import { restrictProfileBundlesForRecovery } from '../recovery/recovery-mode.js'
 import {
   BUNDLED_PLUGINS,
   buildRegistry,
@@ -19,11 +19,11 @@ import {
   pnpmWorkspaceYaml,
   isDeepSeekOfficialPackage,
   type BundledPlugin,
-} from './bundled-plugins.js'
-import { prependPath } from './plugin-toolchain.js'
-import { terminateProcessTree } from './process-control.js'
+} from '../runtime/bundled-plugins.js'
+import { prependPath } from '../runtime/plugin-toolchain.js'
+import { terminateProcessTree } from '../infra/process-control.js'
 import { mergeProfileUpdates, officialRuntimeUpdateVersion, parsePendingUpdates, partitionPackageUpdates, resolvePendingUpdatesPath, type ProfilePackageUpdate } from './profile-updates.js'
-import { copyPrebuiltOfficialRuntime } from './runtime-prebuilt.js'
+import { copyPrebuiltOfficialRuntime } from '../runtime/runtime-prebuilt.js'
 
 export type SeedSkipReason = 'already-installed' | 'missing-store'
 

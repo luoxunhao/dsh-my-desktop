@@ -4,10 +4,10 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
-import { BUNDLED_PLUGINS } from '../src/bundled-plugins.js'
-import { buildSeedPluginArgs, ensureProfileScaffold } from '../src/plugin-seed.js'
-import { prependPath } from '../src/plugin-toolchain.js'
-import { extractTarGz, packDirectoryToTarGz, verifyFileSha256, writeFileSha256 } from '../src/runtime-archive.js'
+import { BUNDLED_PLUGINS } from '../src/runtime/bundled-plugins.js'
+import { buildSeedPluginArgs, ensureProfileScaffold } from '../src/profiles/plugin-seed.js'
+import { prependPath } from '../src/runtime/plugin-toolchain.js'
+import { extractTarGz, packDirectoryToTarGz, verifyFileSha256, writeFileSha256 } from '../src/infra/runtime-archive.js'
 
 // 最小化构建不随社区插件：空清单直接通过，无需装配/离线验证 store。
 if (BUNDLED_PLUGINS.length === 0) {

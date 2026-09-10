@@ -3,8 +3,8 @@ import { mkdir, readFile, rename, rm } from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 
-import { writeTextFileAtomic } from './atomic-file.js'
-import { isDeepSeekOfficialPackage } from './bundled-plugins.js'
+import { writeTextFileAtomic } from '../infra/atomic-file.js'
+import { isDeepSeekOfficialPackage } from '../runtime/bundled-plugins.js'
 
 const RECOVERY_STATE_FILE = '.dsh-desktop-recovery.json'
 const RECOVERY_BACKUP_FILE = '.dsh-desktop-recovery.package.json'

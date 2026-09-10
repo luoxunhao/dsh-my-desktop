@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { join, win32 } from 'node:path'
 import test from 'node:test'
 
-import { DESKTOP_APP_NAME, DESKTOP_APP_USER_MODEL_ID, DESKTOP_TOAST_ACTIVATOR_CLSID, DESKTOP_USER_DATA_DIR, resolveDesktopRuntimeDir, resolveDesktopUserDataDir } from '../src/app-identity.js'
+import { DESKTOP_APP_NAME, DESKTOP_APP_USER_MODEL_ID, DESKTOP_TOAST_ACTIVATOR_CLSID, DESKTOP_USER_DATA_DIR, resolveDesktopRuntimeDir, resolveDesktopUserDataDir } from '../src/app/app-identity.js'
 
 test('展示名、进程安装目录和用户数据目录都使用 DSH My Desktop', () => {
   assert.equal(DESKTOP_APP_NAME, 'DSH My Desktop')

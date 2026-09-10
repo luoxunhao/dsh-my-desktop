@@ -1,8 +1,8 @@
-import { isDeepSeekOfficialPackage } from './bundled-plugins.js'
+import { isDeepSeekOfficialPackage } from '../runtime/bundled-plugins.js'
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
-import { changedBundlesSinceHealthy } from './profile-health-checkpoint.js'
+import { changedBundlesSinceHealthy } from '../profiles/profile-health-checkpoint.js'
 import { isRecoverablePlugin } from './recovery-mode.js'
 
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i

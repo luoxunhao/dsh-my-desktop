@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 
-import { writeTextFileAtomic } from './atomic-file.js'
+import { writeTextFileAtomic } from '../infra/atomic-file.js'
 
 const STARTUP_DIAGNOSTIC_VERSION = 1
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i

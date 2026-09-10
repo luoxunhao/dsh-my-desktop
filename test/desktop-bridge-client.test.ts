@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import vm from 'node:vm'
 
-import { desktopBridgeClientBundle } from '../src/desktop-bridge-client-source.js'
+import { desktopBridgeClientBundle } from '../src/bridge/desktop-bridge-client-source.js'
 
 type ActionListener = (id: string) => void
 type ClientPlugin = { apply(ctx: Record<string, unknown>): void; inject: string[] }

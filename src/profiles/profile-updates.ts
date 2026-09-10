@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 
-import { isDeepSeekOfficialPackage, isOfficialDshPackage } from './bundled-plugins.js'
+import { isDeepSeekOfficialPackage, isOfficialDshPackage } from '../runtime/bundled-plugins.js'
 
 export const PROFILE_PENDING_UPDATES_FILE = '.dsh-pending-updates.json'
 

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import test from 'node:test'
 
-import { DEFAULT_UPDATE_PREFERENCES, buildDesktopTrayItems, DESKTOP_UPDATE_WARNING, desktopUpdateChannel, desktopUpdatePrompt, formatDesktopReleaseNotes, loadUpdatePreferences, publicDesktopUpdateError, sanitizeUpdatePreferences, saveUpdatePreferences, shouldCheckForUpdatesOnStartup, shouldDownloadUpdateAutomatically } from '../src/desktop-updater.js'
+import { DEFAULT_UPDATE_PREFERENCES, buildDesktopTrayItems, DESKTOP_UPDATE_WARNING, desktopUpdateChannel, desktopUpdatePrompt, formatDesktopReleaseNotes, loadUpdatePreferences, publicDesktopUpdateError, sanitizeUpdatePreferences, saveUpdatePreferences, shouldCheckForUpdatesOnStartup, shouldDownloadUpdateAutomatically } from '../src/desktop/desktop-updater.js'
 
 test('更新策略使用安全默认值并持久化', async () => {
   assert.deepEqual(sanitizeUpdatePreferences(undefined), DEFAULT_UPDATE_PREFERENCES)

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-import { SHELL_IPC } from '../src/shell-contract.js'
+import { SHELL_IPC } from '../src/desktop/shell-contract.js'
 
 function channelLiterals(source: string): string[] {
   return [...source.matchAll(/'([^']+)'/g)]

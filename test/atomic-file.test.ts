@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { writeTextFileAtomic } from '../src/atomic-file.js'
+import { writeTextFileAtomic } from '../src/infra/atomic-file.js'
 
 test('原子写入会完整替换清单且不留下临时文件', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-atomic-'))

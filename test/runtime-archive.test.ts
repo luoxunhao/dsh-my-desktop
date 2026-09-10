@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { extractTarGz, packDirectoryToTarGz, validateArchiveEntries } from '../src/runtime-archive.js'
+import { extractTarGz, packDirectoryToTarGz, validateArchiveEntries } from '../src/infra/runtime-archive.js'
 
 test('目录可以打成 tar.gz 再解回原结构', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-archive-'))

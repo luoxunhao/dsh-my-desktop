@@ -2,7 +2,7 @@ import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync
 import { join } from 'node:path'
 import { isMap, isSeq, parseDocument, type YAMLSeq } from 'yaml'
 
-import { writeTextFileAtomicSync } from './atomic-file.js'
+import { writeTextFileAtomicSync } from '../infra/atomic-file.js'
 import { DESKTOP_BRIDGE_PACKAGE } from './desktop-host.js'
 
 /** 先移除旧桥接声明，再清理文件；文件占用只报告警告，下次启动重试。 */

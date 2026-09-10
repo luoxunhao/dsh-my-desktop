@@ -9,12 +9,13 @@ ticket 证明「行为未变」的基准。
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done — 基线记录于 `.scratch/refactor-src/baseline.md`
 
-- [ ] 跑一次 `dist-local` 出包（走仓库既有构建入口）
-- [ ] 记录 `release/win-unpacked/resources/` 下关键产物的 SHA256：桌面设置插件的
+- [x] 跑一次 `dist-local` 出包（走仓库既有构建入口）
+- [x] 记录 `release/win-unpacked/resources/` 下关键产物的 SHA256：桌面设置插件的
       `lib/index.js`、`lib/client.js`，以及 `desktop-bridge/` 下的全部文件
-- [ ] 记录当前全量测试基线（预期 326 项 / 320 通过 / 5 失败，5 项为已知缺口）
-- [ ] 把基线与采集命令写进 spec 目录下的基线文件，供后续 ticket 比对
+- [x] 记录当前全量测试基线 —— 实测 **327 项 / 321 通过 / 5 失败**
+      （比 spec 写的 326/320 多 1 项：上一轮 extract-runtime 修复新增了一条通过的回归测试）
+- [x] 把基线与采集命令写进 `.scratch/refactor-src/baseline.md`，供后续 ticket 比对
 
 **备注**：采集前先确认工作区是干净的（无未提交的 `src/` 改动），否则基线不可信。

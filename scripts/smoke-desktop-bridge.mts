@@ -6,10 +6,10 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { prepareDesktopBridge } from '../src/desktop-host.js'
-import { migrateDesktopBridgeProfile } from '../src/desktop-bridge-migration.js'
-import { startDsh } from '../src/dsh-process.js'
-import { BUNDLED_PLUGINS } from '../src/bundled-plugins.js'
+import { prepareDesktopBridge } from '../src/bridge/desktop-host.js'
+import { migrateDesktopBridgeProfile } from '../src/bridge/desktop-bridge-migration.js'
+import { startDsh } from '../src/bridge/dsh-process.js'
+import { BUNDLED_PLUGINS } from '../src/runtime/bundled-plugins.js'
 
 // 使用随包真实运行时及隔离 DSH_HOME，验证启动 overlay 的 host/client 加载闭环。
 const project = resolve(import.meta.dirname, '..', '..')
@@ -40,7 +40,7 @@ try {
   const manifest = `${JSON.stringify({ name: 'dsh-profile-web', private: true, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', ...community], patchReload: 'live' } } }, undefined, 2)}\n`
   await writeFile(join(profile, 'package.json'), manifest, 'utf8')
   await writeFile(join(profile, 'cordis.patch.yml'), '[]\n', 'utf8')
-  const bridgePatch = prepareDesktopBridge(join(root, 'Desktop 私有资源'), join(project, 'dist', 'src'))
+  const bridgePatch = prepareDesktopBridge(join(root, 'Desktop 私有资源'), join(project, 'dist', 'bridge-flat'))
   // 模拟旧版写入共享 profile 的桥接包；迁移后验证真实 Desktop、重载和 Web 均可启动。
   const legacyBridge = join(profile, 'node_modules', 'dsh-desktop-bridge')
   await mkdir(legacyBridge, { recursive: true })
@@ -86,7 +86,7 @@ export function apply(ctx) {
     await rm(resultPath, { force: true })
     // Web 直接使用共享 profile，不附加 overlay 或 Desktop 标识。
     const server = await startDsh({
-      bootstrapPath: join(project, 'dist', 'src', 'dsh-bootstrap.mjs'),
+      bootstrapPath: join(project, 'dist', 'src', 'runtime', 'dsh-bootstrap.mjs'),
       patches: desktop ? [patch] : [],
       runtime: { root: runtime, entry: join(runtime, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js') },
       nodeExecutable: join(project, 'runtime-node', process.platform === 'win32' ? 'node.exe' : 'node'),

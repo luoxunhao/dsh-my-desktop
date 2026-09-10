@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { OFFICIAL_LAUNCH_PEERS } from '../src/bundled-plugins.js'
-import { resolveDshRuntime, resolveNodeExecutable } from '../src/runtime.js'
-import { writeFileSha256 } from '../src/runtime-archive.js'
+import { OFFICIAL_LAUNCH_PEERS } from '../src/runtime/bundled-plugins.js'
+import { resolveDshRuntime, resolveNodeExecutable } from '../src/runtime/runtime.js'
+import { writeFileSha256 } from '../src/infra/runtime-archive.js'
 
 async function writeOfficialEntry(dir: string): Promise<void> {
   await mkdir(join(dir, 'node_modules', '@deepseek-ai', 'dsh', 'lib'), { recursive: true })

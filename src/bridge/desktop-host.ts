@@ -1,10 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { PassThrough } from 'node:stream'
 
-import { APPLY_PLUGIN_UPDATES_IPC, OFFICIAL_DSH_VERSION, isDeepSeekOfficialPackage, isOfficialDshPackage } from './bundled-plugins.js'
+import { APPLY_PLUGIN_UPDATES_IPC, OFFICIAL_DSH_VERSION, isDeepSeekOfficialPackage, isOfficialDshPackage } from '../runtime/bundled-plugins.js'
 import { desktopBridgeClientBundle } from './desktop-bridge-client-source.js'
-import { finalizeProfileBundlesAfterInstall, officialRuntimeInstallArgs, writeOfficialRuntimeManifest } from './plugin-seed.js'
-import { terminateProcessTree } from './process-control.js'
+import { finalizeProfileBundlesAfterInstall, officialRuntimeInstallArgs, writeOfficialRuntimeManifest } from '../profiles/plugin-seed.js'
+import { terminateProcessTree } from '../infra/process-control.js'
 import {
   assertProfileName,
   deleteProfileDirectory,
@@ -14,7 +14,7 @@ import {
   readActiveProfile,
   resolveProfileRoots,
   type ManagedProfile,
-} from './profiles.js'
+} from '../profiles/profiles.js'
 
 export const DESKTOP_BRIDGE_PACKAGE = 'dsh-desktop-bridge'
 
@@ -424,7 +424,10 @@ export const DESKTOP_BRIDGE_FILES = [
 export function resolveDesktopBridgeDir(options: { isPackaged: boolean; appPath: string; resourcesPath: string }): string {
   return options.isPackaged
     ? join(options.resourcesPath, 'desktop-bridge')
-    : join(options.appPath, 'dist', 'src')
+    // Dev runs read the FLAT staging dir produced by `build:flat`, not the layered
+    // `dist/src` tree: the bridge publishes as siblings, so its members must sit in
+    // one directory with `./x.js` imports. `dist/src` is layered and would break that.
+    : join(options.appPath, 'dist', 'bridge-flat')
 }
 
 /** 在 Desktop 私有目录准备完整桥接包，返回仅供本次启动使用的 overlay 路径。 */

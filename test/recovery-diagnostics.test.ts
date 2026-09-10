@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { extractPluginFromStartupFailure, trimStartupLogForRecovery } from '../src/recovery-diagnostics.js'
+import { extractPluginFromStartupFailure, trimStartupLogForRecovery } from '../src/recovery/recovery-diagnostics.js'
 
 test('从插件 patch 的启动异常中识别出疑似出错插件', () => {
   const message = 'file:///runtime/node_modules/@deepseek-ai/dsh/lib/index.js: dsh: failed to parse overlay D:\\profile\\node_modules\\@scope\\broken-plugin\\patch.yml: YAMLException'

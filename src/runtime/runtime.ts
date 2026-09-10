@@ -2,8 +2,8 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-import { isOfficialRuntimeLaunchable, resolveProfileDshEntry, resolveWebProfileDir } from './plugin-seed.js'
-import { verifyFileSha256 } from './runtime-archive.js'
+import { isOfficialRuntimeLaunchable, resolveProfileDshEntry, resolveWebProfileDir } from '../profiles/plugin-seed.js'
+import { verifyFileSha256 } from '../infra/runtime-archive.js'
 
 export interface DshRuntime {
   root: string
@@ -69,7 +69,7 @@ export function resolveNodeExecutable(options: Pick<RuntimeResolutionOptions, 'i
 export function resolveDshBootstrap(options: RuntimeResolutionOptions): string {
   const bootstrap = options.isPackaged
     ? join(options.resourcesPath, 'bootstrap.mjs')
-    : resolve(options.appPath, 'dist', 'src', 'dsh-bootstrap.mjs')
+    : resolve(options.appPath, 'dist', 'src', 'runtime', 'dsh-bootstrap.mjs')
   if (existsSync(bootstrap)) return bootstrap
   throw new Error(`未找到 DSH 启动引导脚本：${bootstrap}`)
 }

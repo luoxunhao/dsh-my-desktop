@@ -14,8 +14,8 @@ import {
   restoreRecoveryPlugin,
   tryAutoLeaveRecoveryMode,
   uninstallRecoveryPlugin,
-} from '../src/recovery-mode.js'
-import { finalizeProfileBundlesAfterInstall } from '../src/plugin-seed.js'
+} from '../src/recovery/recovery-mode.js'
+import { finalizeProfileBundlesAfterInstall } from '../src/profiles/plugin-seed.js'
 
 async function createProfile(): Promise<{ root: string; profile: string }> {
   const root = join(process.cwd(), 'artifacts', `recovery-mode-${Date.now()}-${Math.random().toString(16).slice(2)}`)
@@ -122,7 +122,7 @@ test('卸载仅允许隔离的第三方插件，并同时移除清单和磁盘�
 })
 
 test('卸载先提交清单和恢复状态，再移动插件目录，并为正常异常保留回滚', async () => {
-  const source = await readFile(new URL('../../src/recovery-mode.ts', import.meta.url), 'utf8')
+  const source = await readFile(new URL('../../src/recovery/recovery-mode.ts', import.meta.url), 'utf8')
   const uninstall = source.match(/export async function uninstallRecoveryPlugin[\s\S]*?\n\}/)?.[0]
   assert.ok(uninstall)
   const writeManifestIndex = uninstall.indexOf('await writeManifest(profileDir, nextManifest)')

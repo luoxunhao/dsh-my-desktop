@@ -131,7 +131,7 @@ test('桌面壳预加载脚本被编译并提供 DSH 动作兜底', async () => 
 
 test('桌面菜单使用窗口内坐标且 DSH 客户端桥接导出标准插件入口', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  const bridge = await readFile(new URL('../../src/desktop-bridge-client-source.ts', import.meta.url), 'utf8')
+  const bridge = await readFile(new URL('../../src/bridge/desktop-bridge-client-source.ts', import.meta.url), 'utf8')
   const dshPreload = await readFile(new URL('../../src/dsh-view-preload.cts', import.meta.url), 'utf8')
   assert.match(main, /x: Math\.round\(request\.x\),\s+y: Math\.round\(request\.y\)/)
   assert.doesNotMatch(main, /contentBounds\.x \+ Math\.round\(request\.x\)/)
@@ -230,7 +230,7 @@ test('原生菜单关闭后才清理外壳菜单的选中状态', async () => {
 
 test('DSH 主题变化同步到桌面外壳、原生菜单和辅助窗口', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  const bridge = await readFile(new URL('../../src/desktop-bridge-client-source.ts', import.meta.url), 'utf8')
+  const bridge = await readFile(new URL('../../src/bridge/desktop-bridge-client-source.ts', import.meta.url), 'utf8')
   const dshPreload = await readFile(new URL('../../src/dsh-view-preload.cts', import.meta.url), 'utf8')
   const shell = await readFile(new URL('../../assets/shell.html', import.meta.url), 'utf8')
   const settings = await readFile(new URL('../../assets/settings.html', import.meta.url), 'utf8')

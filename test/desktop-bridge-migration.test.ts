@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { parse } from 'yaml'
 
-import { migrateDesktopBridgeProfile, removeDesktopBridgePatch } from '../src/desktop-bridge-migration.js'
+import { migrateDesktopBridgeProfile, removeDesktopBridgePatch } from '../src/bridge/desktop-bridge-migration.js'
 
 test('升级清理旧 bridge 的依赖声明、加载配置和文件，保留其他插件', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bridge-upgrade-'))

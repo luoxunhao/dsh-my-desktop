@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { mergeProfileUpdates, officialRuntimeUpdateVersion, parsePendingUpdates, partitionPackageUpdates } from '../src/profile-updates.js'
+import { mergeProfileUpdates, officialRuntimeUpdateVersion, parsePendingUpdates, partitionPackageUpdates } from '../src/profiles/profile-updates.js'
 
 test('待更新清单会保留官方包，但社区合并时忽略它们', () => {
   const updates = parsePendingUpdates(JSON.stringify({

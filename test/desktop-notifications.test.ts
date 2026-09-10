@@ -14,7 +14,7 @@ import {
   saveNotificationPreferences,
   shouldShowDesktopNotification,
   windowsNotificationReplyArguments,
-} from '../src/desktop-notifications.js'
+} from '../src/desktop/desktop-notifications.js'
 
 const completion = { type: 'notify', kind: 'turn-complete', sessionId: 'session-1' } as const
 const approval = { type: 'notify', kind: 'approval', sessionId: 'session-1' } as const

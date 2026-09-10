@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
 
-import { resolveAppIconPath, resolveCompactIconCrop, resolveNotificationIconPath, resolveRasterIconPath, resolveTaskBadgeIconPath } from '../src/app-icon.js'
+import { resolveAppIconPath, resolveCompactIconCrop, resolveNotificationIconPath, resolveRasterIconPath, resolveTaskBadgeIconPath } from '../src/app/app-icon.js'
 
 test('打包态优先使用 extraResources 中的 ico', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-icon-'))

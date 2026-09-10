@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { isLoopbackFaviconRequest, pngDataUrl } from '../src/window-icon.js'
+import { isLoopbackFaviconRequest, pngDataUrl } from '../src/app/window-icon.js'
 
 test('只拦截本机页面的 favicon 请求', () => {
   assert.equal(isLoopbackFaviconRequest('http://127.0.0.1:1234/favicon.ico'), true)

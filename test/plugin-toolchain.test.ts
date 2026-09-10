@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { join } from 'node:path'
 
-import { prependPath, resolveBundledPluginStore, resolvePluginBinDir } from '../src/plugin-toolchain.js'
+import { prependPath, resolveBundledPluginStore, resolvePluginBinDir } from '../src/runtime/plugin-toolchain.js'
 
 test('把随包 Node 目录插到 PATH 最前，供 dsh plugin 和 code-ui 找到 pnpm', () => {
   const merged = prependPath('C:\\Windows\\System32', 'D:\\app\\resources\\node', 'win32')
@@ -70,6 +70,6 @@ test('打包态的 pnpm 与 Node 放在同一目录', () => {
 })
 
 test('Web profile 跟随 DSH_HOME，避免写到错误用户目录', async () => {
-  const { resolveWebProfileDir } = await import('../src/plugin-seed.js')
+  const { resolveWebProfileDir } = await import('../src/profiles/plugin-seed.js')
   assert.equal(resolveWebProfileDir('D:\\data\\dsh-home'), join('D:\\data\\dsh-home', 'profiles', 'web'))
 })

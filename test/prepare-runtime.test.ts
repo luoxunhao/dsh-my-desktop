@@ -7,7 +7,7 @@ import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 
 import { copyWorkspacePackages, officialRuntimeGlobalNodeModulesRoot, officialRuntimeNpmDependencies, officialRuntimeNpmInstallArgs, pruneStoreForPackaging, removePreparedPath, resolveBundledNodeSha256, stageDesktopSettingsPlugin, validateOfficialRuntimeLayout, writePnpmShims } from '../scripts/prepare-runtime.js'
-import { DESKTOP_BRIDGE_FILES } from '../src/desktop-host.js'
+import { DESKTOP_BRIDGE_FILES } from '../src/bridge/desktop-host.js'
 
 test('按目标平台选择随包 Node 的 SHA256', () => {
   const checksums = {
@@ -200,8 +200,8 @@ test('打包配置包含恢复页及其运行依赖', async () => {
   }
   const resources = manifest.build?.extraResources ?? []
   assert.ok(resources.some(resource => resource.from === 'assets/recovery.html' && resource.to === 'recovery.html'))
-  const bridge = resources.find(resource => resource.to === 'desktop-bridge')
-  assert.ok(bridge?.filter?.includes('recovery-mode.js'))
+  const bridge = resources.filter(resource => resource.to?.startsWith('desktop-bridge/'))
+  assert.ok(bridge.some(resource => resource.to === 'desktop-bridge/recovery-mode.js'))
 })
 
 test('随包桌面设置插件构建产物缺失时直接失败（不静默出无插件的包）', async () => {
@@ -266,8 +266,8 @@ test('一体化构建：所有出包脚本都先构建插件', async () => {
   for (const name of ['dist', 'dist:local', 'pack', 'pack:local', 'prepare-runtime', 'start']) {
     assert.ok(buildsPlugin(name), `${name} 最终必须构建插件：${scripts[name] ?? '(missing)'}`)
   }
-  // build:all 自身要按 插件 → 启动器 的顺序构建。
-  assert.equal(scripts['build:all'], 'pnpm run build:plugin && pnpm run build')
+  // build:all 要按 插件 → 启动器 → 扁平发布单元 的顺序构建。
+  assert.equal(scripts['build:all'], 'pnpm run build:plugin && pnpm run build && pnpm run build:flat')
 })
 
 test('Windows 冒烟检查使用实际产品可执行文件名', async () => {
@@ -412,7 +412,7 @@ test('正式标签缺少签名凭据时仍允许生成带 ad-hoc 签名的多平
 
 test('打包态从 desktop-bridge 加载 DSH 主进程模块', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  const host = await readFile(new URL('../../src/desktop-host.ts', import.meta.url), 'utf8')
+  const host = await readFile(new URL('../../src/bridge/desktop-host.ts', import.meta.url), 'utf8')
   assert.match(main, /desktop-bridge.*dsh-process\.js/)
   assert.doesNotMatch(host, /from '\.\/dsh-process\.js'/)
 })
@@ -422,7 +422,9 @@ function extractionScriptExtraResources(manifest: {
 }): Array<{ from: string; to: string }> {
   return (manifest.build?.extraResources ?? []).flatMap((item) => {
     if (typeof item.from !== 'string' || typeof item.to !== 'string' || item.filter !== undefined) return []
-    if (!item.from.startsWith('dist/src/')) return []
+    // The extraction script and its deps are staged FLAT into dist/extract-flat/ by
+    // `stage-flat-units` (their sources are layered, but they publish as siblings).
+    if (!item.from.startsWith('dist/extract-flat/')) return []
     return [{ from: item.from, to: item.to }]
   })
 }
@@ -432,9 +434,9 @@ test('安装阶段解压脚本带上自己的运行依赖', async () => {
     build?: { extraResources?: Array<{ from?: string; to?: string; filter?: string[] }> }
   }
   const extra = extractionScriptExtraResources(manifest)
-  assert.equal(extra.some(item => item.from === 'dist/src/extract-runtime.js' && item.to === 'extract-runtime.mjs'), true)
-  assert.equal(extra.some(item => item.from === 'dist/src/runtime-archive.js' && item.to === 'runtime-archive.js'), true)
-  assert.equal(extra.some(item => item.from === 'dist/src/process-control.js' && item.to === 'process-control.js'), true)
+  assert.equal(extra.some(item => item.from === 'dist/extract-flat/extract-runtime.js' && item.to === 'extract-runtime.mjs'), true)
+  assert.equal(extra.some(item => item.from === 'dist/extract-flat/runtime-archive.js' && item.to === 'runtime-archive.js'), true)
+  assert.equal(extra.some(item => item.from === 'dist/extract-flat/process-control.js' && item.to === 'process-control.js'), true)
 })
 
 test('安装阶段解压脚本独立目录可以完成 ESM 导入', async () => {
@@ -455,17 +457,40 @@ test('安装阶段解压脚本独立目录可以完成 ESM 导入', async () => 
 
 test('desktop-bridge 资源清单包含完整运行依赖闭包', async () => {
   const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
-    build?: { extraResources?: Array<{ to?: string; filter?: string[] }> }
+    build?: { extraResources?: Array<{ from?: string, to?: string, filter?: string[] }> }
   }
-  const filter = manifest.build?.extraResources?.find(item => item.to === 'desktop-bridge')?.filter
-  assert.deepEqual([...(filter ?? [])].sort(), [...DESKTOP_BRIDGE_FILES].sort())
+  const resources = manifest.build?.extraResources ?? []
+  // The bridge must end up FLAT in resources/desktop-bridge/ (DESKTOP_BRIDGE_FILES is a
+  // flat name list the bridge resolves at load time), while its sources live in
+  // per-layer subdirectories. `stage-flat-units` therefore stages them into
+  // dist/bridge-flat/ as siblings with rewritten `./x.js` imports, and each staged
+  // file is published individually.
+  const bridge = resources.filter(item => item.to?.startsWith('desktop-bridge/'))
+  const published = bridge.map(item => item.to!.slice('desktop-bridge/'.length)).sort()
+  assert.deepEqual(published, [...DESKTOP_BRIDGE_FILES].sort())
+  // Every entry must resolve to an existing staged file, and none may re-introduce a
+  // nested output path (that would break the flat layout the runtime expects).
+  for (const item of bridge) {
+    const from = item.from ?? ''
+    assert.match(from, /^dist\/bridge-flat\/[\w.-]+\.(js|mjs)$/)
+    assert.equal(item.to!.split('/').length, 2)
+    assert.equal(existsSync(new URL(`../../${from}`, import.meta.url)), true, from)
+  }
 })
 
 test('desktop-bridge 独立目录可以完成 ESM 导入', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bridge-import-'))
   try {
-    for (const file of DESKTOP_BRIDGE_FILES) {
-      await copyFile(new URL(`../../dist/src/${file}`, import.meta.url), join(root, file))
+    // Mirror the published layout: flat files in one directory, sourced from layers.
+    const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
+      build?: { extraResources?: Array<{ from?: string, to?: string }> }
+    }
+    const bridge = (manifest.build?.extraResources ?? []).filter(item => item.to?.startsWith('desktop-bridge/'))
+    for (const item of bridge) {
+      const from = item.from
+      const to = item.to
+      assert.ok(from !== undefined && to !== undefined)
+      await copyFile(new URL(`../../${from}`, import.meta.url), join(root, to.slice('desktop-bridge/'.length)))
     }
     await import(`${pathToFileURL(join(root, 'desktop-host.js')).href}?test=${Date.now()}`)
   } finally {

@@ -8,8 +8,8 @@ import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { prepareDesktopSettings } from '../dist/src/desktop-settings-plugin.js'
-import { startDsh } from '../dist/src/dsh-process.js'
+import { prepareDesktopSettings } from '../src/bridge/desktop-settings-plugin.js'
+import { startDsh } from '../src/bridge/dsh-process.js'
 
 const project = process.cwd()
 const runtime = join(project, 'runtime-dsh')
@@ -52,7 +52,7 @@ writeFileSync(probePatch, JSON.stringify([{ insert: [{ id: 'dsh-settings-boot-pr
 const resultPath = join(root, 'probe.json')
 const node = join(project, 'runtime-node', process.platform === 'win32' ? 'node.exe' : 'node')
 const server = await startDsh({
-  bootstrapPath: join(project, 'dist', 'src', 'dsh-bootstrap.mjs'),
+  bootstrapPath: join(project, 'dist', 'src', 'runtime', 'dsh-bootstrap.mjs'),
   patches: [settingsPatch, probePatch],
   runtime: { root: runtime, entry: join(runtime, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js') },
   nodeExecutable: node,

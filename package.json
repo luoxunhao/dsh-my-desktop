@@ -29,7 +29,8 @@
     "check": "tsc --noEmit",
     "build:plugin": "pnpm --dir plugins/dsh-my-desktop-settings run build",
     "check:plugin": "pnpm --dir plugins/dsh-my-desktop-settings run typecheck",
-    "build:all": "pnpm run build:plugin && pnpm run build",
+    "build:flat": "node dist/scripts/stage-flat-units.js",
+    "build:all": "pnpm run build:plugin && pnpm run build && pnpm run build:flat",
     "check:all": "pnpm run check:plugin && pnpm run check",
     "test": "pnpm run build && node --test dist/test/*.test.js",
     "start": "pnpm run build:all && electron .",
@@ -80,19 +81,19 @@
         ]
       },
       {
-        "from": "dist/src/dsh-bootstrap.mjs",
+        "from": "dist/src/runtime/dsh-bootstrap.mjs",
         "to": "bootstrap.mjs"
       },
       {
-        "from": "dist/src/extract-runtime.js",
+        "from": "dist/extract-flat/extract-runtime.js",
         "to": "extract-runtime.mjs"
       },
       {
-        "from": "dist/src/runtime-archive.js",
+        "from": "dist/extract-flat/runtime-archive.js",
         "to": "runtime-archive.js"
       },
       {
-        "from": "dist/src/process-control.js",
+        "from": "dist/extract-flat/process-control.js",
         "to": "process-control.js"
       },
       {
@@ -154,25 +155,64 @@
         ]
       },
       {
-        "from": "dist/src",
-        "to": "desktop-bridge",
-        "filter": [
-          "desktop-bridge.mjs",
-          "desktop-bridge-client-source.js",
-          "desktop-host.js",
-          "atomic-file.js",
-          "bundled-plugins.js",
-          "dsh-process.js",
-          "plugin-seed.js",
-          "plugin-toolchain.js",
-          "profile-updates.js",
-          "profiles.js",
-          "recovery-mode.js",
-          "process-control.js",
-          "readiness.js",
-          "runtime-archive.js",
-          "runtime-prebuilt.js"
-        ]
+        "from": "dist/bridge-flat/desktop-bridge.mjs",
+        "to": "desktop-bridge/desktop-bridge.mjs"
+      },
+      {
+        "from": "dist/bridge-flat/desktop-bridge-client-source.js",
+        "to": "desktop-bridge/desktop-bridge-client-source.js"
+      },
+      {
+        "from": "dist/bridge-flat/desktop-host.js",
+        "to": "desktop-bridge/desktop-host.js"
+      },
+      {
+        "from": "dist/bridge-flat/atomic-file.js",
+        "to": "desktop-bridge/atomic-file.js"
+      },
+      {
+        "from": "dist/bridge-flat/bundled-plugins.js",
+        "to": "desktop-bridge/bundled-plugins.js"
+      },
+      {
+        "from": "dist/bridge-flat/dsh-process.js",
+        "to": "desktop-bridge/dsh-process.js"
+      },
+      {
+        "from": "dist/bridge-flat/plugin-seed.js",
+        "to": "desktop-bridge/plugin-seed.js"
+      },
+      {
+        "from": "dist/bridge-flat/plugin-toolchain.js",
+        "to": "desktop-bridge/plugin-toolchain.js"
+      },
+      {
+        "from": "dist/bridge-flat/profile-updates.js",
+        "to": "desktop-bridge/profile-updates.js"
+      },
+      {
+        "from": "dist/bridge-flat/profiles.js",
+        "to": "desktop-bridge/profiles.js"
+      },
+      {
+        "from": "dist/bridge-flat/recovery-mode.js",
+        "to": "desktop-bridge/recovery-mode.js"
+      },
+      {
+        "from": "dist/bridge-flat/process-control.js",
+        "to": "desktop-bridge/process-control.js"
+      },
+      {
+        "from": "dist/bridge-flat/readiness.js",
+        "to": "desktop-bridge/readiness.js"
+      },
+      {
+        "from": "dist/bridge-flat/runtime-archive.js",
+        "to": "desktop-bridge/runtime-archive.js"
+      },
+      {
+        "from": "dist/bridge-flat/runtime-prebuilt.js",
+        "to": "desktop-bridge/runtime-prebuilt.js"
       },
       {
         "from": "dist/desktop-settings-plugin",

@@ -11,7 +11,7 @@ import {
   readStartupDiagnostic,
   parseRendererBootReport,
   suspectedPluginFromRendererReport,
-} from '../src/startup-diagnostics.js'
+} from '../src/recovery/startup-diagnostics.js'
 
 test('工作台可用性只接受布尔值，兼容不携带该字段的旧报告', () => {
   const report = { status: 'failed', plugins: ['broken-plugin'] }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { renderTerminalEntry, rewriteProfileInvocation } from '../src/dsh-term.js'
+import { renderTerminalEntry, rewriteProfileInvocation } from '../src/desktop/dsh-term.js'
 
 test('bare `dsh` boots the active profile', () => {
   assert.deepEqual(rewriteProfileInvocation([], 'web'), ['--profile', 'web'])

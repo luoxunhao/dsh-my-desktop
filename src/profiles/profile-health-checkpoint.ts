@@ -1,7 +1,7 @@
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { writeTextFileAtomic } from './atomic-file.js'
+import { writeTextFileAtomic } from '../infra/atomic-file.js'
 
 const CHECKPOINT_FILE = '.dsh-desktop-health-checkpoint.json'
 const CHECKPOINT_VERSION = 1

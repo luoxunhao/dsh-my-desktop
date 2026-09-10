@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { DESKTOP_THEME_PALETTES, normalizeDesktopThemeSnapshot } from '../src/desktop-theme.js'
+import { DESKTOP_THEME_PALETTES, normalizeDesktopThemeSnapshot } from '../src/desktop/desktop-theme.js'
 
 test('桌面主题只接受 light/dark 解析结果和内置偏好', () => {
   assert.deepEqual(normalizeDesktopThemeSnapshot('light'), { colorScheme: 'light' })

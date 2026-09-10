@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { escapeRoute } from '../src/escape-routing.js'
+import { escapeRoute } from '../src/infra/escape-routing.js'
 
 const route = (overrides: Partial<Parameters<typeof escapeRoute>[0]> = {}) => escapeRoute({
   key: 'Escape',

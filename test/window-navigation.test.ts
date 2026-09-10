@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { WindowNavigationCoordinator } from '../src/window-navigation.js'
+import { WindowNavigationCoordinator } from '../src/desktop/window-navigation.js'
 
 function deferred(): {
   promise: Promise<void>

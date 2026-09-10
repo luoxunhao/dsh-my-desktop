@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { BUNDLED_PLUGINS, type BundledPlugin } from '../src/bundled-plugins.js'
+import { BUNDLED_PLUGINS, type BundledPlugin } from '../src/runtime/bundled-plugins.js'
 
 interface PackageManifest {
   version?: unknown

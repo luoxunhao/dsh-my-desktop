@@ -6,14 +6,14 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 
-import { packDirectoryToTarGz, writeFileSha256 } from '../src/runtime-archive.js'
+import { packDirectoryToTarGz, writeFileSha256 } from '../src/infra/runtime-archive.js'
 import {
   RUNTIME_EXTRACTION_PROGRESS_PREFIX,
   extractPackagedRuntimes,
   extractPackagedRuntimesInChild,
   packagedRuntimesNeedExtraction,
   type RuntimeExtractionProgress,
-} from '../src/extract-runtime.js'
+} from '../src/runtime/extract-runtime.js'
 
 function createChecksums(resources: string): void {
   writeFileSha256(join(resources, 'dsh-runtime.tgz'))

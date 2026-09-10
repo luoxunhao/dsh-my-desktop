@@ -4,7 +4,18 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 test('桌面桥接将 Loader 的结构化启动结果经受限 IPC 交给主进程', async () => {
-  const source = (file: string) => readFile(join(process.cwd(), 'src', file), 'utf8')
+  // Source files live in per-layer subdirectories; preloads and main.ts stay at the root.
+  const source = async (file: string): Promise<string> => {
+    const root = join(process.cwd(), 'src')
+    for (const candidate of [file, `app/${file}`, `bridge/${file}`, `desktop/${file}`, `infra/${file}`, `profiles/${file}`, `recovery/${file}`, `runtime/${file}`]) {
+      try {
+        return await readFile(join(root, candidate), 'utf8')
+      } catch {
+        // try the next layer
+      }
+    }
+    throw new Error(`找不到源文件：${file}`)
+  }
   const [bridge, preload, contract, policy, main, recoveryPreload, recoveryHtml] = await Promise.all([
     source('desktop-bridge-client-source.ts'),
     source('dsh-view-preload.cts'),

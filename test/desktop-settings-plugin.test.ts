@@ -9,7 +9,7 @@ import {
   prepareDesktopSettings,
   resolveDesktopSettingsDir,
   resolveDesktopSettingsVersion,
-} from '../src/desktop-settings-plugin.js'
+} from '../src/bridge/desktop-settings-plugin.js'
 
 /** Build a fake shipped plugin source with a minimal host+client bundle. */
 function makePluginSource(root: string): string {

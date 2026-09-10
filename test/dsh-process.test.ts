@@ -4,11 +4,11 @@ import test from 'node:test'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 
-import { APPLY_PLUGIN_UPDATES_IPC, DSH_WEB_LAUNCH_ARGS, isApplyPluginUpdatesIpc, isAuthenticatedBootstrapRedirect, resolveDesktopWebPort, startDsh, type DshServer } from '../src/dsh-process.js'
+import { APPLY_PLUGIN_UPDATES_IPC, DSH_WEB_LAUNCH_ARGS, isApplyPluginUpdatesIpc, isAuthenticatedBootstrapRedirect, resolveDesktopWebPort, startDsh, type DshServer } from '../src/bridge/dsh-process.js'
 
 const projectRoot = resolve(import.meta.dirname, '..', '..')
 const fixtureEntry = join(projectRoot, 'test', 'fixtures', 'dsh-fixture.mjs')
-const bootstrapPath = join(projectRoot, 'dist', 'src', 'dsh-bootstrap.mjs')
+const bootstrapPath = join(projectRoot, 'dist', 'src', 'runtime', 'dsh-bootstrap.mjs')
 
 test('等待分片就绪输出与 HTTP 健康检查', async () => {
   const server = await startFixture('chunked')

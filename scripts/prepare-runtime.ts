@@ -5,8 +5,8 @@ import { cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'nod
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { ALLOWED_BUILD_PACKAGES, buildRegistry, officialRuntimeDependencies, officialRuntimePnpmConfig, pnpmWorkspaceYaml, STORE_PACKAGES } from '../src/bundled-plugins.js'
-import { extractTarGz, packDirectoryToTarGz, writeFileSha256 } from '../src/runtime-archive.js'
+import { ALLOWED_BUILD_PACKAGES, buildRegistry, officialRuntimeDependencies, officialRuntimePnpmConfig, pnpmWorkspaceYaml, STORE_PACKAGES } from '../src/runtime/bundled-plugins.js'
+import { extractTarGz, packDirectoryToTarGz, writeFileSha256 } from '../src/infra/runtime-archive.js'
 
 const projectRoot = resolve(import.meta.dirname, '..', '..')
 const nodeRoot = join(projectRoot, 'runtime-node')

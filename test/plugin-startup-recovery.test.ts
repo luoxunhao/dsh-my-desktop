@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { startAfterPluginUpdates } from '../src/profile-repair.js'
-import { findRecoveryCandidates } from '../src/recovery-diagnostics.js'
-import { captureProfileHealthCheckpoint } from '../src/profile-health-checkpoint.js'
-import { enterRecoveryMode } from '../src/recovery-mode.js'
+import { startAfterPluginUpdates } from '../src/profiles/profile-repair.js'
+import { findRecoveryCandidates } from '../src/recovery/recovery-diagnostics.js'
+import { captureProfileHealthCheckpoint } from '../src/profiles/profile-health-checkpoint.js'
+import { enterRecoveryMode } from '../src/recovery/recovery-mode.js'
 
 test('pnpm 安装失败仍尝试 DSH，加载成功时正常返回', async () => {
   const events: string[] = []

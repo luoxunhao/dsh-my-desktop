@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { localizedShellActions, localizedShellMenus, normalizeShellLocale, shellActionForShortcut, SHELL_ACTIONS } from '../src/shell-actions.js'
+import { localizedShellActions, localizedShellMenus, normalizeShellLocale, shellActionForShortcut, SHELL_ACTIONS } from '../src/desktop/shell-actions.js'
 
 test('桌面壳动作注册表没有重复命令且四个菜单均有内容', () => {
   assert.equal(new Set(SHELL_ACTIONS.map(action => action.id)).size, SHELL_ACTIONS.length)
