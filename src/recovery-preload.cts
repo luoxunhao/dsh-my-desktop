@@ -14,6 +14,10 @@ const RECOVERY_IPC = {
   listCheckpoints: 'dsh-recovery:list-checkpoints',
   inspectCheckpoint: 'dsh-recovery:inspect-checkpoint',
   listProfiles: 'dsh-recovery:list-profiles',
+  dataDirectory: 'dsh-recovery:data-directory',
+  selectDataDirectory: 'dsh-recovery:select-data-directory',
+  factoryReset: 'dsh-recovery:factory-reset',
+  openTarget: 'dsh-recovery:open-target',
 } as const
 
 contextBridge.exposeInMainWorld('dshRecovery', {
@@ -28,4 +32,8 @@ contextBridge.exposeInMainWorld('dshRecovery', {
   listCheckpoints: () => ipcRenderer.invoke(RECOVERY_IPC.listCheckpoints),
   inspectCheckpoint: (slotId: string) => ipcRenderer.invoke(RECOVERY_IPC.inspectCheckpoint, slotId),
   listProfiles: () => ipcRenderer.invoke(RECOVERY_IPC.listProfiles),
+  dataDirectory: () => ipcRenderer.invoke(RECOVERY_IPC.dataDirectory),
+  selectDataDirectory: (target: string | null) => ipcRenderer.invoke(RECOVERY_IPC.selectDataDirectory, target),
+  factoryReset: () => ipcRenderer.invoke(RECOVERY_IPC.factoryReset),
+  openTarget: (target: string) => ipcRenderer.invoke(RECOVERY_IPC.openTarget, target),
 })

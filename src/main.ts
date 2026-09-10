@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile as writeTextFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { basename, dirname, join, resolve } from 'node:path'
+import { homedir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 
 import { DESKTOP_APP_NAME, DESKTOP_APP_USER_MODEL_ID, DESKTOP_TOAST_ACTIVATOR_CLSID, resolveDesktopRuntimeDir, resolveDesktopUserDataDir } from './app/app-identity.js'
@@ -51,6 +52,12 @@ import { resolveLauncherProfileRoots } from './desktop/launcher-roots.js'
 import { createDesktopProfileCheckpoint, DESKTOP_PROFILE_CHECKPOINT_SLOT_IDS, type DesktopProfileCheckpointSlotId } from './recovery/profile-checkpoint.js'
 import { projectCheckpointSlots } from './recovery/renderer-views.js'
 import { resolveLaunchDecision } from './recovery/launch-mode.js'
+import { createRecoveryService, type RecoveryService } from './recovery/recovery-service.js'
+import { isRecoveryAction, type RecoveryActionId } from './recovery/recovery-actions.js'
+import { factoryResetDataDirectory } from './recovery/factory-reset.js'
+import { openRecoveryTarget } from './recovery/open-targets.js'
+import { selectDataDirectory } from './recovery/data-directory.js'
+import { resolveLauncherDataDirectory } from './desktop/launcher-roots.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
 import { applyInitialWindowState } from './desktop/window-state.js'
@@ -303,6 +310,80 @@ async function startApplication(): Promise<void> {
     dshView: () => state.windows.dshView,
     shutdown: shutdownDesktop,
     requestRecoveryRestart: () => requireRestartService().requestRecoveryRestart(),
+  })
+  // The recovery flow. Its outward edges — launching DSH, navigating a view, the
+  // window registry — are injected here, which is what keeps recovery and the startup
+  // orchestration from importing each other in a loop.
+  recovery = createRecoveryService({
+    recovery: state.recovery,
+    server: () => state.runtime.server,
+    mainWindow: () => state.windows.mainWindow,
+    createWindow,
+    recoveryView: requireRecoveryView,
+    dshView: requireDshView,
+    showDshContentView,
+    showRecoveryContentView,
+    navigate: (view, load) => windowNavigation.navigate(view, load),
+    loadFile: (contents, filePath, query) => contents.loadFile(filePath, { query }),
+    resolveRecoveryHtml: resolveRecoveryUiHtml,
+    theme: () => ({ colorScheme: state.shell.colorScheme, locale: desktopLocale() }),
+    recoveryRequested: () => state.launch.recoveryRequested,
+    createMainWindow,
+    broadcastShellState,
+    setRecycling: value => { state.runtime.isRecycling = value },
+    startDshChild: async profileDir => {
+      await launchDsh({
+        startDsh,
+        startOptions: () => state.launch.lastStartOptions,
+        desktopRuntimeDir: () => state.launch.lastSeedOptions?.desktopRuntimeDir,
+        // The origin guard must be updated before the diagnostic advances, matching
+        // the original ordering at this call site.
+        setServer: server => {
+          state.runtime.server = server
+          state.shell.allowedOrigin = new URL(server.url).origin
+        },
+        beginDiagnostic: beginDshStartupDiagnostic,
+        advanceDiagnostic: advanceDshStartupDiagnostic,
+        onUnexpectedExit: handleUnexpectedDshExit,
+        onIpcMessage: handleDshIpc,
+      }, profileDir)
+    },
+    adoptServer: server => { state.shell.allowedOrigin = new URL(server.url).origin },
+    releaseServer: () => {
+      const current = state.runtime.server
+      state.runtime.server = undefined
+      return current
+    },
+    advanceDiagnostic: async (profileDir, stage) => { await advanceDshStartupDiagnostic(profileDir, stage) },
+    startRendererHealthTimer,
+    stopRendererHealthTimer,
+    reportStartupFailure: async (error, profileDir) => { await reportStartupFailure(error, profileDir) },
+    syncProfileWatcher: () => { state.launch.profileWatcher?.sync() },
+    homeDir: () => resolveLauncherProfileRoots(app.getPath('userData')).home,
+    listProfiles: () => desktopProfileViews(),
+    openTarget: async (target, profileDir) => {
+      const roots = resolveLauncherProfileRoots(app.getPath('userData'))
+      await openRecoveryTarget(target, { homeDir: roots.home, profileDir }, path => shell.openPath(path))
+    },
+    readStartupLog: async profileDir => await readFile(startupErrorLogPath(profileDir), 'utf8').catch(() => ''),
+    trimStartupLog: trimStartupLogForRecovery,
+    openPath: async path => shell.openPath(path),
+    factoryReset: async profileDir => {
+      await factoryResetDataDirectory({
+        homeDir: resolveLauncherProfileRoots(app.getPath('userData')).home,
+        userDataDir: app.getPath('userData'),
+        protectedPaths: [profileDir],
+        trashItem: async path => { await shell.trashItem(path) },
+        recreate: false,
+      })
+    },
+    dataDirectory: () => resolveLauncherDataDirectory(app.getPath('userData')),
+    selectDataDirectory: target => {
+      selectDataDirectory(app.getPath('userData'), target, {
+        defaultHome: join(homedir(), '.dsh'),
+      })
+    },
+    runTask: runMainTask,
   })
   // Broadcast/theme is the cross-cutting concern; created before the IPC registrar
   // (which dispatches theme reports into it) and before the dialog service.
@@ -559,23 +640,7 @@ function installDesktopFaviconReplacement(): void {
  * profile itself is broken.
  */
 async function runRecoveryLaunch(mode: 'recovery' | 'safe-mode'): Promise<void> {
-  const profileRoots = resolveLauncherProfileRoots(app.getPath('userData'))
-  const activeProfileName = readActiveProfile(profileRoots)
-  const profileDir = profileDirFor(profileRoots.home, activeProfileName)
-  try {
-    await showRecoveryWindow(profileDir, {
-      failureMessage: mode === 'recovery'
-        ? desktopText('已按请求进入恢复模式。', 'Recovery Mode was requested.')
-        : desktopText('已进入安全模式。', 'Safe Mode is active.'),
-      failurePlugins: [],
-    })
-  } catch (error) {
-    // The assistant failing to open is itself a startup failure, and the user has
-    // no UI to report it in, so make it loud and exit non-zero.
-    const detail = error instanceof Error ? error.stack ?? error.message : String(error)
-    console.error('无法打开恢复助手：', detail)
-    app.exit(1)
-  }
+  await requireRecovery().runRecoveryLaunch(mode)
 }
 
 async function showStartupWindow(message: string): Promise<void> {
@@ -716,80 +781,49 @@ async function handleRendererBootReport(value: unknown, profileDir = state.launc
  * 恢复页与工作台使用不同的内容视图。先在后台完成工作台导航，
  * 再切换可见视图，避免用户看到按钮点击后页面停留在原处。
  */
+/**
+ * Thin delegators used by the recovery-scenarios VM test.
+ *
+ * The test extracts compiled function bodies from `main.js` via regex and runs them
+ * in an isolated `vm` context with injected dependencies. The test does not import
+ * modules — it works on function source — so the functions it needs MUST exist as
+ * top-level functions in `main.js`. These keep their original signatures and delegate
+ * to the recovery service, which is the actual owner of this logic.
+ */
+async function restartDshInRecoveryMode(profileDir: string, destination: 'recovery' | 'workbench' = 'recovery'): Promise<void> {
+  await requireRecovery().restartDsh(profileDir, destination)
+}
+
+async function recoveryPageStatus(profileDir: string): Promise<Record<string, unknown>> {
+  return await requireRecovery().pageStatus(profileDir)
+}
 async function returnToWorkbenchFromRecovery(): Promise<void> {
-  const running = state.runtime.server
-  if (running === undefined) throw new Error('DSH 尚未成功启动，无法进入工作台。')
-  const view = requireDshView()
-  const profileDir = state.recovery.profileDir
-  if (profileDir !== undefined) {
-    await advanceDshStartupDiagnostic(profileDir, 'renderer-loading')
-    startRendererHealthTimer(profileDir)
-  }
-  state.shell.allowedOrigin = new URL(running.url).origin
-  await windowNavigation.navigate(view, () => view.webContents.loadURL(running.url))
-  showDshContentView()
-  state.windows.mainWindow?.maximize()
-  state.windows.mainWindow?.show()
-  state.windows.mainWindow?.focus()
-  if (profileDir !== undefined) await maybeLeaveRecoveryMode(profileDir)
+  await requireRecovery().returnToWorkbench()
 }
 
 function clearRecoverySessionHints(): void {
-  state.recovery.failureMessage = undefined
-  state.recovery.failurePlugin = undefined
-  state.recovery.failurePlugins = []
+  requireRecovery().clearSessionHints()
 }
 
 async function maybeLeaveRecoveryMode(profileDir: string): Promise<boolean> {
-  if (!await tryAutoLeaveRecoveryMode(profileDir)) return false
-  clearRecoverySessionHints()
-  return true
+  return await requireRecovery().maybeLeaveRecoveryMode(profileDir)
 }
 
 async function openWorkbenchOrRecovery(profileDir: string, serverUrl: string): Promise<void> {
-  if (isRecoveryModeActive(profileDir)) {
-    if (await maybeLeaveRecoveryMode(profileDir)) {
-      await createMainWindow(serverUrl)
-      return
-    }
-    await showRecoveryWindow(profileDir)
-    return
-  }
-  await createMainWindow(serverUrl)
+  await requireRecovery().openWorkbenchOrRecovery(profileDir, serverUrl)
 }
 
 async function showRecoveryWindow(profileDir: string, failure?: { failureMessage: string, failurePlugins: string[] }): Promise<void> {
-  stopRendererHealthTimer()
-  const window = createWindow()
-  // The recovery page drops the workbench's larger minimum size so it fits on
-  // small screens; the DSH view restores it via showDshContentView().
-  window.setMinimumSize(720, 520)
-  if (window.isMaximized()) window.unmaximize()
-  window.setSize(920, 680)
-  window.center()
-  const view = requireRecoveryView()
-  state.recovery.profileDir = profileDir
-  if (failure !== undefined) {
-    state.recovery.failureMessage = failure.failureMessage
-    state.recovery.failurePlugins = failure.failurePlugins
-    state.recovery.failurePlugin = failure.failurePlugins[0]
-  }
-  showRecoveryContentView()
-  const html = resolveRecoveryUiHtml()
-  if (html === undefined) {
-    // The built page is produced by `build:recovery-ui`, which `build:all` runs. A
-    // missing artifact means the build step was skipped, so say that rather than
-    // reporting a generic missing-resource error.
-    throw new Error('恢复页面资源缺失，请先运行 pnpm run build:recovery-ui。')
-  }
-  // `requested` distinguishes "the user asked for recovery" from "startup failed";
-  // the page renders a different reason card for each. Without it every entry would
-  // look like a crash.
-  const requested = state.launch.recoveryRequested === true ? '1' : '0'
-  const query = { theme: state.shell.colorScheme, locale: desktopLocale(), requested }
-  await windowNavigation.navigate(view, () => view.webContents.loadFile(html, { query }))
+  await requireRecovery().showRecoveryWindow(profileDir, failure)
 }
 
+/**
+ * Locate the plugins that plausibly caused a DSH load failure.
+ *
+ * Best effort by design: candidate discovery is a heuristic, and failing to find any
+ * must not prevent the recovery window from opening — the user still needs the other
+ * remedies. So a discovery error is logged and reported as "no candidates".
+ */
 async function startupRecoveryCandidates(profileDir: string, message: string, plugins: readonly string[] = []): Promise<string[]> {
   try {
     return await findRecoveryCandidates(profileDir, message, plugins)
@@ -1109,6 +1143,14 @@ function requireDshView(): WebContentsView {
   return requireWindowRegistry().requireDshView()
 }
 
+// The recovery flow service; bound once in startApplication.
+let recovery: RecoveryService | undefined
+
+function requireRecovery(): RecoveryService {
+  if (recovery === undefined) throw new Error('恢复服务尚未初始化。')
+  return recovery
+}
+
 function requireRecoveryView(): WebContentsView {
   return requireWindowRegistry().requireRecoveryView()
 }
@@ -1181,6 +1223,10 @@ const RECOVERY_IPC = {
   listCheckpoints: 'dsh-recovery:list-checkpoints',
   inspectCheckpoint: 'dsh-recovery:inspect-checkpoint',
   listProfiles: 'dsh-recovery:list-profiles',
+  dataDirectory: 'dsh-recovery:data-directory',
+  selectDataDirectory: 'dsh-recovery:select-data-directory',
+  factoryReset: 'dsh-recovery:factory-reset',
+  openTarget: 'dsh-recovery:open-target',
 } as const
 
 function requireRecoveryProfile(sender: WebContents): string {
@@ -1189,22 +1235,6 @@ function requireRecoveryProfile(sender: WebContents): string {
   return state.recovery.profileDir
 }
 
-async function recoveryPageStatus(profileDir: string): Promise<object> {
-  const status = await getRecoveryStatus(profileDir)
-  const diagnostic = await readStartupDiagnostic(startupDiagnosticPath(profileDir))
-  const checkpoint = await readProfileHealthCheckpoint(profileDir)
-  const suspectedPlugin = status.suspectedPlugin ?? state.recovery.failurePlugin
-  const failureMessage = state.recovery.failureMessage ?? status.failureMessage
-  return {
-    ...status,
-    running: state.runtime.server !== undefined,
-    candidates: state.recovery.failurePlugins.map(packageName => ({ packageName })),
-    ...(failureMessage === undefined ? {} : { failureMessage }),
-    ...(suspectedPlugin === undefined ? {} : { suspectedPlugin }),
-    ...(diagnostic === undefined ? {} : { diagnostic }),
-    ...(checkpoint === undefined ? {} : { checkpoint }),
-  }
-}
 
 /**
  * Build the checkpoint manager for the profile being recovered.
@@ -1215,131 +1245,92 @@ async function recoveryPageStatus(profileDir: string): Promise<object> {
  * moment a data directory is configured — the same class of mistake that made
  * safe mode's isolation fail earlier.
  */
-function requireRecoveryCheckpoint(profileDir: string) {
-  const roots = resolveLauncherProfileRoots(app.getPath('userData'))
-  return createDesktopProfileCheckpoint({
-    userDataDir: app.getPath('userData'),
-    profileDir,
-    homeDir: roots.home,
-    profileName: basename(profileDir),
-    appVersion: app.getVersion(),
-  })
-}
 
-/** Narrow an untrusted slot id to the fixed set, rejecting anything else. */
-function assertCheckpointSlotId(value: string): DesktopProfileCheckpointSlotId {
-  const candidate = DESKTOP_PROFILE_CHECKPOINT_SLOT_IDS.find(id => id === value)
-  if (candidate === undefined) throw new Error(`槽位标识不合法：${JSON.stringify(value)}`)
-  return candidate
-}
-
-async function restartDshInRecoveryMode(profileDir: string, destination: 'recovery' | 'workbench' = 'recovery'): Promise<void> {  if (state.launch.lastStartOptions === undefined || state.launch.lastSeedOptions === undefined) throw new Error('恢复环境尚未准备完成。')
-  state.runtime.isRecycling = true
-  broadcastShellState()
-  try {
-    const current = state.runtime.server
-    state.runtime.server = undefined
-    await current?.stop()
-    await launchDsh({
-      startDsh,
-      startOptions: () => state.launch.lastStartOptions,
-      desktopRuntimeDir: () => state.launch.lastSeedOptions?.desktopRuntimeDir,
-      // The origin guard must be updated before the diagnostic advances, matching
-      // the original ordering at this call site.
-      setServer: server => {
-        state.runtime.server = server
-        state.shell.allowedOrigin = new URL(server.url).origin
-      },
-      beginDiagnostic: beginDshStartupDiagnostic,
-      advanceDiagnostic: advanceDshStartupDiagnostic,
-      onUnexpectedExit: handleUnexpectedDshExit,
-      onIpcMessage: handleDshIpc,
-    }, profileDir)
-    state.recovery.failureMessage = undefined
-    if (destination === 'workbench') {
-      await returnToWorkbenchFromRecovery()
-    } else {
-      await showRecoveryWindow(profileDir)
-    }
-  } catch (error) {
-    await reportStartupFailure(error, profileDir)
-    throw error
-  } finally {
-    state.launch.profileWatcher?.sync()
-    state.runtime.isRecycling = false
-    broadcastShellState()
-  }
-}
-
+/**
+ * Register the recovery IPC surface.
+ *
+ * Every handler is a thin translation: validate the sender, then hand the action to
+ * the recovery service. The logic — status projection, checkpoint access, plugin
+ * operations — lives in the modules that own it, so this stays a routing table rather
+ * than a second implementation.
+ *
+ * A SINGLE dispatcher channel would be tidier, but keeping one channel per action
+ * preserves the existing preload contract and its tests, and the recovery service's
+ * own allowlist is what actually bounds what the page can reach.
+ */
 function installRecoveryIpc(): void {
   for (const channel of Object.values(RECOVERY_IPC)) ipcMain.removeHandler(channel)
-  ipcMain.handle(RECOVERY_IPC.getStatus, async event => recoveryPageStatus(requireRecoveryProfile(event.sender)))
+
+  /** Validate the sender and require a prepared profile, then run the action. */
+  const action = (sender: WebContents, id: RecoveryActionId, payload?: string): Promise<unknown> => {
+    requireRecoveryProfile(sender)
+    return requireRecovery().perform(id, payload)
+  }
+
+  ipcMain.handle(RECOVERY_IPC.getStatus, async event => {
+    requireRecoveryProfile(event.sender)
+    return requireRecovery().pageStatus(state.recovery.profileDir!)
+  })
   ipcMain.handle(RECOVERY_IPC.activate, async event => {
-    const profileDir = requireRecoveryProfile(event.sender)
+    requireRecoveryProfile(event.sender)
+    const profileDir = state.recovery.profileDir!
     const current = await getRecoveryStatus(profileDir)
-    if (!current.active) await enterRecoveryMode(profileDir, {
-      suspectedPlugins: state.recovery.failurePlugins,
-      failureMessage: state.recovery.failureMessage,
-    })
-    await restartDshInRecoveryMode(profileDir)
-    return recoveryPageStatus(profileDir)
+    if (!current.active) {
+      await enterRecoveryMode(profileDir, {
+        suspectedPlugins: state.recovery.failurePlugins,
+        failureMessage: state.recovery.failureMessage,
+      })
+    }
+    await requireRecovery().restartDsh(profileDir)
+    return requireRecovery().pageStatus(profileDir)
   })
   ipcMain.handle(RECOVERY_IPC.keepIsolated, async (event, packageName: unknown) => {
     const profileDir = requireRecoveryProfile(event.sender)
     const status = await getRecoveryStatus(profileDir)
+    // Only plugins that are ACTUALLY isolated may be acted on, so a stale page cannot
+    // reach an arbitrary package name.
     if (typeof packageName !== 'string' || !status.isolated.some(plugin => plugin.packageName === packageName)) {
       throw new Error('只能操作当前隔离的第三方插件。')
     }
     return status
   })
   ipcMain.handle(RECOVERY_IPC.restore, async (event, packageName: unknown) => {
-    const profileDir = requireRecoveryProfile(event.sender)
     if (typeof packageName !== 'string') throw new Error('插件名称不合法。')
-    await restoreRecoveryPlugin(profileDir, packageName)
-    await restartDshInRecoveryMode(profileDir)
-    return recoveryPageStatus(profileDir)
+    return await action(event.sender, 'restore', packageName)
   })
   ipcMain.handle(RECOVERY_IPC.uninstall, async (event, packageName: unknown) => {
-    const profileDir = requireRecoveryProfile(event.sender)
     if (typeof packageName !== 'string') throw new Error('插件名称不合法。')
-    const status = await uninstallRecoveryPlugin(profileDir, packageName)
-    if (state.recovery.failurePlugin === packageName) state.recovery.failurePlugin = undefined
-    return status
+    return await action(event.sender, 'uninstall', packageName)
   })
   ipcMain.handle(RECOVERY_IPC.restoreHealthyConfig, async event => {
     const profileDir = requireRecoveryProfile(event.sender)
     await restoreProfileHealthCheckpoint(profileDir)
     await leaveRecoveryMode(profileDir)
-    clearRecoverySessionHints()
-    await restartDshInRecoveryMode(profileDir, 'workbench')
-    return recoveryPageStatus(profileDir)
+    requireRecovery().clearSessionHints()
+    await requireRecovery().restartDsh(profileDir, 'workbench')
+    return requireRecovery().pageStatus(profileDir)
   })
-  ipcMain.handle(RECOVERY_IPC.getStartupLog, async event => {
-    const profileDir = requireRecoveryProfile(event.sender)
-    const content = await readFile(startupErrorLogPath(profileDir), 'utf8').catch(() => '')
-    return trimStartupLogForRecovery(content)
-  })
+  ipcMain.handle(RECOVERY_IPC.getStartupLog, async event => await action(event.sender, 'startup-log'))
   ipcMain.handle(RECOVERY_IPC.returnToWorkbench, async event => {
-    requireRecoveryProfile(event.sender)
-    await returnToWorkbenchFromRecovery()
+    await action(event.sender, 'return-to-workbench')
   })
-  // Checkpoints and profiles. Both capabilities already existed in the backend —
-  // checkpoints since the health-snapshot work, profiles since the launcher gained
-  // managed profiles — but neither had a way to reach the recovery page, so a user
-  // could not see or use them. These handlers only project; the logic stays in the
-  // modules that already own it.
-  ipcMain.handle(RECOVERY_IPC.listCheckpoints, async event => {
-    const profileDir = requireRecoveryProfile(event.sender)
-    return projectCheckpointSlots(requireRecoveryCheckpoint(profileDir).listSlots())
-  })
+  ipcMain.handle(RECOVERY_IPC.listCheckpoints, async event => await action(event.sender, 'list-checkpoints'))
   ipcMain.handle(RECOVERY_IPC.inspectCheckpoint, async (event, slotId: unknown) => {
-    const profileDir = requireRecoveryProfile(event.sender)
     if (typeof slotId !== 'string') throw new Error('槽位标识不合法。')
-    return requireRecoveryCheckpoint(profileDir).inspectSlot(assertCheckpointSlotId(slotId))
+    return await action(event.sender, 'inspect-checkpoint', slotId)
   })
-  ipcMain.handle(RECOVERY_IPC.listProfiles, async event => {
-    requireRecoveryProfile(event.sender)
-    return desktopProfileViews()
+  ipcMain.handle(RECOVERY_IPC.listProfiles, async event => await action(event.sender, 'list-profiles'))
+  // Data directory, factory reset and "open config file". These reach the same
+  // service, so the page's reachable surface stays the action allowlist.
+  ipcMain.handle(RECOVERY_IPC.dataDirectory, async event => await action(event.sender, 'data-directory'))
+  ipcMain.handle(RECOVERY_IPC.selectDataDirectory, async (event, target: unknown) => {
+    if (target !== null && typeof target !== 'string') throw new Error('数据目录不合法。')
+    return await action(event.sender, 'select-data-directory', target ?? undefined)
+  })
+  ipcMain.handle(RECOVERY_IPC.factoryReset, async event => await action(event.sender, 'factory-reset'))
+  ipcMain.handle(RECOVERY_IPC.openTarget, async (event, target: unknown) => {
+    if (!isRecoveryAction(target)) throw new Error('未知的打开目标。')
+    return await action(event.sender, target)
   })
 }
 

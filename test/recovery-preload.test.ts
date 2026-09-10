@@ -20,15 +20,19 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
   // deliberately published here, and can never name an arbitrary channel.
   assert.deepEqual(Object.keys(exposed ?? {}).sort(), [
     'activate',
+    'dataDirectory',
+    'factoryReset',
     'getStartupLog',
     'getStatus',
     'inspectCheckpoint',
     'keepIsolated',
     'listCheckpoints',
     'listProfiles',
+    'openTarget',
     'restore',
     'restoreHealthyConfig',
     'returnToWorkbench',
+    'selectDataDirectory',
     'uninstall',
   ])
   await exposed?.activate()
@@ -39,6 +43,10 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
   await exposed?.listCheckpoints()
   await exposed?.inspectCheckpoint('slot-2')
   await exposed?.listProfiles()
+  await exposed?.dataDirectory()
+  await exposed?.selectDataDirectory(null)
+  await exposed?.openTarget('profile-directory')
+  exposed?.factoryReset?.()
   assert.deepEqual(calls, [
     { channel: 'dsh-recovery:activate', args: [] },
     { channel: 'dsh-recovery:get-startup-log', args: [] },
@@ -48,6 +56,10 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
     { channel: 'dsh-recovery:list-checkpoints', args: [] },
     { channel: 'dsh-recovery:inspect-checkpoint', args: ['slot-2'] },
     { channel: 'dsh-recovery:list-profiles', args: [] },
+    { channel: 'dsh-recovery:data-directory', args: [] },
+    { channel: 'dsh-recovery:select-data-directory', args: [null] },
+    { channel: 'dsh-recovery:open-target', args: ['profile-directory'] },
+    { channel: 'dsh-recovery:factory-reset', args: [] },
   ])
 })
 

@@ -17,6 +17,10 @@ import { DEFAULT_UPDATE_PREFERENCES } from '../src/desktop/desktop-updater.js'
 
 // 执行当前构建产物中的真实函数，仅替换 Electron、安装器与 DSH 进程边界。
 const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8')
+// The recovery service contains the actual implementations of functions that
+// main.js now delegates to via `requireRecovery()`. The VM does not have module
+// resolution, so these functions are inlined here alongside the main.js ones.
+const recoveryServiceSource = await readFile(new URL('../src/recovery/recovery-service.js', import.meta.url), 'utf8')
 const functionNames = new Set([
   'startRendererHealthTimer', 'stopRendererHealthTimer', 'handleRendererBootReport',
   'startupDiagnosticPath', 'beginDshStartupDiagnostic', 'advanceDshStartupDiagnostic',
@@ -26,7 +30,11 @@ const functionNames = new Set([
 ])
 const executable = [...functionNames].map(name => {
   // tsc 顶层函数的结束括号独占顶格一行，提取后由 VM 再次进行语法校验。
-  const declaration = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}`, 'm').exec(mainSource)?.[0]
+  let declaration = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}`, 'm').exec(mainSource)?.[0]
+  // If not found in main.js, look in the recovery service module.
+  if (declaration === undefined) {
+    declaration = new RegExp(`^(?:async )?function ${name}\\([\\s\\S]*?^\\}`, 'm').exec(recoveryServiceSource)?.[0]
+  }
   assert.ok(declaration, `构建产物缺少函数：${name}`)
   return declaration
 }).join('\n')
@@ -88,6 +96,28 @@ async function harness(t: TestContext, options: { installError?: Error; loadErro
     createMainWindow: async () => { scope.presentation = 'workbench'; events.push('workbench') },
     returnToWorkbenchFromRecovery: async () => { scope.presentation = 'workbench' },
     showStartupWindow: async () => { scope.presentation = 'startup'; events.push('startup') },
+    requireRecovery: () => ({
+      restartDsh: async (profileDir, destination) => {
+        if (destination === 'workbench') scope.returnToWorkbenchFromRecovery()
+        else scope.showRecoveryWindow(profileDir)
+      },
+      pageStatus: async (_profileDir) => ({ active: state.recovery.failureMessage !== undefined, running: true }),
+      returnToWorkbench: () => scope.returnToWorkbenchFromRecovery(),
+      showRecoveryWindow: (_profileDir, failure) => scope.showRecoveryWindow(_profileDir, failure),
+      maybeLeaveRecoveryMode: async (_profileDir) => {
+        const left = await recovery.tryAutoLeaveRecoveryMode(_profileDir);
+        if (left) { state.recovery.failureMessage = undefined; state.recovery.failurePlugin = undefined; state.recovery.failurePlugins = []; }
+        return left;
+      },
+      clearSessionHints: () => { state.recovery.failureMessage = undefined; state.recovery.failurePlugin = undefined; state.recovery.failurePlugins = [] },
+      openWorkbenchOrRecovery: async (_profileDir, serverUrl) => {
+        if (recovery.isRecoveryModeActive(_profileDir)) {
+          scope.showRecoveryWindow(_profileDir)
+        } else {
+        scope.createMainWindow(serverUrl)
+        }
+      },
+    }),
     showRecoveryWindow: async (_profile: string, failure?: { failureMessage: string; failurePlugins: string[] }) => {
       scope.presentation = 'recovery'; events.push('recovery')
       if (failure !== undefined) {

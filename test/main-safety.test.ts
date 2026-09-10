@@ -60,7 +60,9 @@ test('插件恢复页使用独立内容视图和受限 preload，不复用 DSH �
   assert.match(stateSource, /recoveryView: WebContentsView \| undefined/)
   assert.match(registry, /preload: deps\.resolvePreload\('recovery-preload\.cjs'\)/)
   assert.match(main, /function showRecoveryWindow/)
-  assert.match(main, /window\.unmaximize\(\)\s+window\.setSize\(920, 680\)/)
+  // The recovery window dimensions are now set by the recovery service.
+  const recoveryService = await readFile(new URL('../../src/recovery/recovery-service.ts', import.meta.url), 'utf8')
+  assert.match(recoveryService, /window\.unmaximize\(\)\s+window\.setSize\(920, 680\)/)
   assert.match(registry, /state\.windows\.dshView\?\.setVisible\(false\)/)
 })
 
@@ -88,27 +90,32 @@ test('恢复页在服务未就绪时不提供「返回工作台」', async () =>
 })
 
 test('恢复页返回工作台会先确认 DSH 页面可用再切换视图', async () => {
-  const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  assert.match(main, /async function returnToWorkbenchFromRecovery\(\): Promise<void>/)
-  assert.match(main, /running: state\.runtime\.server !== undefined/)
-  assert.match(main, /await windowNavigation\.navigate\(view, \(\) => view\.webContents\.loadURL\(running\.url\)\)/)
-  assert.match(main, /advanceDshStartupDiagnostic\(profileDir, 'renderer-loading'\)/)
-  assert.match(main, /startRendererHealthTimer\(profileDir\)/)
-  assert.match(main, /showDshContentView\(\)\s+state\.windows\.mainWindow\?\.maximize\(\)\s+state\.windows\.mainWindow\?\.show\(\)\s+state\.windows\.mainWindow\?\.focus\(\)\s+if \(profileDir !== undefined\) await maybeLeaveRecoveryMode\(profileDir\)/)
+  // These behaviors moved from main.ts to the recovery service. The delegator in
+  // main.ts is a one-liner; the actual logic lives in recovery-service.ts.
+  const recSvc = await readFile(new URL('../../src/recovery/recovery-service.ts', import.meta.url), 'utf8')
+  assert.match(recSvc, /running === undefined\) throw new Error\('DSH 尚未成功启动/)
+  assert.match(recSvc, /await deps\.navigate\(view, \(\) => deps\.loadFile\(view\.webContents, running\.url, \{\}\)\)/)
+  assert.match(recSvc, /advanceDiagnostic\(profileDir, 'renderer-loading'\)/)
+  assert.match(recSvc, /startRendererHealthTimer\(profileDir\)/)
+  assert.match(recSvc, /showDshContentView/)
+  assert.match(recSvc, /window\?\.maximize\(\)\s+window\?\.show\(\)\s+window\?\.focus/)
+  assert.match(recSvc, /if \(profileDir !== undefined\) await maybeLeaveRecoveryMode\(profileDir\)/)
 })
 
 test('恢复最近正常配置成功后退出恢复状态并直接进入工作台', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  assert.match(main, /restoreProfileHealthCheckpoint\(profileDir\)\s+await leaveRecoveryMode\(profileDir\)\s+clearRecoverySessionHints\(\)\s+await restartDshInRecoveryMode\(profileDir, 'workbench'\)/)
-  assert.match(main, /if \(destination === 'workbench'\) \{\s+await returnToWorkbenchFromRecovery\(\)\s+\} else \{\s+await showRecoveryWindow\(profileDir\)\s+\}/)
+  // The restore-and-return flow lives in the recovery service; main.ts routes through it.
+  assert.match(main, /requireRecovery\(\)\.restartDsh\(profileDir, 'workbench'\)/)
+  assert.match(main, /restoreProfileHealthCheckpoint\(profileDir\)/)
+  assert.match(main, /leaveRecoveryMode\(profileDir\)/)
 })
 
 test('没有隔离插件时启动会自动退出恢复模式并进入工作台', async () => {
-  const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  assert.match(main, /async function openWorkbenchOrRecovery\(profileDir: string, serverUrl: string\): Promise<void>/)
-  assert.match(main, /if \(isRecoveryModeActive\(profileDir\)\) \{\s+if \(await maybeLeaveRecoveryMode\(profileDir\)\) \{\s+await createMainWindow\(serverUrl\)\s+return\s+\}\s+await showRecoveryWindow\(profileDir\)/)
+  const recSvc = await readFile(new URL('../../src/recovery/recovery-service.ts', import.meta.url), 'utf8')
+  assert.match(recSvc, /if \(isRecoveryModeActive\(profileDir\)\) \{\s+if \(await maybeLeaveRecoveryMode\(profileDir\)\) \{\s+await deps\.createMainWindow\(serverUrl\)\s+return\s+\}\s+await showRecoveryWindow\(profileDir\)/)
   // Both launch sites now use the server returned by launchDsh rather than re-reading
   // the store, which is also what makes the read type-safe.
+  const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   assert.match(main, /await openWorkbenchOrRecovery\(profileDir, started\.server\.url\)/)
   assert.match(main, /await openWorkbenchOrRecovery\(seedOptions\.profileDir, started\.server\.url\)/)
 })
