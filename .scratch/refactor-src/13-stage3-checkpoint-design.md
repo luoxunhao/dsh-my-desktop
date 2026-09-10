@@ -212,3 +212,61 @@ return filePath(profileDir, name)
 - 全量测试基线不破（阶段 2 之后的新基线）
 - **往返测试必须真绿**（这是唯一能抓住路径映射错误的测试）
 - **不做** `dist-local`（本阶段无调用方）
+
+---
+
+## 七、实施结果（已完成）
+
+`src/recovery/profile-checkpoint.ts`（约 420 行）+ `test/profile-checkpoint.test.ts`（14 条）。
+全量测试 **373 / 367 / 5**（新增 14 条，5 项已知缺口不变），`check:all` 通过。
+模块在测试外**零引用方**（未接入启动流程）。
+
+### 7.1 设计里预判的静默失效风险 → 已用三条测试锁死
+
+设计第三节的核心担忧是：`home/*` 若被朴素拼接到 profileDir，快照会"成功"但备份到
+**DSH 永不读取的路径**。实施时按设计 3.4 的要求落地了三层防御，并做了**反向验证**：
+
+把 `resolveCheckpointTarget` 里的 `home/*` 分支去掉后，**三条测试同时失败**：
+
+- `home/* 解析到 homeDir，其余解析到 profileDir`（直接断言解析结果）
+- `home/* 绝不落到 profile 下`（用 `relative()` 判断是否逃出 profile）
+- `往返：改真实 home 文件后恢复，文件被还原`（**端到端**证明映射正确）
+
+第三条是关键——它不依赖任何路径断言，而是**真的改一个文件、恢复、再读回来**。
+即使前两条被误删，它仍能抓住映射错误。
+
+### 7.2 只实现 manifest v4（按设计 4.1）
+
+没有 v2/v3 的历史数据，实现了也无法测试，故只保留 v4；`checkpointFiles(version)`
+对非 v4 直接抛错，而不是静默降级。
+
+### 7.3 与参考实现的差异（有意）
+
+| 项 | 参考实现 | 我们 |
+|---|---|---|
+| `desktopPackageName` / `releaseChannel` / `dshVersion` | manifest v4 字段 + 准入判断 | **不做准入判断**，只有一个发行版 |
+| `provider` / `profileIdentity` | manifest 字段 | 用 `profileName` 定位快照目录 |
+| 跨版本读取（v2/v3/v4） | 三种都读 | 只读 v4 |
+| `assertTargetParent`（父目录 realpath 校验） | 有 | **未移植**（见 7.4） |
+
+### 7.4 未移植的一项（如实记录）
+
+参考实现有 `assertTargetParent`：在读写前校验目标文件的**父目录**是真实目录、
+非符号链接，并 `realpathSync` 一次。
+
+**未移植。** 理由：我们的 `resolveCheckpointTarget` 只在两个固定根下拼路径，
+父目录要么是 `profileDir`/`homeDir` 本身、要么是 `.dsh-market` 这样的固定子目录，
+不存在参考实现里"profileDir 可能被换成链接"的威胁模型（它是可配置的任意路径）。
+若阶段 5 接入启动流程后发现 profileDir 可能不可信，应补上。
+
+### 7.5 实施中的两次测试自查
+
+1. **"恢复中途失败" 测试初始写错了断言对象**：我试图用「在目标位置放一个目录」
+   制造写阶段失败，但该障碍会在 `readCurrentImages` 的**预检阶段**就抛错，
+   即发生在 marker 写入**之前**。核对参考实现后确认**它的顺序也一样**，
+   我的实现是忠实的——是测试的前提错了。改为直接断言顺序要保护的可观测结果
+   （恢复后下次健康启动不覆盖槽位）。
+
+2. **`completeDependencyMaterialization` 的调用顺序写反**：`captureHealthy` 会
+   **消费** marker，所以必须**先**完成物化、**后**让启动消费。写反后实现正确地
+   拒绝了调用（"does not match the active restore"）——是测试错、实现对。
