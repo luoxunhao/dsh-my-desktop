@@ -21,6 +21,8 @@ import {
   existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, renameSync, writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
+
+import { resolveDataDirectory } from '../recovery/data-directory.js'
 import { basename, dirname, join } from 'node:path'
 
 import { writeTextFileAtomicSync } from '../infra/atomic-file.js'
@@ -251,9 +253,61 @@ export function deleteProfileDirectory(roots: ProfileRoots, name: string, active
   }
 }
 
-/** Resolve the launch roots for the profile registry from env/userData. */
+/**
+ * Resolve the launch roots for the profile registry.
+ *
+ * THE SINGLE CONVERGENCE POINT for "where is the DSH home".
+ *
+ * `main.ts`, `profile-actions-service`, `desktop-host` and `safe-mode` all resolve
+ * through here, and every real call site passes `stateDir` WITHOUT `home` — so the
+ * home they get is whatever this function decides. That makes it the one place
+ * where the recovery page's data-directory choice has to take effect: changing it
+ * here moves every consumer at once, instead of leaving a straggler that still
+ * reads the old root (a silent failure of exactly the kind stage 3's path mapping
+ * taught us to guard against).
+ *
+ * PRECEDENCE:
+ *
+ *   1. `options.home`      — an explicit caller override (safe mode passes its own)
+ *   2. the data-directory state file — the user's choice in the recovery page
+ *   3. `DSH_HOME` / `~/.dsh`          — the fallback
+ *
+ * Step 2 beats step 3 deliberately: see `recovery/data-directory.ts`. A user who
+ * picked a directory in the recovery page means it, and an environment variable
+ * silently overriding that choice would make the setting look broken.
+ */
 export function resolveProfileRoots(options: { home?: string; stateDir?: string }): ProfileRoots {
-  const home = options.home ?? process.env.DSH_HOME ?? join(homedir(), '.dsh')
   const stateDir = options.stateDir ?? process.env.DSH_PROFILE_SELECTION_DIR ?? join(homedir(), '.dsh', 'launcher')
+  const home = options.home ?? resolveConfiguredDataDirectory(stateDir)
   return { home, stateDir }
+}
+
+/**
+ * The fallback home when the user has made no explicit choice, i.e. the
+ * environment's value or the platform default.
+ */
+function fallbackDataDirectory(): { home: string, source: 'default' | 'environment' } {
+  return process.env.DSH_HOME === undefined
+    ? { home: join(homedir(), '.dsh'), source: 'default' }
+    : { home: process.env.DSH_HOME, source: 'environment' }
+}
+
+/**
+ * Apply the data-directory state file on top of the fallback.
+ *
+ * A missing or unusable state file degrades to the fallback rather than throwing,
+ * so a corrupt file can never stop the app from starting. A state file that points
+ * at a directory which has since disappeared DOES throw — silently using a
+ * different home would surface far from the real cause.
+ */
+function resolveConfiguredDataDirectory(stateDir: string): string {
+  const fallback = fallbackDataDirectory()
+  try {
+    return resolveDataDirectory(stateDir, { fallbackHome: fallback.home, fallbackSource: fallback.source }).homeDir
+  } catch (error) {
+    // Only a configured-but-unavailable directory reaches here; report it and keep
+    // the app startable on the fallback rather than failing inside path resolution.
+    console.error('数据目录不可用，回退到默认位置。', error)
+    return fallback.home
+  }
 }

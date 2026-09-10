@@ -266,12 +266,21 @@ profile 列表 / 切换建立在既有 `desktopProfiles` 能力之上（ticket 1
 
 **解析优先级（三态，对齐参考实现）**：
 
-1. `environment` —— `DSH_HOME` 显式设置时优先，且**视为用户接管、只读**
-2. `desktop` —— 用户在恢复页里选过的目录（记在 userData 下的状态文件）
-3. `default` —— `~/.dsh`
+```
+状态文件存在  → 用状态文件里的 activeHome，source = 'desktop'
+状态文件不存在 → 用 fallback，source = 'environment'（DSH_HOME 已设）或 'default'
+```
 
-**为什么环境变量优先级最高**：用户显式设了 `DSH_HOME` 就该尊重；
-否则恢复页改一次目录会让人以为环境变量失效了。
+**注意方向（实测确认，我最初写反了）**：`desktop`（用户在恢复页的选择）
+**优先于** `environment`。环境变量只决定**fallback**，不覆盖用户的选择。
+
+理由：恢复页改目录是用户在**明确表达意图**——如果环境变量能压过它，
+用户改完目录发现没生效、又找不到原因（因为环境变量在别处设的），体验很差。
+反过来，用户没在恢复页设过任何目录时，`DSH_HOME` 自然生效。
+
+`source` 要**如实报告给页面**，让用户知道"这个目录是谁定的"——
+尤其是 `environment` 时，页面要说明"由环境变量决定"，
+否则用户会去恢复页里改却发现改不了（因为改的是 fallback，而 state 一旦写入就胜出）。
 
 **生效机制（关键决策）**：把这条优先级**做进 `resolveProfileRoots()` 内部**，
 而不是靠写 `process.env.DSH_HOME`。
