@@ -47,6 +47,7 @@ import { createDialogService, type DesktopSettingsSection, type DialogService } 
 import { createProfileActionsService, type ProfileActionsService, type ProfileOperationView } from './desktop/profile-actions-service.js'
 import { createShellBroadcastService, type ShellBroadcastService } from './desktop/shell-broadcast-service.js'
 import { createRestartService, type RestartService } from './recovery/restart-service.js'
+import { resolveLauncherProfileRoots } from './desktop/launcher-roots.js'
 import { resolveLaunchDecision } from './recovery/launch-mode.js'
 import { extractPackagedRuntimesInChild, packagedRuntimesNeedExtraction, type RuntimeExtractionProgress } from './runtime/extract-runtime.js'
 import { resolvePrebuiltOfficialRuntime } from './runtime/runtime-prebuilt.js'
@@ -337,7 +338,7 @@ async function startApplication(): Promise<void> {
     const pathPrefix = resolvePluginBinDir(runtimeOptions)
     const pnpmEntry = pathPrefix === undefined ? process.env.npm_execpath : join(pathPrefix, 'pnpm-package', 'bin', 'pnpm.cjs')
     // Launch the persisted active profile (defaults to the legacy "web").
-    const profileRoots = resolveProfileRoots({ stateDir: app.getPath('userData') })
+    const profileRoots = resolveLauncherProfileRoots(app.getPath('userData'))
     const activeProfileName = readActiveProfile(profileRoots)
     const profileDir = profileDirFor(profileRoots.home, activeProfileName)
     const desktopRuntimeDir = resolveDesktopRuntimeDir(app.getPath('userData'), {
@@ -542,7 +543,7 @@ function installDesktopFaviconReplacement(): void {
  * profile itself is broken.
  */
 async function runRecoveryLaunch(mode: 'recovery' | 'safe-mode'): Promise<void> {
-  const profileRoots = resolveProfileRoots({ stateDir: app.getPath('userData') })
+  const profileRoots = resolveLauncherProfileRoots(app.getPath('userData'))
   const activeProfileName = readActiveProfile(profileRoots)
   const profileDir = profileDirFor(profileRoots.home, activeProfileName)
   try {

@@ -39,6 +39,7 @@ import {
   writeActiveProfile,
 } from '../profiles/profiles.js'
 import { seedBundledPlugins } from '../profiles/plugin-seed.js'
+import { resolveLauncherProfileRoots } from './launcher-roots.js'
 import type { RetainedSeedOptions } from './desktop-state.js'
 
 /** Renderer-safe view of one managed profile. */
@@ -68,7 +69,7 @@ export interface ProfileActionsDeps {
 export function createProfileActionsService(deps: ProfileActionsDeps) {
   /** Launcher profile registry roots (state under userData, profiles under DSH home). */
   function launcherProfileRoots(): ReturnType<typeof resolveProfileRoots> {
-    return resolveProfileRoots({ stateDir: app.getPath('userData') })
+    return resolveLauncherProfileRoots(app.getPath('userData'))
   }
 
   /** Relaunch the whole desktop application (used after a profile switch). */
