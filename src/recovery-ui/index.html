@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      CSP aligned with the reference implementation. `connect-src 'none'` is the
+      strictest line and is affordable precisely because this page talks to the main
+      process over IPC: `ipcRenderer.invoke` is not a network request, so it is not
+      governed by this directive. `style-src 'unsafe-inline'` is required by
+      Tailwind's injected styles, as it is in the reference.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <title>DSH My Desktop — Recovery</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

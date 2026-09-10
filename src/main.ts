@@ -484,6 +484,26 @@ function resolveRecoveryHtml(): string | undefined {
   return undefined
 }
 
+/**
+ * The Vite-built recovery page.
+ *
+ * Separate from `resolveRecoveryHtml` because the two live in different places and
+ * have different shapes: the legacy page is a single HTML file under `assets/`,
+ * while this one is a DIRECTORY (HTML + hashed JS/CSS) produced by `vite build`.
+ *
+ * Both paths are checked in the packaged-first order the other resolvers use. The
+ * dev path points at the build output rather than the source, because the sources
+ * are TSX and only the built bundle is loadable — which is why `build:all` includes
+ * `build:recovery-ui`.
+ */
+function resolveRecoveryUiHtml(): string | undefined {
+  const packaged = join(process.resourcesPath, 'recovery-ui', 'index.html')
+  const development = join(app.getAppPath(), 'dist', 'recovery-ui', 'index.html')
+  if (existsSync(packaged)) return packaged
+  if (existsSync(development)) return development
+  return undefined
+}
+
 
 function resolveWindowIconFilePath(): string | undefined {
   return resolveRasterIconPath({

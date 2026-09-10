@@ -30,8 +30,8 @@
     "build:plugin": "pnpm --dir plugins/dsh-my-desktop-settings run build",
     "check:plugin": "pnpm --dir plugins/dsh-my-desktop-settings run typecheck",
     "build:flat": "node dist/scripts/stage-flat-units.js",
-    "build:all": "pnpm run build:plugin && pnpm run build && pnpm run build:flat",
-    "check:all": "pnpm run check:plugin && pnpm run check",
+    "build:all": "pnpm run build:plugin && pnpm run build && pnpm run build:recovery-ui && pnpm run build:flat",
+    "check:all": "pnpm run check:plugin && pnpm run check && pnpm run check:recovery-ui",
     "test": "pnpm run build:all && node --test dist/test/*.test.js",
     "start": "pnpm run build:all && electron .",
     "prepare-runtime": "pnpm run build:all && node dist/scripts/prepare-runtime.js",
@@ -40,17 +40,30 @@
     "dist:local": "pnpm run build:all && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --publish never",
     "pack:local": "pnpm run build:all && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --dir",
     "smoke:mac": "pnpm run build:all && node dist/scripts/smoke-macos-package.mjs",
-    "smoke:linux": "pnpm run build:all && node dist/scripts/smoke-linux-package.mjs"
+    "smoke:linux": "pnpm run build:all && node dist/scripts/smoke-linux-package.mjs",
+    "build:recovery-ui": "vite build",
+    "check:recovery-ui": "tsc -p tsconfig.recovery-ui.json"
   },
   "devDependencies": {
+    "@base-ui/react": "^1.8.0",
     "@electron/notarize": "3.1.1",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "26.4.1",
     "@types/react": "~18.3.1",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "^6.1.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "electron": "44.1.1",
     "electron-builder": "26.15.7",
+    "lucide-react": "^1.43.0",
     "react": "^18.2.0",
+    "react-dom": "18.3.1",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.3",
     "tsdown": "0.22.2",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vite": "^8.2.2"
   },
   "build": {
     "appId": "ai.micheng.dshMyDesktop",
@@ -220,6 +233,10 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "dist/recovery-ui",
+        "to": "recovery-ui"
       }
     ],
     "win": {

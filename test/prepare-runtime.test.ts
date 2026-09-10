@@ -266,8 +266,26 @@ test('一体化构建：所有出包脚本都先构建插件', async () => {
   for (const name of ['dist', 'dist:local', 'pack', 'pack:local', 'prepare-runtime', 'start']) {
     assert.ok(buildsPlugin(name), `${name} 最终必须构建插件：${scripts[name] ?? '(missing)'}`)
   }
-  // build:all 要按 插件 → 启动器 → 扁平发布单元 的顺序构建。
-  assert.equal(scripts['build:all'], 'pnpm run build:plugin && pnpm run build && pnpm run build:flat')
+  // build:all 要按 插件 → 启动器 → 恢复页 → 扁平发布单元 的顺序构建。
+  //
+  // Asserted as an ORDER, not as a frozen string: the previous exact-match form
+  // broke the moment a legitimate step was added, without any real regression. What
+  // matters is that each stage runs, and that the plugin is built first (it is the
+  // launcher's own settings page) and the flat units last (they re-export the
+  // launcher's compiled output).
+  const buildAll = scripts['build:all'] ?? ''
+  const order = ['build:plugin', 'build', 'build:recovery-ui', 'build:flat']
+    // The step must be followed by a separator or end-of-string, otherwise the bare
+    // `build` token matches inside `build:plugin` (a prefix of it) and the order
+    // check silently compares the wrong positions.
+    .map(step => ({ step, at: buildAll.search(new RegExp(`pnpm run ${step.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|&|$)`)) }))
+  for (const { step, at } of order) {
+    assert.ok(at >= 0, `build:all 必须包含 ${step}：${buildAll}`)
+  }
+  assert.ok(
+    order.every((entry, index) => index === 0 || entry.at > order[index - 1]!.at),
+    `build:all 步骤顺序应为 ${order.map(entry => entry.step).join(' → ')}：${buildAll}`,
+  )
 })
 
 test('Windows 冒烟检查使用实际产品可执行文件名', async () => {
