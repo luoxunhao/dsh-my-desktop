@@ -240,6 +240,7 @@ async function startApplication(): Promise<void> {
     const desktopSettingsPatch = prepareDesktopSettings(
       join(app.getPath('userData'), 'desktop-settings-plugin'),
       resolveDesktopSettingsDir({ ...runtimeOptions, pluginDevDir: process.env.DSH_DESKTOP_SETTINGS_DIR }),
+      app.getVersion(),
     )
     const pluginStoreDir = resolveBundledPluginStore({
       ...runtimeOptions,

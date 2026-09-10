@@ -122,6 +122,10 @@ export async function stageDesktopSettingsPlugin(): Promise<void> {
   await mkdir(join(dest, 'lib'), { recursive: true })
   await cp(join(source, 'lib', 'index.js'), join(dest, 'lib', 'index.js'))
   await cp(join(source, 'lib', 'client.js'), join(dest, 'lib', 'client.js'))
+  // Ship the plugin manifest too: it carries the plugin's own version, which
+  // `prepareDesktopSettings` reads when materializing the per-user copy.
+  const manifest = join(source, 'package.json')
+  if (existsSync(manifest)) await cp(manifest, join(dest, 'package.json'))
   await writeFile(join(dest, 'cordis.patch.yml'), '[]\n', 'utf8')
   console.log(`已装配随包桌面设置插件：${dest}`)
 }

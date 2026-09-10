@@ -8,6 +8,7 @@ import {
   DESKTOP_SETTINGS_PACKAGE,
   prepareDesktopSettings,
   resolveDesktopSettingsDir,
+  resolveDesktopSettingsVersion,
 } from '../src/desktop-settings-plugin.js'
 
 /** Build a fake shipped plugin source with a minimal host+client bundle. */
@@ -55,6 +56,39 @@ test('准备桌面设置插件：源缺 host 入口时返回 undefined（不失�
   try {
     mkdirSync(join(root, 'empty'), { recursive: true })
     assert.equal(prepareDesktopSettings(join(root, 'dest'), join(root, 'empty')), undefined)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('物化清单的版本取自插件自身 package.json（不写死，避免随发布漂移）', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-settings-version-'))
+  try {
+    const source = makePluginSource(root)
+    writeFileSync(join(source, 'package.json'), JSON.stringify({ name: DESKTOP_SETTINGS_PACKAGE, version: '9.9.9' }), 'utf8')
+    const dest = join(root, 'out')
+    prepareDesktopSettings(dest, source, '1.2.3')
+    const manifest = JSON.parse(readFileSync(join(dest, 'package.json'), 'utf8'))
+    assert.equal(manifest.version, '9.9.9')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('插件清单缺失或损坏时回退到应用版本', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-settings-version-'))
+  try {
+    // 无 package.json。
+    const source = makePluginSource(join(root, 'a'))
+    assert.equal(resolveDesktopSettingsVersion(source, '1.2.3'), '1.2.3')
+    // 损坏的 JSON。
+    const broken = makePluginSource(join(root, 'b'))
+    writeFileSync(join(broken, 'package.json'), '{ not json', 'utf8')
+    assert.equal(resolveDesktopSettingsVersion(broken, '1.2.3'), '1.2.3')
+    // 版本字段为空。
+    const empty = makePluginSource(join(root, 'c'))
+    writeFileSync(join(empty, 'package.json'), JSON.stringify({ version: '' }), 'utf8')
+    assert.equal(resolveDesktopSettingsVersion(empty, '1.2.3'), '1.2.3')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

@@ -20,12 +20,27 @@
  * desktop-bridge precedent and needs no seed/reconcile changes.
  */
 
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 /** Package name of the bundled desktop settings plugin. */
 export const DESKTOP_SETTINGS_PACKAGE = 'dsh-my-desktop-setting'
+
+/**
+ * Read the shipped plugin's own version so the materialized manifest never
+ * drifts from `plugins/desktop-settings/package.json`. Falls back to the app
+ * version when the manifest is absent (a dev checkout without the plugin).
+ */
+export function resolveDesktopSettingsVersion(sourceDir: string, fallback: string): string {
+  try {
+    const manifest = JSON.parse(readFileSync(join(sourceDir, 'package.json'), 'utf8')) as { version?: unknown }
+    if (typeof manifest.version === 'string' && manifest.version !== '') return manifest.version
+  } catch {
+    // No readable manifest: the caller's fallback (the app version) is correct.
+  }
+  return fallback
+}
 
 /** Files copied from the shipped plugin source into the per-user bundle dir. */
 export const DESKTOP_SETTINGS_FILES = [
@@ -51,8 +66,12 @@ export function resolveDesktopSettingsDir(options: { isPackaged: boolean; appPat
  * Materialize the plugin into a writable dir and return the `--patch` overlay path
  * (or `undefined` when the shipped source is absent — e.g. a dev run without the
  * plugin built, which must not fail the whole desktop launch).
+ *
+ * `appVersion` is the fallback when the shipped plugin manifest is unreadable;
+ * normally the version is read from the plugin's own package.json so it can
+ * never drift from a release bump.
  */
-export function prepareDesktopSettings(destDir: string, sourceDir: string): string | undefined {
+export function prepareDesktopSettings(destDir: string, sourceDir: string, appVersion = '0.0.0'): string | undefined {
   if (!existsSync(join(sourceDir, 'lib', 'index.js'))) return undefined
   mkdirSync(destDir, { recursive: true })
   mkdirSync(join(destDir, 'lib'), { recursive: true })
@@ -65,7 +84,7 @@ export function prepareDesktopSettings(destDir: string, sourceDir: string): stri
   // host entry and serves `lib/client.js` for the web profile.
   writeFileSync(join(destDir, 'package.json'), `${JSON.stringify({
     name: DESKTOP_SETTINGS_PACKAGE,
-    version: '0.1.0',
+    version: resolveDesktopSettingsVersion(sourceDir, appVersion),
     type: 'module',
     main: 'lib/index.js',
     exports: {
