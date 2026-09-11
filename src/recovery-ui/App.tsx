@@ -168,9 +168,11 @@ export function App(): React.JSX.Element {
                 setInspections(current => ({ ...current, [slotId]: inspection }))
               })
             }}
-            onRestore={slotId => {
+            onRestore={(slotId, sourceProfile) => {
               void run('回滚快照', async () => {
-                await recoveryApi.restoreCheckpoint(slotId)
+                // `<slotId>@<sourceProfile>`: the slot may belong to another
+                // profile, so the source travels with the slot id.
+                await recoveryApi.restoreCheckpoint(`${slotId}@${sourceProfile}`)
                 await refreshStatus()
               })
             }}

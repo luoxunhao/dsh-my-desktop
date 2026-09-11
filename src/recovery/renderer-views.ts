@@ -22,6 +22,17 @@ import type { DesktopProfileCheckpointSlotId, ProfileCheckpointSlot } from './pr
 export interface ProjectedCheckpointSlot {
   readonly slotId: DesktopProfileCheckpointSlotId
   readonly status: 'empty' | 'available'
+  /**
+   * Which profile this slot was captured from.
+   *
+   * KEPT ON PURPOSE. An earlier version of this projection dropped it as "noise",
+   * reasoning that the page knows which profile it is recovering. That was wrong:
+   * slots are per-profile on disk, the page aggregates them across ALL profiles, and
+   * this field is the only thing that tells the user (and the restore call) where a
+   * given slot came from. Rolling a desktop snapshot into the web profile is a
+   * supported operation precisely because the slot carries its provenance.
+   */
+  readonly profileName: string
   /** ISO capture time; absent for an empty slot. */
   readonly capturedAt?: string
   readonly appVersion?: string
@@ -43,14 +54,17 @@ export interface ProjectedProfile {
 /**
  * Project checkpoint slots for the renderer.
  *
- * `profileName` is deliberately NOT included: the page already knows which profile
- * it is recovering (it is shown in the reason card), and repeating it in every slot
- * would be noise.
+ * Slots arrive from EVERY profile (the page aggregates them), so each projected slot
+ * carries the profile it came from — without it the page cannot tell two profiles'
+ * slots apart, nor say where a restore would take its content from.
  */
-export function projectCheckpointSlots(slots: readonly ProfileCheckpointSlot[]): readonly ProjectedCheckpointSlot[] {
+export function projectCheckpointSlots(
+  slots: readonly ProfileCheckpointSlot[],
+  profileName: string,
+): readonly ProjectedCheckpointSlot[] {
   return slots.map(slot => {
     if (!slot.snapshotExists || slot.manifest === undefined) {
-      return { slotId: slot.slotId, status: 'empty' }
+      return { slotId: slot.slotId, status: 'empty', profileName }
     }
     const { manifest } = slot
     // `fileCount` counts the RECORDED entries, including ones recorded as absent —
@@ -60,6 +74,9 @@ export function projectCheckpointSlots(slots: readonly ProfileCheckpointSlot[]):
     return {
       slotId: slot.slotId,
       status: 'available',
+      // The manifest records the profile it was captured from; trust it over the
+      // directory name so a renamed/moved profile still reports its true origin.
+      profileName: manifest.profileName ?? profileName,
       capturedAt: manifest.capturedAt,
       appVersion: manifest.appVersion,
       fileCount: manifest.files.length,

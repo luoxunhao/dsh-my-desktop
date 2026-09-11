@@ -55,7 +55,7 @@ function checkpointFor(f: ReturnType<typeof fixture>) {
 test('空槽也列出，状态标记为 empty', () => {
   const f = fixture()
   try {
-    const slots = projectCheckpointSlots(checkpointFor(f).listSlots())
+    const slots = projectCheckpointSlots(checkpointFor(f).listSlots(), 'web')
     assert.equal(slots.length, 3)
     assert.deepEqual(slots.map(slot => slot.slotId), ['slot-1', 'slot-2', 'slot-3'])
     assert.equal(slots.every(slot => slot.status === 'empty'), true)
@@ -72,7 +72,7 @@ test('已捕获的槽带出时间、版本、文件数与总大小', () => {
   try {
     const checkpoint = checkpointFor(f)
     checkpoint.captureHealthy()
-    const slots = projectCheckpointSlots(checkpoint.listSlots())
+    const slots = projectCheckpointSlots(checkpointFor(f).listSlots(), 'web')
     const captured = slots.find(slot => slot.status === 'available')
     assert.ok(captured !== undefined, '应有一个可用槽')
     assert.equal(captured.appVersion, '0.1.4')
@@ -101,7 +101,7 @@ test('单个槽损坏不影响其它槽的可见性（阶段 3 的容错必须�
     checkpoint.captureHealthy()   // slot-2
     writeFileSync(join(checkpoint.snapshotRoot, 'slot-1', 'manifest.json'), '{ not json')
 
-    const slots = projectCheckpointSlots(checkpoint.listSlots())
+    const slots = projectCheckpointSlots(checkpointFor(f).listSlots(), 'web')
     assert.equal(slots.length, 3, '损坏的槽不应让投影整体失败')
     assert.equal(slots.find(slot => slot.slotId === 'slot-1')?.status, 'empty')
     assert.equal(slots.find(slot => slot.slotId === 'slot-2')?.status, 'available', '健康槽必须仍可见')
@@ -115,7 +115,7 @@ test('投影不向渲染层泄露绝对路径', () => {
   try {
     const checkpoint = checkpointFor(f)
     checkpoint.captureHealthy()
-    const serialized = JSON.stringify(projectCheckpointSlots(checkpoint.listSlots()))
+    const serialized = JSON.stringify(projectCheckpointSlots(checkpointFor(f).listSlots(), 'web'))
     // The page is sandboxed and has no filesystem access; it only needs to describe
     // a slot. Leaking the home path would tell a compromised page where the user's
     // data lives.

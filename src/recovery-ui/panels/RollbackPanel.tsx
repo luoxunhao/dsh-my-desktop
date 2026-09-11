@@ -41,7 +41,7 @@ export function RollbackPanel({ slots, inspections, locale, busy, onInspect, onR
   readonly locale: 'zh' | 'en'
   readonly busy: boolean
   readonly onInspect: (slotId: string) => void
-  readonly onRestore: (slotId: string) => void
+  readonly onRestore: (slotId: string, sourceProfile: string) => void
 }): React.JSX.Element {
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US'
   const anyAvailable = slots.some(slot => slot.status === 'available')
@@ -65,12 +65,13 @@ export function RollbackPanel({ slots, inspections, locale, busy, onInspect, onR
           const inspection = inspections[slot.slotId]
           const available = slot.status === 'available'
           return (
-            <Card key={slot.slotId} className="w-full overflow-hidden">
+            <Card key={`${slot.profileName}:${slot.slotId}`} className="w-full overflow-hidden">
               <CardHeader className="gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-1.5">
                   <CardTitle className="flex items-center gap-2">
                     <History className="size-4" />
                     {locale === 'zh' ? `槽位 ${slot.slotId.slice(-1)}` : `Slot ${slot.slotId.slice(-1)}`}
+                    <Badge variant="outline">{slot.profileName}</Badge>
                   </CardTitle>
                   <CardDescription>
                     {!available
@@ -114,7 +115,7 @@ export function RollbackPanel({ slots, inspections, locale, busy, onInspect, onR
                         </Button>
                         <Button
                           disabled={busy}
-                          onClick={() => { onRestore(slot.slotId) }}
+                          onClick={() => { onRestore(slot.slotId, slot.profileName) }}
                         >
                           <RotateCcw />
                           回滚到此快照

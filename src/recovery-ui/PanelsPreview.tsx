@@ -10,10 +10,19 @@ import { ProfilesPanel } from './panels/ProfilesPanel.js'
 import { ReasonCard } from './panels/ReasonCard.js'
 import { RollbackPanel } from './panels/RollbackPanel.js'
 
+/**
+ * Slots from BOTH profiles on purpose: that is the real shape the page now receives
+ * (the rollback panel aggregates every profile's slots and labels each with the
+ * profile it came from). A single-profile fixture would hide the very bug this
+ * panel was rebuilt to fix.
+ */
 const slots = [
-  { slotId: 'slot-1' as const, status: 'available' as const, capturedAt: '2026-09-10T11:22:12.075Z', appVersion: '0.1.4', fileCount: 7, totalBytes: 12_840 },
-  { slotId: 'slot-2' as const, status: 'available' as const, capturedAt: '2026-09-10T09:05:41.000Z', appVersion: '0.1.3', fileCount: 7, totalBytes: 12_712 },
-  { slotId: 'slot-3' as const, status: 'empty' as const },
+  { slotId: 'slot-1' as const, status: 'available' as const, profileName: 'desktop', capturedAt: '2026-09-10T11:22:12.075Z', appVersion: '0.1.4', fileCount: 7, totalBytes: 12_840 },
+  { slotId: 'slot-2' as const, status: 'available' as const, profileName: 'desktop', capturedAt: '2026-09-10T09:05:41.000Z', appVersion: '0.1.3', fileCount: 7, totalBytes: 12_712 },
+  { slotId: 'slot-3' as const, status: 'empty' as const, profileName: 'desktop' },
+  { slotId: 'slot-1' as const, status: 'available' as const, profileName: 'web', capturedAt: '2026-09-10T08:14:03.000Z', appVersion: '0.1.4', fileCount: 7, totalBytes: 4_512 },
+  { slotId: 'slot-2' as const, status: 'empty' as const, profileName: 'web' },
+  { slotId: 'slot-3' as const, status: 'empty' as const, profileName: 'web' },
 ]
 
 const profiles = [

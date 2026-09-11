@@ -271,9 +271,16 @@ export function createDesktopProfileCheckpoint(options: ProfileCheckpointOptions
   }
 
   /** Read the current on-disk image of each requested file. */
-  function readCurrentImages(names: readonly DesktopProfileCheckpointFilename[]): FileImage[] {
+  function readCurrentImages(
+    names: readonly DesktopProfileCheckpointFilename[],
+    target?: { readonly profileDir: string, readonly homeDir: string },
+  ): FileImage[] {
     return names.map(name => {
-      const path = resolveCheckpointTarget(profileDir, homeDir, name)
+      const path = resolveCheckpointTarget(
+        target?.profileDir ?? profileDir,
+        target?.homeDir ?? homeDir,
+        name,
+      )
       let item
       try {
         item = lstatSync(path)
@@ -493,14 +500,36 @@ export function createDesktopProfileCheckpoint(options: ProfileCheckpointOptions
   }
 
   /** Restore one slot, preserving it across the next healthy boot. */
-  function restoreSlot(slotId: DesktopProfileCheckpointSlotId): RestoreResult {
+  /**
+   * Restore a slot's recorded files.
+   *
+   * `writeTarget` separates READING a slot from WRITING it back:
+   *
+   *   - The slot always lives under THIS instance's snapshot root, so this instance
+   *     must be the one constructed for the slot's OWNING profile.
+   *   - The files are written into `writeTarget` when given, otherwise into this
+   *     instance's own profile.
+   *
+   * That split is what lets the recovery page roll a snapshot taken in one profile
+   * into a DIFFERENT profile — the user's requirement that slots not be welded to a
+   * profile. The data structure is unchanged (per-profile slot directories, each
+   * manifest recording its `profileName`); only the write destination moves.
+   *
+   * The skip marker stays in THIS instance's snapshot root on purpose: it guards the
+   * slot the user just restored FROM, so a later healthy startup cannot overwrite the
+   * recovery point they chose.
+   */
+  function restoreSlot(
+    slotId: DesktopProfileCheckpointSlotId,
+    writeTarget?: { readonly profileDir: string, readonly homeDir: string },
+  ): RestoreResult {
     const resolvedSlot = assertSlotId(slotId)
     const directory = slotDirectory(resolvedSlot)
     const snapshot = readSnapshot(directory)
     if (snapshot === undefined) throw new Error(`checkpoint ${resolvedSlot} is empty`)
 
     const names = checkpointFiles(snapshot.manifest.version)
-    const current = readCurrentImages(names)
+    const current = readCurrentImages(names, writeTarget)
     const changedFiles = names.filter((_, index) => !fileEqual(snapshot.manifest.files[index]!, current[index]!))
     const previous = readSkipMarker()
     const dependencyMaterializationRequired = previous?.dependencyMaterializationPending === true
@@ -517,7 +546,11 @@ export function createDesktopProfileCheckpoint(options: ProfileCheckpointOptions
 
     for (const [index, name] of names.entries()) {
       const record = snapshot.manifest.files[index]!
-      const target = resolveCheckpointTarget(profileDir, homeDir, name)
+      const target = resolveCheckpointTarget(
+        writeTarget?.profileDir ?? profileDir,
+        writeTarget?.homeDir ?? homeDir,
+        name,
+      )
       if (record.present) {
         const source = join(directory, name)
         const bytes = readFileSync(source)

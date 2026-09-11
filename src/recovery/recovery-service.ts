@@ -25,7 +25,7 @@
 import { app } from 'electron'
 
 import { DESKTOP_APP_NAME } from '../app/app-identity.js'
-import { projectCheckpointSlots } from './renderer-views.js'
+import { projectCheckpointSlots, type ProjectedCheckpointSlot } from './renderer-views.js'
 import { resolveDataDirectory } from './data-directory.js'
 import { createDesktopProfileCheckpoint, DESKTOP_PROFILE_CHECKPOINT_SLOT_IDS, type DesktopProfileCheckpointSlotId } from './profile-checkpoint.js'
 import {
@@ -247,9 +247,73 @@ export function createRecoveryService(deps: RecoveryDeps) {
       userDataDir: app.getPath('userData'),
       profileDir,
       homeDir: deps.homeDir(),
-      profileName: profileDir.split(/[\\/]/).pop() ?? 'unknown',
+      profileName: profileNameOf(profileDir),
       appVersion: app.getVersion(),
     })
+  }
+
+  /**
+   * Every profile's slots, flattened.
+   *
+   * Slots are stored per profile, but the page must show them together: a snapshot
+   * taken in \`desktop\` is a legitimate rollback source for \`web\` (the slot carries
+   * a full configuration image, and the manifest records which profile it came
+   * from). Listing only the active profile's slots is what made two profiles look
+   * like they shared one set — the page was showing one profile's slots either way.
+   *
+   * The current profile is listed FIRST so the page can group it without a second
+   * pass, and profiles that fail to enumerate are skipped rather than breaking the
+   * whole list (a broken profile must still leave the others repairable).
+   */
+  function listAllCheckpointSlots(currentProfileDir: string) {
+    const currentName = profileNameOf(currentProfileDir)
+    const profiles = (deps.listProfiles() as readonly { name?: string }[])
+      .map(entry => entry.name)
+      .filter((name): name is string => typeof name === 'string' && name.length > 0)
+    const ordered = [currentName, ...profiles.filter(name => name !== currentName)]
+    const out: ProjectedCheckpointSlot[] = []
+    for (const name of ordered) {
+      try {
+        const manager = checkpointFor(profileDirForName(name))
+        out.push(...projectCheckpointSlots(manager.listSlots(), name))
+      } catch (error) {
+        console.error(`无法读取 profile \${name} 的快照槽位。`, error)
+      }
+    }
+    return out
+  }
+
+  /** Profile directory name — the same key the slot layout is built from. */
+  function profileNameOf(profileDir: string): string {
+    return profileDir.split(/[\\/]/).filter(Boolean).pop() ?? 'unknown'
+  }
+
+  /** Rebuild a profile directory from its name (slots are keyed by name). */
+  function profileDirForName(name: string): string {
+    const current = deps.recovery.profileDir
+    if (current === undefined) throw new Error('恢复页面尚未准备完成。')
+    if (profileNameOf(current) === name) return current
+    // Profiles are siblings under <DSH_HOME>/profiles, so swap the last segment.
+    const parts = current.split(/([\\/])/)
+    const last = parts.length - 1
+    parts[last] = name
+    return parts.join('')
+  }
+
+  /**
+   * Parse \`<slotId>@<sourceProfile>\`.
+   *
+   * The combined token keeps the existing single-string IPC payload shape (the
+   * preload and the two-phase confirmation both deal in one opaque target string)
+   * while still naming the profile the slot came from.
+   */
+  function parseCheckpointRef(payload: string): { slotId: string, sourceProfile?: string } {
+    const at = payload.lastIndexOf('@')
+    if (at <= 0) return { slotId: payload }
+    const sourceProfile = payload.slice(at + 1)
+    return sourceProfile === ''
+      ? { slotId: payload.slice(0, at) }
+      : { slotId: payload.slice(0, at), sourceProfile }
   }
 
   /** Narrow an untrusted slot id to the fixed set. */
@@ -321,16 +385,21 @@ export function createRecoveryService(deps: RecoveryDeps) {
       return undefined
     }
     if (action === 'startup-log') return deps.trimStartupLog(await deps.readStartupLog(profileDir))
-    if (action === 'list-checkpoints') return projectCheckpointSlots(checkpointFor(profileDir).listSlots())
+    if (action === 'list-checkpoints') return listAllCheckpointSlots(profileDir)
     if (action === 'inspect-checkpoint') {
       if (payload === undefined) throw new Error('缺少槽位标识。')
       return checkpointFor(profileDir).inspectSlot(assertSlotId(payload))
     }
     if (action === 'restore-checkpoint') {
-      if (payload === undefined) throw new Error('缺少槽位标识。')
-      // Two-phase confirmation token is bound to the slot id (expectTarget), so a
-      // stale approval cannot be replayed against a different slot.
-      const restored = checkpointFor(profileDir).restoreSlot(assertSlotId(payload))
+      if (payload === undefined) throw new Error('缺少槽位信息。')
+      // Payload is `<slotId>@<sourceProfile>`: a slot may come from ANOTHER profile,
+      // so the write target (this profile) is not necessarily the slot's owner.
+      const { slotId, sourceProfile } = parseCheckpointRef(payload)
+      const source = sourceProfile === undefined ? checkpointFor(profileDir) : checkpointFor(profileDirForName(sourceProfile))
+      const restored = source.restoreSlot(assertSlotId(slotId), {
+        profileDir,
+        homeDir: deps.homeDir(),
+      })
       await restartDsh(profileDir)
       return { restored, status: pageStatus(profileDir) }
     }

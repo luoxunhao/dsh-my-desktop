@@ -21,6 +21,13 @@
 export interface RecoveryCheckpointSlot {
   readonly slotId: 'slot-1' | 'slot-2' | 'slot-3'
   readonly status: 'empty' | 'available'
+  /**
+   * The profile this slot was captured from.
+   *
+   * Slots are listed from EVERY profile, so this is what tells two profiles' slots
+   * apart — and it is the source when a snapshot is rolled into a different profile.
+   */
+  readonly profileName: string
   readonly capturedAt?: string
   readonly appVersion?: string
   readonly fileCount?: number
