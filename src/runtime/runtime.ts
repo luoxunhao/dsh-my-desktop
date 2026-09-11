@@ -33,6 +33,12 @@ export function resolveDshRuntime(options: RuntimeResolutionOptions): DshRuntime
   const candidates = [
     process.env.DSH_RUNTIME_ROOT,
     options.isPackaged ? join(options.resourcesPath, 'dsh') : undefined,
+    // DEV ONLY: the workspace-local full install produced by `prepare-runtime`
+    // (runtime-dsh/). A dev session has no installer resources to unpack, and the
+    // userData copy can be missing or half-removed — without this candidate a dev
+    // start dies with "未找到 DSH 运行时" even though a complete runtime sits in
+    // the workspace.
+    options.isPackaged ? undefined : resolve(options.appPath, 'runtime-dsh'),
     options.isPackaged ? undefined : resolve(options.appPath, '..', 'deepseek-harness'),
   ].filter((candidate): candidate is string => Boolean(candidate))
 
