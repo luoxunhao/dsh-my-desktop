@@ -56,6 +56,7 @@ import { resolveLaunchDecision } from './recovery/launch-mode.js'
 import { createRecoveryService, type RecoveryService } from './recovery/recovery-service.js'
 import { isRecoveryAction, type RecoveryActionId } from './recovery/recovery-actions.js'
 import { desktopSafeModeRoots, prepareDesktopSafeModeEnvironment } from './recovery/safe-mode.js'
+import { withDataOperationLock } from './recovery/data-operation-lock.js'
 import { writeRecoveryDiagnosticsBundle } from './recovery/diagnostics-bundle.js'
 import { factoryResetDataDirectory } from './recovery/factory-reset.js'
 import { openRecoveryTarget } from './recovery/open-targets.js'
@@ -487,18 +488,25 @@ async function startApplication(): Promise<void> {
     trimStartupLog: trimStartupLogForRecovery,
     openPath: async path => shell.openPath(path),
     factoryReset: async profileDir => {
-      await factoryResetDataDirectory({
-        homeDir: resolveLauncherProfileRoots(app.getPath('userData')).home,
-        userDataDir: app.getPath('userData'),
-        protectedPaths: [profileDir],
-        trashItem: async path => { await shell.trashItem(path) },
-        recreate: false,
+      // Whole-home destruction must exclude every other data mutation: the lock is
+      // what turns the page's busy gate from a single-renderer nicety into a real
+      // cross-surface guarantee.
+      return await withDataOperationLock(app.getPath('userData'), 'factory-reset', async () => {
+        await factoryResetDataDirectory({
+          homeDir: resolveLauncherProfileRoots(app.getPath('userData')).home,
+          userDataDir: app.getPath('userData'),
+          protectedPaths: [profileDir],
+          trashItem: async path => { await shell.trashItem(path) },
+          recreate: false,
+        })
       })
     },
     dataDirectory: () => resolveLauncherDataDirectory(app.getPath('userData')),
     selectDataDirectory: target => {
-      selectDataDirectory(app.getPath('userData'), target, {
-        defaultHome: join(homedir(), '.dsh'),
+      return withDataOperationLock(app.getPath('userData'), 'change-data-directory', async () => {
+        selectDataDirectory(app.getPath('userData'), target, {
+          defaultHome: join(homedir(), '.dsh'),
+        })
       })
     },
     requestSafeModeRestart: () => requireRestartService().requestRecoverySafeModeRestart(),

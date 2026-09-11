@@ -233,4 +233,4 @@ Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','By
 导致的已知缺口，不是被测代码的问题。若需要这些 CI 相关用例通过，需补 `.github/workflows/desktop-package.yml`。
 
 另有 1 条与 `.github` 无关的既有失败：`profile-repair.test.ts` 的「官方 Web bundle 缺失时…」。
-当前基线是 **486 项 / 480 通过 / 5 失败**（全部为上述已知项）。
+当前基线是 **502 项 / 496 通过 / 5 失败**（全部为上述已知项）。

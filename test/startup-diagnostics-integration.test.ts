@@ -37,7 +37,13 @@ test('桌面桥接将 Loader 的结构化启动结果经受限 IPC 交给主进�
   assert.match(main, /captureProfileHealthCheckpoint/)
   assert.match(main, /restoreProfileHealthCheckpoint/)
   assert.match(main, /leaveRecoveryMode\(profileDir\)/)
-  assert.match(main, /restartDshInRecoveryMode\(profileDir, 'workbench'\)/)
+  // The workbench restart now routes through the recovery service (the delegator
+  // name restartDshInRecoveryMode was retired in the ticket-07 extraction).
+  assert.match(main, /requireRecovery\(\)\.restartDsh\(profileDir, 'workbench'\)/)
   assert.match(recoveryPreload, /restoreHealthyConfig/)
-  // The recovery UI reaches the same restore through its typed API wrapper; the\n  // legacy page's button label no longer exists, so assert the actual wiring.\n  assert.match(recoveryApp, /recoveryApi\.restoreHealthyConfig\(\)/)
+  // L42 曾是一条坏注释（字面 \n 未换行）包着一条已失效的断言——App.tsx 早已不调
+  // restoreHealthyConfig，而该 regex 因引号拼接意外匹配自身，守卫形同虚设。
+  // 现在断言真实接线：回滚走两阶段确认后的 restore-checkpoint 通道。
+  assert.match(main, /dsh-recovery:restore-checkpoint/)
+  assert.match(recoveryApp, /recoveryApi\.restoreCheckpoint\(/)
 })

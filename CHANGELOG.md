@@ -2,6 +2,46 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.1.4
+
+The recovery assistant was rebuilt as a first-class repair surface, aligned
+panel-for-panel with dsh-desktop, and the bundled DSH runtime moved to
+0.1.5-rc.1.
+
+- **Recovery page rebuilt (1:1 with dsh-desktop)**: a single React app with six
+  tabs — quick recovery (with Safe Mode), plugin management, rollback, Profile
+  switching, reset & data management, and diagnostics. The previous page was five
+  hand-rolled tabs with no data panel. All wording lives in a bilingual copy table
+  (`recovery-copy.ts`) so parity with the reference stays diffable.
+- **Health snapshots became user-visible**: the three-slot system existed since the
+  checkpoint work but had no writer on any launch path. Healthy startups now capture
+  a slot, and the rollback panel shows each slot's capture time, desktop version,
+  plugin count, configuration-file count and size — plus "browse files" and
+  "roll back to this slot".
+- **Rollback works across profiles**: a slot records which profile it came from and
+  can be restored INTO the current profile (the dsh-desktop model). The page shows
+  the active profile's three slots; the profile is stated once, in the reason card.
+- **Safe Mode is real**: entering it relaunches the app with a one-shot marker, the
+  startup gate prepares a disposable DSH home (isolated from the user's data), and
+  the page shows the active state. The same fix stops a normal restart from
+  inheriting the recovery/safe-mode marker — restarting from recovery used to spin
+  back into recovery forever.
+- **Profile switching from recovery**: switch to another desktop-capable Profile,
+  using the same guarded relaunch path.
+- **Diagnostics bundle**: one-click export of the startup diagnostic, error log and
+  profile manifest as a single text file, with "show in folder".
+- **Data management**: the current DSH data directory is shown and can be changed or
+  restored to default; factory reset (trash + recreate) sits behind its own card.
+  Both run under a cross-process operation lock, so two data mutations can no longer
+  interleave.
+- **Recovery restart fixed**: the footer restart action now relaunches the whole
+  application instead of calling "return to workbench", which always failed in a
+  recovery session ("DSH 尚未成功启动").
+- **Bundled DSH runtime → 0.1.5-rc.1**, with the four client packages re-vendored.
+- Tests: 330 → 502 (the new coverage targets the silent-failure class: snapshot
+  capture wiring, cross-profile restore, operation lock, IPC contract drift,
+  restart semantics, and UI copy parity).
+
 ## 0.1.3
 
 The desktop settings plugin moved into this repository, and the launcher and
