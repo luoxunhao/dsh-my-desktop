@@ -62,6 +62,11 @@ function requestedRecovery(): boolean {
   return new URLSearchParams(window.location.search).get('requested') === '1'
 }
 
+/** Whether THIS generation runs in the disposable Safe Mode environment. */
+function safeModeRequested(): boolean {
+  return new URLSearchParams(window.location.search).get('safeMode') === '1'
+}
+
 /** Panel body wrapper: the reference pairs its ScrollArea with this spacing. */
 function PanelScroll({ children }: { readonly children: React.ReactNode }): React.JSX.Element {
   return <div className="h-full space-y-4 overflow-auto pb-2 pr-3 pt-4">{children}</div>
@@ -304,7 +309,7 @@ function RecoveryGuideCard({ body, icon, title }: {
   )
 }
 
-function QuickRecoveryPanel({ busy, copy, onEnterSafeMode }: { readonly busy: boolean, readonly copy: RecoveryCopy, readonly onEnterSafeMode: () => void }): React.JSX.Element {
+function QuickRecoveryPanel({ busy, copy, onEnterSafeMode, safeModeActive }: { readonly busy: boolean, readonly copy: RecoveryCopy, readonly onEnterSafeMode: () => void, readonly safeModeActive: boolean }): React.JSX.Element {
   return (
     <PanelScroll>
       <Card>
@@ -316,18 +321,22 @@ function QuickRecoveryPanel({ busy, copy, onEnterSafeMode }: { readonly busy: bo
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5" />{copy.safeMode}</CardTitle>
-          <CardDescription>{copy.safeModeBody}</CardDescription>
+          {/* Active state shows the "how to leave" copy and NO button — re-entering
+              while already inside would just restart into the same thing. */}
+          <CardDescription>{safeModeActive ? copy.safeModeActiveBody : copy.safeModeBody}</CardDescription>
         </CardHeader>
-        <CardFooter className="justify-end">
-          <RecoveryAction
-            disabled={busy}
-            icon={<ShieldCheck />}
-            onClick={onEnterSafeMode}
-            variant="default"
-          >
-            {copy.enterSafeMode}
-          </RecoveryAction>
-        </CardFooter>
+        {safeModeActive ? null : (
+          <CardFooter className="justify-end">
+            <RecoveryAction
+              disabled={busy}
+              icon={<ShieldCheck />}
+              onClick={onEnterSafeMode}
+              variant="default"
+            >
+              {copy.enterSafeMode}
+            </RecoveryAction>
+          </CardFooter>
+        )}
       </Card>
       <RecoveryGuideCard body={copy.pluginGuideBody} icon={<Plug className="size-5" />} title={copy.tabs.plugins} />
       <RecoveryGuideCard body={copy.rollbackGuideBody} icon={<History className="size-5" />} title={copy.tabs.rollback} />
@@ -553,6 +562,7 @@ export function App(): React.JSX.Element {
   const loc = locale()
   const copy = useMemo(() => recoveryCopy(loc), [loc])
   const requested = requestedRecovery()
+  const safeMode = safeModeRequested()
 
   const [status, setStatus] = useState<RecoveryStatus | undefined>(undefined)
   const [slots, setSlots] = useState<readonly RecoveryCheckpointSlot[]>([])
@@ -649,6 +659,7 @@ export function App(): React.JSX.Element {
               <QuickRecoveryPanel
                 busy={busy}
                 copy={copy}
+                safeModeActive={safeMode}
                 onEnterSafeMode={() => {
                   void run(copy.enterSafeMode, async () => { await recoveryApi.enterSafeMode() })
                 }}

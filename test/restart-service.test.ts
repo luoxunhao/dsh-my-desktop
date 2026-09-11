@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { DESKTOP_RECOVERY_MODE_ARGUMENT, desktopRecoveryRelaunchArguments } from '../src/recovery/relaunch-arguments.js'
+import { DESKTOP_RECOVERY_MODE_ARGUMENT, desktopDefaultRelaunchArguments, desktopRecoveryRelaunchArguments } from '../src/recovery/relaunch-arguments.js'
 import { createRestartService, type RestartMessageBoxOptions } from '../src/recovery/restart-service.js'
 
 /**
@@ -134,10 +134,17 @@ test('恢复重启带上一次性标记，且保留原有 argv', async () => {
   assert.deepEqual(args, desktopRecoveryRelaunchArguments(['exe', '--keep-me']))
 })
 
-test('普通重启不带一次性标记（否则每次重启都进恢复模式）', async () => {
+test('普通重启重建命令行（剔除一次性标记）—— 裸 relaunch 会继承恢复标记', async () => {
+  // THE BUG THIS PINS: a normal restart used to relaunch with NO arguments, so the
+  // injected relaunch fell back to a bare app.relaunch() that inherits the current
+  // argv. Restarting from a recovery generation therefore carried the one-shot
+  // marker into the next generation and the app spun back into recovery forever.
   const h = harness()
   await h.service.requestRestart()
-  assert.deepEqual(h.relaunches, [undefined], '普通重启不应附加参数')
+  assert.deepEqual(h.relaunches, [desktopDefaultRelaunchArguments(['exe', '--keep-me'])])
+  const args = h.relaunches[0]!
+  assert.equal(args.includes(DESKTOP_RECOVERY_MODE_ARGUMENT), false, '不得携带恢复标记')
+  assert.equal(args.includes('--keep-me'), true, '普通参数保留')
 })
 
 test('恢复重启不会累积重复标记', async () => {

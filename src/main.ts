@@ -172,6 +172,9 @@ async function revealRecoveryDiagnostics(): Promise<void> {
   await shell.openPath(join(app.getPath('userData'), lastDiagnosticsFilename))
 }
 
+/** Whether THIS generation was launched into the disposable Safe Mode environment. */
+let launchSafeModeRequested = false
+
 async function shutdownDesktop(exit: () => void): Promise<void> {
   await quitDesktopApp({
     isQuitting: state.runtime.isQuitting,
@@ -441,6 +444,7 @@ async function startApplication(): Promise<void> {
     resolveRecoveryHtml: resolveRecoveryUiHtml,
     theme: () => ({ colorScheme: state.shell.colorScheme, locale: desktopLocale() }),
     recoveryRequested: () => state.launch.recoveryRequested,
+    safeModeRequested: () => launchSafeModeRequested,
     createMainWindow,
     broadcastShellState,
     setRecycling: value => { state.runtime.isRecycling = value },

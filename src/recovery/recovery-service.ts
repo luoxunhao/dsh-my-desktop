@@ -82,6 +82,8 @@ export interface RecoveryDeps {
   theme: () => { colorScheme: string, locale: string }
   /** Whether this launch was a user-requested recovery entry. */
   recoveryRequested: () => boolean
+  /** Whether THIS generation runs in the disposable Safe Mode environment. */
+  safeModeRequested: () => boolean
   /** Create the main window pointed at a running server. */
   createMainWindow: (serverUrl: string) => Promise<void>
   /** Tell every shell renderer that the recycle state changed. */
@@ -209,7 +211,12 @@ export function createRecoveryService(deps: RecoveryDeps) {
     const { colorScheme, locale } = deps.theme()
     // `requested` distinguishes "the user asked for recovery" from "startup failed";
     // the page renders a different reason card for each.
-    const query = { theme: colorScheme, locale, requested: deps.recoveryRequested() ? '1' : '0' }
+    const query = {
+      theme: colorScheme,
+      locale,
+      requested: deps.recoveryRequested() ? '1' : '0',
+      safeMode: deps.safeModeRequested() ? '1' : '0',
+    }
     await deps.navigate(view, () => deps.loadFile(view.webContents, html, query))
   }
 

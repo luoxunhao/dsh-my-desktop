@@ -29,7 +29,7 @@
  * 3. **Relaunch BEFORE exit** — reversing them exits the app with nothing
  *    scheduled to replace it, which looks exactly like a crash.
  */
-import { desktopRecoveryRelaunchArguments, desktopSafeModeRelaunchArguments } from './relaunch-arguments.js'
+import { desktopDefaultRelaunchArguments, desktopRecoveryRelaunchArguments, desktopSafeModeRelaunchArguments } from './relaunch-arguments.js'
 import { restartConfirmationCopy, type RestartTarget } from './restart-confirmation.js'
 
 /** The subset of Electron's message box options we actually set. */
@@ -99,7 +99,11 @@ export function createRestartService(deps: RestartDeps) {
         ? desktopRecoveryRelaunchArguments([...deps.argv()])
         : target === 'safe-mode'
           ? desktopSafeModeRelaunchArguments([...deps.argv()])
-          : undefined,
+          : // THE BUG THIS PINS: passing undefined here made the injected relaunch fall
+            // back to a bare app.relaunch(), which INHERITS the current argv — so
+            // restarting from a recovery generation carried --dsh-desktop-recovery
+            // into the next generation and the app spun back into recovery forever.
+            desktopDefaultRelaunchArguments([...deps.argv()]),
     )
   }
 
