@@ -55,6 +55,7 @@ import { dismissDshSettingsDialog as _ipcDismissDshSettingsDialog, sendDshAction
 import { resolveLaunchDecision } from './recovery/launch-mode.js'
 import { createRecoveryService, type RecoveryService } from './recovery/recovery-service.js'
 import { isRecoveryAction, type RecoveryActionId } from './recovery/recovery-actions.js'
+import { desktopSafeModeRoots, prepareDesktopSafeModeEnvironment } from './recovery/safe-mode.js'
 import { writeRecoveryDiagnosticsBundle } from './recovery/diagnostics-bundle.js'
 import { factoryResetDataDirectory } from './recovery/factory-reset.js'
 import { openRecoveryTarget } from './recovery/open-targets.js'
@@ -533,7 +534,19 @@ async function startApplication(): Promise<void> {
     // Record WHY we are here: the page's reason card differs between "the user asked
     // for recovery" and "startup failed", and only the launcher knows which.
     state.launch.recoveryRequested = true
-        const recoveryRoots = resolveLauncherProfileRoots(app.getPath('userData'))
+    // Safe Mode generation: point EVERYTHING at the disposable environment BEFORE
+    // resolving roots. prepareDesktopSafeModeEnvironment resets the one-off home,
+    // sets DSH_HOME to it, and seeds an isolated profile — skipping this meant the
+    // "safe mode" generation actually ran on the user's real data directory and the
+    // page never showed it as active.
+    const safeModeActive = launch.mode === 'safe-mode'
+    launchSafeModeRequested = safeModeActive
+    let recoveryRoots = resolveLauncherProfileRoots(app.getPath('userData'))
+    if (safeModeActive) {
+      const safePaths = prepareDesktopSafeModeEnvironment(app.getPath('userData'))
+      const safeRoots = desktopSafeModeRoots(safePaths)
+      recoveryRoots = { home: safeRoots.home, stateDir: safeRoots.stateDir } as typeof recoveryRoots
+    }
         const recoveryProfileName = readActiveProfile(recoveryRoots)
         const recoveryProfileDir = profileDirFor(recoveryRoots.home, recoveryProfileName)
         state.recovery.profileDir = recoveryProfileDir
