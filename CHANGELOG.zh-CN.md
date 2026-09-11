@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.md)
 
+## 0.2.0
+
+版本升至 0.2.0。随包 DSH 运行时为 0.1.5-rc.1。
+
+- **版本对齐**：根 `package.json` 与随包插件 `dsh-my-desktop-setting` 均升至
+  `0.2.0`（物化插件清单回退到应用版本，二者保持同步）。
+- **陈旧运行时引用修正**：`config.bundledDshVersion` 此前仍是 `0.1.2-rc.1`，
+  已修正为真实的 `0.1.5-rc.1`（与 `OFFICIAL_DSH_VERSION` 及 CHANGELOG/README 一致）。
+- TODO：发版前补全 0.2.0 的功能清单。
+
 ## 0.1.4
 
 恢复助手重建为一等修复入口，逐面板对齐 dsh-desktop；随包 DSH 运行时升至

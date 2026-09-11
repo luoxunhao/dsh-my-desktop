@@ -6,8 +6,8 @@
 > 实际落地路线已改为「随包 `--patch` 注入」；目录布局已按新位置更新。
 >
 > dsh-desktop 仅是**参考/知识库**（界面长什么样、整页分几块、走哪些契约），**不是依赖，也不并入**。
-> 目标运行时基线 = dsh-my-desktop 随包的官方 `@deepseek-ai/dsh@0.1.2-rc.1`（实测其 node_modules 内含
-> `dsh-client-ui-settings@0.1.2-rc.1`、`dsh-client-locale@0.1.2-rc.1`、`dsh-client-ui-renderer@0.1.2-rc.1`、`cordis@4.0.2`）。
+> 目标运行时基线 = dsh-my-desktop 随包的官方 `@deepseek-ai/dsh@0.1.5-rc.1`（实测其 node_modules 内含
+> `dsh-client-ui-settings@0.1.5-rc.1`、`dsh-client-locale@0.1.5-rc.1`、`dsh-client-ui-renderer@0.1.5-rc.1`、`cordis@4.0.2`）。
 
 ---
 

@@ -39,7 +39,7 @@ function fixture() {
     profileDir,
     homeDir,
     profileName,
-    appVersion: '0.1.4',
+    appVersion: '0.2.0',
   })
   return { root, homeDir, webDir, desktopDir, userDataDir, checkpointFor, cleanup: () => rmSync(root, { recursive: true, force: true }) }
 }

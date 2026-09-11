@@ -2,6 +2,18 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.2.0
+
+Version bump to 0.2.0. The bundled DSH runtime is 0.1.5-rc.1.
+
+- **Version alignment**: root `package.json` and the bundled
+  `dsh-my-desktop-setting` plugin both bumped to `0.2.0` (the materialized
+  plugin manifest falls back to the app version, so they stay in lockstep).
+- **Stale runtime reference fixed**: `config.bundledDshVersion` was still
+  `0.1.2-rc.1`; corrected to the real `0.1.5-rc.1` (matching
+  `OFFICIAL_DSH_VERSION` and the CHANGELOG/README docs).
+- TODO: fill in the 0.2.0 feature list here before release.
+
 ## 0.1.4
 
 The recovery assistant was rebuilt as a first-class repair surface, aligned

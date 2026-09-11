@@ -61,7 +61,7 @@ function checkpointFor(f: Fixture, overrides: Record<string, unknown> = {}) {
     profileDir: f.profileDir,
     homeDir: f.homeDir,
     profileName: 'web',
-    appVersion: '0.1.4',
+    appVersion: '0.2.0',
     ...overrides,
   })
 }
