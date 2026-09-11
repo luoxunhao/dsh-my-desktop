@@ -1,5 +1,8 @@
 packages:
   - plugins/*
+  # dsh-market 只是参考源码（预装走 npm 下载 dshmarket@1.45.1），不是本仓库的
+  # 构建单元：纳入工作区会让每次 pnpm install 都装/构建它整套 devDependencies。
+  - '!plugins/dsh-market'
 allowBuilds:
   electron-winstaller: false
 ignoredBuiltDependencies:
