@@ -33,7 +33,7 @@ export interface RestartConfirmationCopy {
 /** Index of the Cancel button. `defaultId` and `cancelId` both point here on purpose. */
 export const DESKTOP_RECOVERY_CONFIRM_DEFAULT_ID = 1
 
-export type RestartTarget = 'normal' | 'recovery'
+export type RestartTarget = 'normal' | 'recovery' | 'safe-mode'
 
 interface CopyFields {
   readonly title: string
@@ -41,6 +41,22 @@ interface CopyFields {
   readonly detail: string
   readonly confirm: string
   readonly cancel: string
+}
+
+const SAFE_MODE_COPY: CopyFields = {
+  title: '进入安全模式？',
+  message: '使用全新的一次性 DSH 环境重启？',
+  detail: 'DSH My Desktop 将创建一个不读取正常 DSH 数据目录的独立 DSH Home，不会修改原有 Profile 和数据。',
+  confirm: '重启到安全模式',
+  cancel: '取消',
+}
+
+const SAFE_MODE_COPY_EN: CopyFields = {
+  title: 'Enter Safe Mode?',
+  message: 'Restart with a fresh one-off DSH environment?',
+  detail: 'DSH My Desktop will create a separate DSH Home that does not read your normal DSH data directory. Your existing Profiles and data are not modified.',
+  confirm: 'Restart into Safe Mode',
+  cancel: 'Cancel',
 }
 
 const COPY: Record<'zh' | 'en', Record<RestartTarget, CopyFields>> = {
@@ -59,6 +75,7 @@ const COPY: Record<'zh' | 'en', Record<RestartTarget, CopyFields>> = {
       confirm: 'Restart in Recovery Mode',
       cancel: 'Cancel',
     },
+    'safe-mode': SAFE_MODE_COPY_EN,
   },
   zh: {
     normal: {
@@ -75,6 +92,7 @@ const COPY: Record<'zh' | 'en', Record<RestartTarget, CopyFields>> = {
       confirm: '重启到恢复模式',
       cancel: '取消',
     },
+    'safe-mode': SAFE_MODE_COPY,
   },
 }
 

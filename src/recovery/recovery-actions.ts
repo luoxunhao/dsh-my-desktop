@@ -22,6 +22,11 @@ const NULLARY_ACTIONS = [
   'list-profiles',
   'data-directory',
   'factory-reset',
+  'enter-safe-mode',
+  'export-diagnostics',
+  'show-diagnostics',
+  'switch-profile',
+  'create-profile',
 ] as const
 
 /** Actions whose payload is a name (plugin or slot). */
@@ -31,6 +36,8 @@ const PAYLOAD_ACTIONS = [
   'inspect-checkpoint',
   'restore-checkpoint',
   'select-data-directory',
+  'switch-profile',
+  'create-profile',
 ] as const
 
 /** Opening a configuration file or directory in the OS. */

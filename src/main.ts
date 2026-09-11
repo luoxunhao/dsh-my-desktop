@@ -55,6 +55,7 @@ import { dismissDshSettingsDialog as _ipcDismissDshSettingsDialog, sendDshAction
 import { resolveLaunchDecision } from './recovery/launch-mode.js'
 import { createRecoveryService, type RecoveryService } from './recovery/recovery-service.js'
 import { isRecoveryAction, type RecoveryActionId } from './recovery/recovery-actions.js'
+import { writeRecoveryDiagnosticsBundle } from './recovery/diagnostics-bundle.js'
 import { factoryResetDataDirectory } from './recovery/factory-reset.js'
 import { openRecoveryTarget } from './recovery/open-targets.js'
 import { selectDataDirectory } from './recovery/data-directory.js'
@@ -141,6 +142,34 @@ if (!app.requestSingleInstanceLock()) {
 
 async function requestQuit(): Promise<void> {
   await shutdownDesktop(() => app.exit())
+}
+
+/** Last exported diagnostics file name, so "show in folder" can reveal it. */
+let lastDiagnosticsFilename: string | undefined
+
+/**
+ * Collect and write the recovery diagnostics bundle.
+ *
+ * Everything it reads is text the app already produced; the bundle lands in the
+ * userData root where the OS file manager can reach it, and the resolved file name
+ * feeds the page's "show in folder" affordance.
+ */
+async function exportRecoveryDiagnostics(profileDir: string): Promise<string> {
+  const filename = await writeRecoveryDiagnosticsBundle({
+    userDataDir: app.getPath('userData'),
+    profileDir,
+    homeDir: resolveLauncherProfileRoots(app.getPath('userData')).home,
+    appVersion: app.getVersion(),
+    now: () => new Date(),
+  })
+  lastDiagnosticsFilename = filename
+  return filename
+}
+
+/** Reveal the last exported bundle in the OS file manager. */
+async function revealRecoveryDiagnostics(): Promise<void> {
+  if (lastDiagnosticsFilename === undefined) throw new Error('尚未导出诊断包。')
+  await shell.openPath(join(app.getPath('userData'), lastDiagnosticsFilename))
 }
 
 async function shutdownDesktop(exit: () => void): Promise<void> {
@@ -467,6 +496,11 @@ async function startApplication(): Promise<void> {
         defaultHome: join(homedir(), '.dsh'),
       })
     },
+    requestSafeModeRestart: () => requireRestartService().requestRecoverySafeModeRestart(),
+    exportDiagnostics: async profileDir => await exportRecoveryDiagnostics(profileDir),
+    showDiagnostics: async () => { await revealRecoveryDiagnostics() },
+    switchProfile: async name => { await requireProfileActions().switchWebProfile(name) },
+    createProfile: async name => { await requireProfileActions().createWebProfile(name) },
     runTask: runMainTask,
   })
   // Broadcast/theme is the cross-cutting concern; created before the IPC registrar
@@ -1331,6 +1365,11 @@ const RECOVERY_IPC = {
   factoryReset: 'dsh-recovery:factory-reset',
   openTarget: 'dsh-recovery:open-target',
   restart: 'dsh-recovery:restart',
+  enterSafeMode: 'dsh-recovery:enter-safe-mode',
+  exportDiagnostics: 'dsh-recovery:export-diagnostics',
+  showDiagnostics: 'dsh-recovery:show-diagnostics',
+  switchProfile: 'dsh-recovery:switch-profile',
+  createProfile: 'dsh-recovery:create-profile',
 } as const
 
 function requireRecoveryProfile(sender: WebContents): string {
@@ -1443,6 +1482,26 @@ function installRecoveryIpc(): void {
     // different action). Booting straight into recovery has no server, so the
     // restart button must not be wired to it.
     await requireRestartService().requestRestart()
+  })
+  ipcMain.handle(RECOVERY_IPC.enterSafeMode, async event => {
+    requireRecoveryProfile(event.sender)
+    await requireRestartService().requestRecoverySafeModeRestart()
+  })
+  ipcMain.handle(RECOVERY_IPC.exportDiagnostics, async event => {
+    requireRecoveryProfile(event.sender)
+    return await requireRecovery().performExportDiagnostics(state.recovery.profileDir!)
+  })
+  ipcMain.handle(RECOVERY_IPC.showDiagnostics, async event => {
+    requireRecoveryProfile(event.sender)
+    await requireRecovery().performShowDiagnostics()
+  })
+  ipcMain.handle(RECOVERY_IPC.switchProfile, async (event, name: unknown) => {
+    if (typeof name !== 'string') throw new Error('profile 名称不合法。')
+    await action(event.sender, 'switch-profile', name)
+  })
+  ipcMain.handle(RECOVERY_IPC.createProfile, async (event, name: unknown) => {
+    if (typeof name !== 'string') throw new Error('profile 名称不合法。')
+    await action(event.sender, 'create-profile', name)
   })
   ipcMain.handle(RECOVERY_IPC.openTarget, async (event, target: unknown) => {
     if (!isRecoveryAction(target)) throw new Error('未知的打开目标。')

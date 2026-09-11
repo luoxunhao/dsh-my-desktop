@@ -26,7 +26,10 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
   const exposedKeys = Object.keys(exposed ?? {}).sort()
   const expectedKeys = [
     'activate',
+    'createProfile',
     'dataDirectory',
+    'enterSafeMode',
+    'exportDiagnostics',
     'factoryReset',
     'getStartupLog',
     'getStatus',
@@ -41,6 +44,8 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
     'restoreHealthyConfig',
     'returnToWorkbench',
     'selectDataDirectory',
+    'showDiagnostics',
+    'switchProfile',
     'uninstall',
   ]
   assert.equal(exposedKeys.length, expectedKeys.length, `暴露数量不符：${exposedKeys.join(', ')}`)
@@ -60,6 +65,11 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
   await exposed?.dataDirectory()
   await exposed?.selectDataDirectory(null)
   await exposed?.openTarget('profile-directory')
+  await exposed?.enterSafeMode()
+  await exposed?.exportDiagnostics()
+  await exposed?.showDiagnostics()
+  await exposed?.switchProfile('web')
+  await exposed?.createProfile('new-profile')
   exposed?.factoryReset?.()
   assert.deepEqual(calls, [
     { channel: 'dsh-recovery:activate', args: [] },
@@ -75,6 +85,11 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
     { channel: 'dsh-recovery:data-directory', args: [] },
     { channel: 'dsh-recovery:select-data-directory', args: [null] },
     { channel: 'dsh-recovery:open-target', args: ['profile-directory'] },
+    { channel: 'dsh-recovery:enter-safe-mode', args: [] },
+    { channel: 'dsh-recovery:export-diagnostics', args: [] },
+    { channel: 'dsh-recovery:show-diagnostics', args: [] },
+    { channel: 'dsh-recovery:switch-profile', args: ['web'] },
+    { channel: 'dsh-recovery:create-profile', args: ['new-profile'] },
     { channel: 'dsh-recovery:factory-reset', args: [] },
   ])
 })

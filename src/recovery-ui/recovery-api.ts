@@ -110,6 +110,11 @@ interface RecoveryBridge {
   factoryReset: () => Promise<RecoveryDataDirectory>
   openTarget: (target: RecoveryOpenTarget) => Promise<void>
   restart: () => Promise<void>
+  enterSafeMode: () => Promise<void>
+  exportDiagnostics: () => Promise<string>
+  showDiagnostics: () => Promise<void>
+  switchProfile: (name: string) => Promise<unknown>
+  createProfile: (name: string) => Promise<void>
 }
 
 declare global {
@@ -147,6 +152,11 @@ export const recoveryApi = {
   restoreHealthyConfig: (): Promise<RecoveryStatus> => requireBridge().restoreHealthyConfig(),
   returnToWorkbench: (): Promise<void> => requireBridge().returnToWorkbench(),
   restartDesktop: (): Promise<void> => requireBridge().restart(),
+  enterSafeMode: (): Promise<void> => requireBridge().enterSafeMode(),
+  exportDiagnostics: (): Promise<string> => requireBridge().exportDiagnostics(),
+  showDiagnostics: (): Promise<void> => requireBridge().showDiagnostics(),
+  switchProfile: (name: string): Promise<unknown> => requireBridge().switchProfile(name),
+  createProfile: (name: string): Promise<void> => requireBridge().createProfile(name),
   uninstall: (packageName: string): Promise<RecoveryStatus> => requireBridge().uninstall(packageName),
   listCheckpoints: (): Promise<readonly RecoveryCheckpointSlot[]> => requireBridge().listCheckpoints(),
   inspectCheckpoint: (slotId: string): Promise<RecoveryCheckpointInspection> => requireBridge().inspectCheckpoint(slotId),

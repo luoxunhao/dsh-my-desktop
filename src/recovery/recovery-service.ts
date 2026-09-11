@@ -119,6 +119,16 @@ export interface RecoveryDeps {
   dataDirectory: () => ReturnType<typeof resolveDataDirectory>
   /** Persist a chosen data directory, or clear it with null. */
   selectDataDirectory: (target: string | null) => void
+  /** Relaunch the whole application into the disposable Safe Mode environment. */
+  requestSafeModeRestart: () => Promise<void>
+  /** Collect a local diagnostics bundle; resolves with the file name. */
+  exportDiagnostics: (profileDir: string) => Promise<string>
+  /** Reveal the last exported diagnostics bundle in the OS file manager. */
+  showDiagnostics: () => Promise<void>
+  /** Switch the active profile and relaunch. */
+  switchProfile: (name: string) => Promise<void>
+  /** Create a new Web profile. */
+  createProfile: (name: string) => Promise<void>
   /** Fire-and-forget task runner funnelling rejections to the error reporter. */
   runTask: (task: Promise<unknown>) => void
 }
@@ -401,6 +411,27 @@ export function createRecoveryService(deps: RecoveryDeps) {
       await deps.factoryReset(profileDir)
       return dataDirectoryView()
     }
+    if (action === 'enter-safe-mode') {
+      await deps.requestSafeModeRestart()
+      return undefined
+    }
+    if (action === 'export-diagnostics') {
+      return await deps.exportDiagnostics(profileDir)
+    }
+    if (action === 'show-diagnostics') {
+      await deps.showDiagnostics()
+      return undefined
+    }
+    if (action === 'switch-profile') {
+      if (payload === undefined) throw new Error('缺少 profile 名。')
+      await deps.switchProfile(payload)
+      return pageStatus(profileDir)
+    }
+    if (action === 'create-profile') {
+      if (payload === undefined) throw new Error('缺少 profile 名。')
+      await deps.createProfile(payload)
+      return undefined
+    }
     if ((OPEN_TARGET_ACTIONS as readonly string[]).includes(action)) {
       await deps.openTarget(action as RecoveryOpenTarget, profileDir)
       return undefined
@@ -420,6 +451,9 @@ export function createRecoveryService(deps: RecoveryDeps) {
     dataDirectoryView,
     perform,
     checkpointFor,
+    /** Write the diagnostics bundle; resolves the file name for the page. */
+    performExportDiagnostics: (profileDir: string) => deps.exportDiagnostics(profileDir),
+    performShowDiagnostics: () => deps.showDiagnostics(),
     isRecoveryModeActive,
     leaveRecoveryMode,
   }

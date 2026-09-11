@@ -237,7 +237,7 @@ function PluginsPanel({ copy, busy, status, onUninstall, onRestore, onKeepIsolat
   )
 }
 
-function ProfilesPanel({ copy }: { readonly copy: RecoveryCopy }): React.JSX.Element {
+function ProfilesPanel({ copy, busy, onSwitch }: { readonly copy: RecoveryCopy, readonly busy: boolean, readonly onSwitch: (name: string) => void }): React.JSX.Element {
   const [profiles, setProfiles] = useState<readonly RecoveryProfile[] | undefined>(undefined)
   const [problem, setProblem] = useState<string | undefined>(undefined)
 
@@ -277,7 +277,9 @@ function ProfilesPanel({ copy }: { readonly copy: RecoveryCopy }): React.JSX.Ele
               <span className="min-w-0 truncate text-sm font-medium">{profile.name}</span>
               {profile.current
                 ? <span className="rounded-full bg-muted px-2 py-1 text-xs">{copy.currentProfile}</span>
-                : null}
+                : profile.selectable
+                  ? <RecoveryAction disabled={busy} onClick={() => { onSwitch(profile.name) }}>{copy.switchProfile}</RecoveryAction>
+                  : null}
             </div>
           ))}
           {hasAlternative ? null : <p className="px-6 py-5 text-sm text-muted-foreground">{copy.profilesEmpty}</p>}
@@ -302,7 +304,7 @@ function RecoveryGuideCard({ body, icon, title }: {
   )
 }
 
-function QuickRecoveryPanel({ copy }: { readonly copy: RecoveryCopy }): React.JSX.Element {
+function QuickRecoveryPanel({ busy, copy, onEnterSafeMode }: { readonly busy: boolean, readonly copy: RecoveryCopy, readonly onEnterSafeMode: () => void }): React.JSX.Element {
   return (
     <PanelScroll>
       <Card>
@@ -311,16 +313,21 @@ function QuickRecoveryPanel({ copy }: { readonly copy: RecoveryCopy }): React.JS
           <CardDescription>{copy.quickRecoveryBody}</CardDescription>
         </CardHeader>
       </Card>
-      {/* Safe Mode needs launcher support that is not built yet, so the card states
-          that plainly instead of offering an action the main process cannot honour. */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5" />{copy.safeMode}</CardTitle>
           <CardDescription>{copy.safeModeBody}</CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-amber-600 dark:text-amber-400">{copy.safeModeUnavailable}</p>
-        </CardContent>
+        <CardFooter className="justify-end">
+          <RecoveryAction
+            disabled={busy}
+            icon={<ShieldCheck />}
+            onClick={onEnterSafeMode}
+            variant="default"
+          >
+            {copy.enterSafeMode}
+          </RecoveryAction>
+        </CardFooter>
       </Card>
       <RecoveryGuideCard body={copy.pluginGuideBody} icon={<Plug className="size-5" />} title={copy.tabs.plugins} />
       <RecoveryGuideCard body={copy.rollbackGuideBody} icon={<History className="size-5" />} title={copy.tabs.rollback} />
@@ -418,11 +425,14 @@ function DataManagementPanel({ copy, dataDirectory, busy, onSelect, onReset }: {
   )
 }
 
-function DiagnosticsPanel({ copy, startupLog, busy, onOpen }: {
+function DiagnosticsPanel({ copy, startupLog, busy, onOpen, onExport, onShow, exportedName }: {
   readonly copy: RecoveryCopy
   readonly startupLog: string | undefined
   readonly busy: boolean
   readonly onOpen: (target: RecoveryOpenTarget) => void
+  readonly onExport: () => void
+  readonly onShow: () => void
+  readonly exportedName: string | undefined
 }): React.JSX.Element {
   const empty = startupLog === undefined || startupLog.trim() === ''
   return (
@@ -453,6 +463,20 @@ function DiagnosticsPanel({ copy, startupLog, busy, onOpen }: {
           <RecoveryAction disabled={busy} icon={<FilePenLine />} onClick={() => { onOpen('profile-patch') }}>{copy.openProfilePatch}</RecoveryAction>
           <RecoveryAction disabled={busy} icon={<FilePenLine />} onClick={() => { onOpen('profile-manifest') }}>{copy.openProfileManifest}</RecoveryAction>
           <RecoveryAction disabled={busy} icon={<FolderOpen />} onClick={() => { onOpen('profile-directory') }}>{copy.openProfileDirectory}</RecoveryAction>
+        </CardFooter>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>{copy.diagnostics}</CardTitle>
+          <CardDescription>{exportedName === undefined ? copy.savingDiagnostics : copy.diagnosticsSaved}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {exportedName === undefined ? null : <code className="block select-text break-all rounded-lg bg-muted p-3 text-xs">{exportedName}</code>}
+          <p className="mt-2 text-xs text-muted-foreground">{copy.privacy}</p>
+        </CardContent>
+        <CardFooter className="flex-wrap justify-end gap-2">
+          <RecoveryAction disabled={busy || exportedName === undefined} icon={<FolderOpen />} onClick={onShow}>{copy.showDiagnostics}</RecoveryAction>
+          <RecoveryAction disabled={busy} icon={<Archive />} onClick={onExport} variant="default">{copy.saveDiagnostics}</RecoveryAction>
         </CardFooter>
       </Card>
     </PanelScroll>
@@ -535,6 +559,7 @@ export function App(): React.JSX.Element {
   const [inspections, setInspections] = useState<Record<string, RecoveryCheckpointInspection | undefined>>({})
   const [startupLog, setStartupLog] = useState<string | undefined>(undefined)
   const [dataDirectory, setDataDirectory] = useState<RecoveryDataDirectory | undefined>(undefined)
+  const [exportedName, setExportedName] = useState<string | undefined>(undefined)
   const [profileDirectory, setProfileDirectory] = useState<string | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<RecoveryNotice | undefined>(undefined)
@@ -621,7 +646,13 @@ export function App(): React.JSX.Element {
             </TabsList>
 
             <TabsContent className="min-h-0" value="quick">
-              <QuickRecoveryPanel copy={copy} />
+              <QuickRecoveryPanel
+                busy={busy}
+                copy={copy}
+                onEnterSafeMode={() => {
+                  void run(copy.enterSafeMode, async () => { await recoveryApi.enterSafeMode() })
+                }}
+              />
             </TabsContent>
 
             <TabsContent className="min-h-0" value="plugins">
@@ -658,7 +689,13 @@ export function App(): React.JSX.Element {
             </TabsContent>
 
             <TabsContent className="min-h-0" value="profiles">
-              <ProfilesPanel copy={copy} />
+              <ProfilesPanel
+                busy={busy}
+                copy={copy}
+                onSwitch={name => {
+                  void run(copy.switchProfile, async () => { await recoveryApi.switchProfile(name) })
+                }}
+              />
             </TabsContent>
 
             <TabsContent className="min-h-0" value="data">
@@ -684,8 +721,18 @@ export function App(): React.JSX.Element {
               <DiagnosticsPanel
                 busy={busy}
                 copy={copy}
+                exportedName={exportedName}
+                onExport={() => {
+                  void run(copy.saveDiagnostics, async () => {
+                    setExportedName(await recoveryApi.exportDiagnostics())
+                    setNotice({ tone: 'success', title: copy.diagnosticsSaved, body: copy.privacy })
+                  })
+                }}
                 onOpen={target => {
                   void run(copy.configurationFiles, async () => { await recoveryApi.openTarget(target) })
+                }}
+                onShow={() => {
+                  void run(copy.showDiagnostics, async () => { await recoveryApi.showDiagnostics() })
                 }}
                 startupLog={startupLog}
               />

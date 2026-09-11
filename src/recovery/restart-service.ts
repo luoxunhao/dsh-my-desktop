@@ -29,7 +29,7 @@
  * 3. **Relaunch BEFORE exit** — reversing them exits the app with nothing
  *    scheduled to replace it, which looks exactly like a crash.
  */
-import { desktopRecoveryRelaunchArguments } from './relaunch-arguments.js'
+import { desktopRecoveryRelaunchArguments, desktopSafeModeRelaunchArguments } from './relaunch-arguments.js'
 import { restartConfirmationCopy, type RestartTarget } from './restart-confirmation.js'
 
 /** The subset of Electron's message box options we actually set. */
@@ -94,7 +94,13 @@ export function createRestartService(deps: RestartDeps) {
     })
     // Only the confirm button proceeds; anything else (including dismissal) aborts.
     if (result.response !== 0) return
-    await relaunchWith(target === 'recovery' ? desktopRecoveryRelaunchArguments([...deps.argv()]) : undefined)
+    await relaunchWith(
+      target === 'recovery'
+        ? desktopRecoveryRelaunchArguments([...deps.argv()])
+        : target === 'safe-mode'
+          ? desktopSafeModeRelaunchArguments([...deps.argv()])
+          : undefined,
+    )
   }
 
   /** Restart into recovery mode, after asking the user. */
@@ -122,7 +128,17 @@ export function createRestartService(deps: RestartDeps) {
     return restartRequested
   }
 
-  return { requestRecoveryRestart, requestRestart, isRestartRequested }
+  /** Restart into the disposable Safe Mode environment, after asking the user. */
+  async function requestRecoverySafeModeRestart(): Promise<void> {
+    if (inFlight !== undefined) return await inFlight
+    const request = confirmAndRestart('safe-mode').finally(() => {
+      if (inFlight === request) inFlight = undefined
+    })
+    inFlight = request
+    await request
+  }
+
+  return { requestRecoveryRestart, requestRecoverySafeModeRestart, requestRestart, isRestartRequested }
 }
 
 export type RestartService = ReturnType<typeof createRestartService>

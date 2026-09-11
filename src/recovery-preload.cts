@@ -20,6 +20,11 @@ const RECOVERY_IPC = {
   factoryReset: 'dsh-recovery:factory-reset',
   openTarget: 'dsh-recovery:open-target',
   restart: 'dsh-recovery:restart',
+  enterSafeMode: 'dsh-recovery:enter-safe-mode',
+  exportDiagnostics: 'dsh-recovery:export-diagnostics',
+  showDiagnostics: 'dsh-recovery:show-diagnostics',
+  switchProfile: 'dsh-recovery:switch-profile',
+  createProfile: 'dsh-recovery:create-profile',
 } as const
 
 contextBridge.exposeInMainWorld('dshRecovery', {
@@ -40,4 +45,9 @@ contextBridge.exposeInMainWorld('dshRecovery', {
   factoryReset: () => ipcRenderer.invoke(RECOVERY_IPC.factoryReset),
   openTarget: (target: string) => ipcRenderer.invoke(RECOVERY_IPC.openTarget, target),
   restart: () => ipcRenderer.invoke(RECOVERY_IPC.restart),
+  enterSafeMode: () => ipcRenderer.invoke(RECOVERY_IPC.enterSafeMode),
+  exportDiagnostics: () => ipcRenderer.invoke(RECOVERY_IPC.exportDiagnostics),
+  showDiagnostics: () => ipcRenderer.invoke(RECOVERY_IPC.showDiagnostics),
+  switchProfile: (name: string) => ipcRenderer.invoke(RECOVERY_IPC.switchProfile, name),
+  createProfile: (name: string) => ipcRenderer.invoke(RECOVERY_IPC.createProfile, name),
 })
