@@ -118,6 +118,14 @@
         "to": "dsh-runtime.tgz.sha256"
       },
       {
+        "from": "runtime-plugins/store.tgz",
+        "to": "plugins-store.tgz"
+      },
+      {
+        "from": "runtime-plugins/store.tgz.sha256",
+        "to": "plugins-store.tgz.sha256"
+      },
+      {
         "from": "assets/icon.png",
         "to": "icon.png"
       },

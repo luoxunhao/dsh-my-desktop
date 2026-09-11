@@ -81,13 +81,19 @@ test('只把官方包复制进安装目录，社区插件不走这条路径', as
   }
 })
 
-test('打包配置不把离线插件仓库放进 extraResources（最小化构建只随官方运行时）', async () => {
+test('打包配置把离线插件仓库放进 extraResources（随包预装 dshmarket）', async () => {
   const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
     build?: { extraResources?: { from?: string; to?: string }[] }
   }
+  // STORE_PACKAGES 非空 ⇒ prepare-runtime 会装配 store.tgz，此时安装包必须真的带上它，
+  // 否则首启补种会因 missing-store 静默跳过，预装形同没有。
   assert.equal(
     manifest.build?.extraResources?.some(item => item.from === 'runtime-plugins/store.tgz' && item.to === 'plugins-store.tgz'),
-    false,
+    true,
+  )
+  assert.equal(
+    manifest.build?.extraResources?.some(item => item.from === 'runtime-plugins/store.tgz.sha256' && item.to === 'plugins-store.tgz.sha256'),
+    true,
   )
 })
 

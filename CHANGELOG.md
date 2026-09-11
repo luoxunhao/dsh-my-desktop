@@ -16,12 +16,13 @@ Version bump to 0.2.0. The bundled DSH runtime is 0.1.5-rc.1.
   module, so 0.1.5's `if (import.meta.main) await runCli()` guard was false and
   `dsh --version` exited 0 with zero output. The shim now calls the exported
   `runCli()` explicitly (same fix as the launcher's own bootstrap).
-- **Plugin market preinstalled from npm**: `dshmarket@1.45.1` is seeded into the
-  active profile on first launch (and on profile create/switch) by downloading
-  it from the npm registry — it is **not** packed into the installer and does
-  not require an offline plugin store. Once installed it is written into the
-  profile's `dependencies` and activated as a bundle, so it also upgrades like
-  any other community plugin.
+- **Plugin market preinstalled offline**: `dshmarket@1.45.1` ships inside the
+  installer as an offline pnpm store (`plugins-store.tgz`) and is seeded into the
+  active profile on first launch (and on profile create/switch) **without
+  network access**. Enabling the store reconnected machinery that already
+  existed: `prepare-runtime` assembles `store.tgz`, `extraResources` ships it,
+  and the runtime extraction step unpacks it to `plugins/store`. Plugin upgrades
+  now require a new build; the installer grows by ~1.8 MB (compressed store).
 - TODO: fill in the 0.2.0 feature list here before release.
 
 ## 0.1.4
