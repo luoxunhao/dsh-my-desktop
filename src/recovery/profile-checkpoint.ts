@@ -112,6 +112,14 @@ export interface ProfileCheckpointSlot {
   readonly slotId: DesktopProfileCheckpointSlotId
   readonly snapshotExists: boolean
   readonly manifest?: ProfileCheckpointManifest
+  /**
+   * How many plugins (bundles) the snapshot would bring back.
+   *
+   * Absent when the recorded `package.json` is unreadable or malformed: this is
+   * display metadata, and it must never make an otherwise-restorable slot look
+   * unavailable.
+   */
+  readonly pluginCount?: number
 }
 
 export type CaptureHealthyResult =
@@ -271,6 +279,33 @@ export function createDesktopProfileCheckpoint(options: ProfileCheckpointOptions
   }
 
   /** Read the current on-disk image of each requested file. */
+  /**
+   * Plugin count recorded inside a slot, read from its captured \`package.json\`.
+   *
+   * Counts \`dsh.profile.bundles\` — the same list the plugins tab shows — so the
+   * rollback card can say how many plugins a snapshot would bring back. This is the
+   * number that matters when comparing two slots ("the desktop one has five").
+   *
+   * Failure is tolerated on purpose: this is DISPLAY metadata for a slot that is
+   * otherwise perfectly restorable, and a malformed manifest must not make a
+   * recovery point vanish (the same tolerance rule the rest of this module follows).
+   */
+  function checkpointPluginCount(directory: string): number | undefined {
+    try {
+      const value = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as unknown
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+      const dsh = (value as Record<string, unknown>).dsh
+      if (dsh === null || typeof dsh !== 'object' || Array.isArray(dsh)) return undefined
+      const profile = (dsh as Record<string, unknown>).profile
+      if (profile === null || typeof profile !== 'object' || Array.isArray(profile)) return undefined
+      const bundles = (profile as Record<string, unknown>).bundles
+      if (!Array.isArray(bundles) || bundles.some(bundle => typeof bundle !== 'string')) return undefined
+      return bundles.length
+    } catch {
+      return undefined
+    }
+  }
+
   function readCurrentImages(
     names: readonly DesktopProfileCheckpointFilename[],
     target?: { readonly profileDir: string, readonly homeDir: string },
@@ -421,10 +456,13 @@ export function createDesktopProfileCheckpoint(options: ProfileCheckpointOptions
     return DESKTOP_PROFILE_CHECKPOINT_SLOT_IDS.map(slotId => {
       const directory = slotDirectory(slotId)
       const snapshot = existsSync(directory) ? readSnapshot(directory) : undefined
+      if (snapshot === undefined) return { slotId, snapshotExists: false }
+      const pluginCount = checkpointPluginCount(directory)
       return {
         slotId,
-        snapshotExists: snapshot !== undefined,
-        ...(snapshot === undefined ? {} : { manifest: snapshot.manifest }),
+        snapshotExists: true,
+        manifest: snapshot.manifest,
+        ...(pluginCount === undefined ? {} : { pluginCount }),
       }
     })
   }

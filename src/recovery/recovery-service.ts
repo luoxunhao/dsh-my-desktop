@@ -253,34 +253,22 @@ export function createRecoveryService(deps: RecoveryDeps) {
   }
 
   /**
-   * Every profile's slots, flattened.
+   * The CURRENT profile's three slots.
    *
-   * Slots are stored per profile, but the page must show them together: a snapshot
-   * taken in \`desktop\` is a legitimate rollback source for \`web\` (the slot carries
-   * a full configuration image, and the manifest records which profile it came
-   * from). Listing only the active profile's slots is what made two profiles look
-   * like they shared one set — the page was showing one profile's slots either way.
+   * VERIFIED AGAINST dsh-desktop's real on-disk layout
+   * (\\u0025APPDATA\\DSH Desktop\\health-snapshots): one directory per profile
+   * (named by a hash of the profile directory), each holding slot-1..slot-3, with
+   * every manifest recording its \`profileName\`. Its UI lists the ACTIVE profile's
+   * three slots and labels them 槽位 1/2/3 with no profile on the card — the profile
+   * is stated once, higher up the page.
    *
-   * The current profile is listed FIRST so the page can group it without a second
-   * pass, and profiles that fail to enumerate are skipped rather than breaking the
-   * whole list (a broken profile must still leave the others repairable).
+   * So slots are per-profile on disk (we already matched that), and the page shows
+   * one profile's set at a time. Switching which profile you are recovering is the
+   * "切换 Profile" tab's job, not something the rollback list mixes together.
    */
-  function listAllCheckpointSlots(currentProfileDir: string) {
-    const currentName = profileNameOf(currentProfileDir)
-    const profiles = (deps.listProfiles() as readonly { name?: string }[])
-      .map(entry => entry.name)
-      .filter((name): name is string => typeof name === 'string' && name.length > 0)
-    const ordered = [currentName, ...profiles.filter(name => name !== currentName)]
-    const out: ProjectedCheckpointSlot[] = []
-    for (const name of ordered) {
-      try {
-        const manager = checkpointFor(profileDirForName(name))
-        out.push(...projectCheckpointSlots(manager.listSlots(), name))
-      } catch (error) {
-        console.error(`无法读取 profile \${name} 的快照槽位。`, error)
-      }
-    }
-    return out
+  function listCurrentProfileSlots(profileDir: string): readonly ProjectedCheckpointSlot[] {
+    const name = profileNameOf(profileDir)
+    return projectCheckpointSlots(checkpointFor(profileDir).listSlots(), name)
   }
 
   /** Profile directory name — the same key the slot layout is built from. */
@@ -385,7 +373,7 @@ export function createRecoveryService(deps: RecoveryDeps) {
       return undefined
     }
     if (action === 'startup-log') return deps.trimStartupLog(await deps.readStartupLog(profileDir))
-    if (action === 'list-checkpoints') return listAllCheckpointSlots(profileDir)
+    if (action === 'list-checkpoints') return listCurrentProfileSlots(profileDir)
     if (action === 'inspect-checkpoint') {
       if (payload === undefined) throw new Error('缺少槽位标识。')
       return checkpointFor(profileDir).inspectSlot(assertSlotId(payload))

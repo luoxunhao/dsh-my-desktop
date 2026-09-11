@@ -65,13 +65,12 @@ export function RollbackPanel({ slots, inspections, locale, busy, onInspect, onR
           const inspection = inspections[slot.slotId]
           const available = slot.status === 'available'
           return (
-            <Card key={`${slot.profileName}:${slot.slotId}`} className="w-full overflow-hidden">
+            <Card key={slot.slotId} className="w-full overflow-hidden">
               <CardHeader className="gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-1.5">
                   <CardTitle className="flex items-center gap-2">
                     <History className="size-4" />
                     {locale === 'zh' ? `槽位 ${slot.slotId.slice(-1)}` : `Slot ${slot.slotId.slice(-1)}`}
-                    <Badge variant="outline">{slot.profileName}</Badge>
                   </CardTitle>
                   <CardDescription>
                     {!available
@@ -89,10 +88,14 @@ export function RollbackPanel({ slots, inspections, locale, busy, onInspect, onR
                 : (
                     <>
                       <CardContent className="space-y-3">
-                        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        {/* Four facts, matching the reference implementation's slot card:
+                            version / plugins / configuration files / size. The plugin
+                            count is the one users compare slots by. */}
+                        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                           <Fact label="桌面端版本" value={slot.appVersion ?? '未知'} />
-                          <Fact label="配置项数" value={`${slot.fileCount ?? 0} 个`} />
-                          <Fact label="大小" value={formatBytes(slot.totalBytes ?? 0, locale)} />
+                          <Fact label="插件" value={slot.pluginCount === undefined ? '未知' : `${slot.pluginCount} 个`} />
+                          <Fact label="配置文件" value={`${slot.fileCount ?? 0} 个`} />
+                          <Fact label="Checkpoint 大小" value={formatBytes(slot.totalBytes ?? 0, locale)} />
                         </dl>
                         {inspection === undefined
                           ? null

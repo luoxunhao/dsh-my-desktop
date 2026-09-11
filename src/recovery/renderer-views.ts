@@ -38,6 +38,8 @@ export interface ProjectedCheckpointSlot {
   readonly appVersion?: string
   readonly fileCount?: number
   readonly totalBytes?: number
+  /** Plugins the snapshot would bring back; absent when unreadable. */
+  readonly pluginCount?: number
 }
 
 /** One managed profile as the page sees it. */
@@ -81,6 +83,7 @@ export function projectCheckpointSlots(
       appVersion: manifest.appVersion,
       fileCount: manifest.files.length,
       totalBytes,
+      ...(slot.pluginCount === undefined ? {} : { pluginCount: slot.pluginCount }),
     }
   })
 }

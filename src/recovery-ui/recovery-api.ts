@@ -32,6 +32,8 @@ export interface RecoveryCheckpointSlot {
   readonly appVersion?: string
   readonly fileCount?: number
   readonly totalBytes?: number
+  /** Plugins the snapshot would bring back; absent when the manifest is unreadable. */
+  readonly pluginCount?: number
 }
 
 /** Result of comparing a slot against what is currently on disk. */
