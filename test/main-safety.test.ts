@@ -94,7 +94,7 @@ test('恢复页返回工作台会先确认 DSH 页面可用再切换视图', asy
   // main.ts is a one-liner; the actual logic lives in recovery-service.ts.
   const recSvc = await readFile(new URL('../../src/recovery/recovery-service.ts', import.meta.url), 'utf8')
   assert.match(recSvc, /running === undefined\) throw new Error\('DSH 尚未成功启动/)
-  assert.match(recSvc, /await deps\.navigate\(view, \(\) => deps\.loadFile\(view\.webContents, running\.url, \{\}\)\)/)
+  assert.match(recSvc, /await deps\.navigate\(view, \(\) => deps\.loadURL\(view\.webContents, running\.url\)\)/)
   assert.match(recSvc, /advanceDiagnostic\(profileDir, 'renderer-loading'\)/)
   assert.match(recSvc, /startRendererHealthTimer\(profileDir\)/)
   assert.match(recSvc, /showDshContentView/)

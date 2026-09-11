@@ -26,8 +26,6 @@
  * a group that is itself scheduled to move, so it arrives as a callback instead —
  * the same cycle-avoidance rule used for the tray/updater and dialog windows.
  */
-import { app } from 'electron'
-
 import {
   assertProfileName,
   createProfileDirectory,
@@ -40,6 +38,7 @@ import {
 } from '../profiles/profiles.js'
 import { seedBundledPlugins } from '../profiles/plugin-seed.js'
 import { resolveLauncherProfileRoots } from './launcher-roots.js'
+import { desktopDefaultRelaunchArguments } from '../recovery/relaunch-arguments.js'
 import type { RetainedSeedOptions } from './desktop-state.js'
 
 /** Renderer-safe view of one managed profile. */
@@ -62,6 +61,33 @@ export interface ProfileActionsDeps {
   dshView: () => { webContents: Electron.WebContents } | undefined
   /** Shut the desktop shell down, then run the given action (relaunch). */
   shutdown: (exit: () => void) => Promise<void>
+  /**
+   * Current process argv, so a plain restart can REBUILD the command line.
+   *
+   * Electron's `app.relaunch()` with no arguments inherits the current argv, which
+   * would carry a one-shot recovery/safe-mode marker into the next generation and
+   * silently re-enter recovery on what the user asked to be a normal restart.
+   */
+  argv: () => readonly string[]
+  /**
+   * Register the next launch, and exit the current one.
+   *
+   * Injected rather than calling `app.relaunch` here for the same reason
+   * restart-service injects them: it keeps this module free of an Electron import
+   * at its test boundary, so the relaunch ARGUMENTS are actually testable. The bare
+   * `app.relaunch()` bug (inheriting a one-shot recovery marker) survived precisely
+   * because this path had no test.
+   */
+  relaunch: (args: readonly string[]) => void
+  exit: () => void
+  /**
+   * Launcher userData directory.
+   *
+   * Injected so this module holds NO Electron import: its behaviour (relaunch
+   * arguments, profile selection) is then testable in a plain node process, which
+   * is what the relaunch-argument regression test needs.
+   */
+  userDataDir: () => string
   /** Restart the whole application into recovery mode (asks the user first). */
   requestRecoveryRestart: () => Promise<void>
 }
@@ -69,13 +95,20 @@ export interface ProfileActionsDeps {
 export function createProfileActionsService(deps: ProfileActionsDeps) {
   /** Launcher profile registry roots (state under userData, profiles under DSH home). */
   function launcherProfileRoots(): ReturnType<typeof resolveProfileRoots> {
-    return resolveLauncherProfileRoots(app.getPath('userData'))
+    return resolveLauncherProfileRoots(deps.userDataDir())
   }
 
   /** Relaunch the whole desktop application (used after a profile switch). */
   async function restartDesktop(): Promise<void> {
     if (deps.isQuitting()) return
-    await deps.shutdown(() => { app.relaunch(); app.exit() })
+    await deps.shutdown(() => {
+      // Rebuild the command line without one-shot mode markers. A bare
+      // `app.relaunch()` inherits the current argv, so switching profiles from a
+      // recovery-mode generation would relaunch straight back into recovery —
+      // and a profile with no snapshots strands the user there.
+      deps.relaunch(desktopDefaultRelaunchArguments([...deps.argv()]))
+      deps.exit()
+    })
   }
 
   /** Read-only snapshot of the current managed profiles (for the shell/bridge). */

@@ -30,6 +30,7 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
     'listProfiles',
     'openTarget',
     'restore',
+    'restoreCheckpoint',
     'restoreHealthyConfig',
     'returnToWorkbench',
     'selectDataDirectory',
@@ -42,6 +43,7 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
   await exposed?.uninstall('third-party-plugin')
   await exposed?.listCheckpoints()
   await exposed?.inspectCheckpoint('slot-2')
+  await exposed?.restoreCheckpoint('slot-1')
   await exposed?.listProfiles()
   await exposed?.dataDirectory()
   await exposed?.selectDataDirectory(null)
@@ -55,6 +57,7 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
     { channel: 'dsh-recovery:uninstall', args: ['third-party-plugin'] },
     { channel: 'dsh-recovery:list-checkpoints', args: [] },
     { channel: 'dsh-recovery:inspect-checkpoint', args: ['slot-2'] },
+    { channel: 'dsh-recovery:restore-checkpoint', args: ['slot-1'] },
     { channel: 'dsh-recovery:list-profiles', args: [] },
     { channel: 'dsh-recovery:data-directory', args: [] },
     { channel: 'dsh-recovery:select-data-directory', args: [null] },

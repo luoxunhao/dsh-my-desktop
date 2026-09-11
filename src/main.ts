@@ -388,6 +388,10 @@ async function startApplication(): Promise<void> {
     isQuitting: () => state.runtime.isQuitting,
     dshView: () => state.windows.dshView,
     shutdown: shutdownDesktop,
+    argv: () => process.argv,
+    relaunch: args => { app.relaunch({ args: [...args] }) },
+    userDataDir: () => app.getPath('userData'),
+    exit: () => { app.exit() },
     requestRecoveryRestart: () => requireRestartService().requestRecoveryRestart(),
   })
   // The recovery flow. Its outward edges — launching DSH, navigating a view, the
