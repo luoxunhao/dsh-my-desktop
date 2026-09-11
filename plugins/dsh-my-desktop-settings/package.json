@@ -48,10 +48,10 @@
     "react": "^18.2.0"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-client-locale": "file:vendor/0.1.2-rc.1/deepseek-ai-dsh-client-locale-0.1.2-rc.1.tgz",
-    "@deepseek-ai/dsh-client-ui-renderer": "file:vendor/0.1.2-rc.1/deepseek-ai-dsh-client-ui-renderer-0.1.2-rc.1.tgz",
-    "@deepseek-ai/dsh-client-ui-settings": "file:vendor/0.1.2-rc.1/deepseek-ai-dsh-client-ui-settings-0.1.2-rc.1.tgz",
-    "@deepseek-ai/dsh-client-ui-slots": "file:vendor/0.1.2-rc.1/deepseek-ai-dsh-client-ui-slots-0.1.2-rc.1.tgz",
+    "@deepseek-ai/dsh-client-locale": "file:vendor/0.1.5-rc.1/deepseek-ai-dsh-client-locale-0.1.5-rc.1.tgz",
+    "@deepseek-ai/dsh-client-ui-renderer": "file:vendor/0.1.5-rc.1/deepseek-ai-dsh-client-ui-renderer-0.1.5-rc.1.tgz",
+    "@deepseek-ai/dsh-client-ui-settings": "file:vendor/0.1.5-rc.1/deepseek-ai-dsh-client-ui-settings-0.1.5-rc.1.tgz",
+    "@deepseek-ai/dsh-client-ui-slots": "file:vendor/0.1.5-rc.1/deepseek-ai-dsh-client-ui-slots-0.1.5-rc.1.tgz",
     "@types/node": "^24.0.0",
     "@types/react": "~18.3.1",
     "react": "^18.2.0",
