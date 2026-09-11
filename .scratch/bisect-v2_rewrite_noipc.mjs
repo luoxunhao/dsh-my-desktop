@@ -1,0 +1,1 @@
+process.argv=[process.execPath, "E:\\project\\dsh\\dsh-my-desktop\\runtime-dsh\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js", '--profile','web','--port','0','--no-open'];await import("file:///E:\\project\\dsh\\dsh-my-desktop\\runtime-dsh\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js")
