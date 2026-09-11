@@ -705,8 +705,8 @@ export function App(): React.JSX.Element {
             <RecoveryAction
               disabled={busy}
               icon={<RotateCcw />}
-              onClick={() => { void run(copy.restart, async () => { await recoveryApi.returnToWorkbench() }) }}
-              variant={status?.running === true ? 'default' : 'outline'}
+              onClick={() => { void run(copy.restart, async () => { await recoveryApi.restartDesktop() }) }}
+              variant='default'
             >
               {copy.restart}
             </RecoveryAction>

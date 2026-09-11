@@ -19,6 +19,7 @@ const RECOVERY_IPC = {
   selectDataDirectory: 'dsh-recovery:select-data-directory',
   factoryReset: 'dsh-recovery:factory-reset',
   openTarget: 'dsh-recovery:open-target',
+  restart: 'dsh-recovery:restart',
 } as const
 
 contextBridge.exposeInMainWorld('dshRecovery', {
@@ -38,4 +39,5 @@ contextBridge.exposeInMainWorld('dshRecovery', {
   selectDataDirectory: (target: string | null) => ipcRenderer.invoke(RECOVERY_IPC.selectDataDirectory, target),
   factoryReset: () => ipcRenderer.invoke(RECOVERY_IPC.factoryReset),
   openTarget: (target: string) => ipcRenderer.invoke(RECOVERY_IPC.openTarget, target),
+  restart: () => ipcRenderer.invoke(RECOVERY_IPC.restart),
 })

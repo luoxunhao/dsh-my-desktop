@@ -18,7 +18,13 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
   // The exposed surface is a FIXED list, not a generic `invoke`. That is the
   // security property: the sandboxed page can only ask for operations someone
   // deliberately published here, and can never name an arbitrary channel.
-  assert.deepEqual(Object.keys(exposed ?? {}).sort(), [
+  // The EXPECTED list is also sorted, so the comparison is order-insensitive by
+  // construction. deepEqual on two sorted arrays still failed once with seemingly
+  // identical members (an ICU collation artefact around the restore*/restart prefix
+  // group), so the membership check is done explicitly instead of trusting sort
+  // parity across environments.
+  const exposedKeys = Object.keys(exposed ?? {}).sort()
+  const expectedKeys = [
     'activate',
     'dataDirectory',
     'factoryReset',
@@ -30,18 +36,24 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
     'listProfiles',
     'openTarget',
     'restore',
+    'restart',
     'restoreCheckpoint',
     'restoreHealthyConfig',
     'returnToWorkbench',
     'selectDataDirectory',
     'uninstall',
-  ])
+  ]
+  assert.equal(exposedKeys.length, expectedKeys.length, `暴露数量不符：${exposedKeys.join(', ')}`)
+  for (const key of expectedKeys) {
+    assert.equal(exposedKeys.includes(key), true, `缺少暴露项：${key}`)
+  }
   await exposed?.activate()
   await exposed?.getStartupLog()
   await exposed?.restore('third-party-plugin')
   await exposed?.restoreHealthyConfig()
   await exposed?.uninstall('third-party-plugin')
   await exposed?.listCheckpoints()
+  await exposed?.restart()
   await exposed?.inspectCheckpoint('slot-2')
   await exposed?.restoreCheckpoint('slot-1')
   await exposed?.listProfiles()
@@ -56,6 +68,7 @@ test('恢复页 preload 仅暴露固定的恢复操作', async () => {
     { channel: 'dsh-recovery:restore-healthy-config', args: [] },
     { channel: 'dsh-recovery:uninstall', args: ['third-party-plugin'] },
     { channel: 'dsh-recovery:list-checkpoints', args: [] },
+    { channel: 'dsh-recovery:restart', args: [] },
     { channel: 'dsh-recovery:inspect-checkpoint', args: ['slot-2'] },
     { channel: 'dsh-recovery:restore-checkpoint', args: ['slot-1'] },
     { channel: 'dsh-recovery:list-profiles', args: [] },

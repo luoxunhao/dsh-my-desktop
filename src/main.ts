@@ -1330,6 +1330,7 @@ const RECOVERY_IPC = {
   selectDataDirectory: 'dsh-recovery:select-data-directory',
   factoryReset: 'dsh-recovery:factory-reset',
   openTarget: 'dsh-recovery:open-target',
+  restart: 'dsh-recovery:restart',
 } as const
 
 function requireRecoveryProfile(sender: WebContents): string {
@@ -1435,6 +1436,14 @@ function installRecoveryIpc(): void {
     return await action(event.sender, 'select-data-directory', target ?? undefined)
   })
   ipcMain.handle(RECOVERY_IPC.factoryReset, async event => await action(event.sender, 'factory-reset'))
+  ipcMain.handle(RECOVERY_IPC.restart, async event => {
+    requireRecoveryProfile(event.sender)
+    // The reference's restart action relaunches the WHOLE application — it does not
+    // require a running DSH server (that is returnToWorkbench's precondition, a
+    // different action). Booting straight into recovery has no server, so the
+    // restart button must not be wired to it.
+    await requireRestartService().requestRestart()
+  })
   ipcMain.handle(RECOVERY_IPC.openTarget, async (event, target: unknown) => {
     if (!isRecoveryAction(target)) throw new Error('未知的打开目标。')
     return await action(event.sender, target)

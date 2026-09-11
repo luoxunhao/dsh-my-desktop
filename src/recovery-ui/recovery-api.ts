@@ -98,6 +98,8 @@ interface RecoveryBridge {
   restore: (packageName: string) => Promise<RecoveryStatus>
   restoreHealthyConfig: () => Promise<RecoveryStatus>
   returnToWorkbench: () => Promise<void>
+  /** Relaunch the whole application — the reference's restart action. */
+  restartDesktop: () => Promise<void>
   uninstall: (packageName: string) => Promise<RecoveryStatus>
   listCheckpoints: () => Promise<readonly RecoveryCheckpointSlot[]>
   inspectCheckpoint: (slotId: string) => Promise<RecoveryCheckpointInspection>
@@ -107,6 +109,7 @@ interface RecoveryBridge {
   selectDataDirectory: (target: string | null) => Promise<RecoveryDataDirectory>
   factoryReset: () => Promise<RecoveryDataDirectory>
   openTarget: (target: RecoveryOpenTarget) => Promise<void>
+  restart: () => Promise<void>
 }
 
 declare global {
@@ -143,6 +146,7 @@ export const recoveryApi = {
   restore: (packageName: string): Promise<RecoveryStatus> => requireBridge().restore(packageName),
   restoreHealthyConfig: (): Promise<RecoveryStatus> => requireBridge().restoreHealthyConfig(),
   returnToWorkbench: (): Promise<void> => requireBridge().returnToWorkbench(),
+  restartDesktop: (): Promise<void> => requireBridge().restart(),
   uninstall: (packageName: string): Promise<RecoveryStatus> => requireBridge().uninstall(packageName),
   listCheckpoints: (): Promise<readonly RecoveryCheckpointSlot[]> => requireBridge().listCheckpoints(),
   inspectCheckpoint: (slotId: string): Promise<RecoveryCheckpointInspection> => requireBridge().inspectCheckpoint(slotId),
