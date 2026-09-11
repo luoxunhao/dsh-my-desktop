@@ -35,7 +35,24 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = []
 /** 离线 store 只放社区插件；纯 DSH 启动器不装配 store。 */
 export const STORE_PACKAGES: readonly BundledPlugin[] = BUNDLED_PLUGINS
 
-/** 首次补种的完整清单：官方运行时 +（无）社区插件。 */
+/**
+ * 随桌面端**从 npm registry 在线预装**的社区插件。
+ *
+ * 与 `BUNDLED_PLUGINS`（离线 store 目录，装进安装包）是两条不同的路：
+ *
+ *   - `BUNDLED_PLUGINS` → `STORE_PACKAGES` → prepare-runtime 装配 `store.tgz` 打进包；
+ *   - `NPM_PREINSTALLED_PLUGINS` → 不进安装包、不装配 store，首启 / 新建或切换
+ *     profile 时由随包 pnpm 从 registry 拉取，写进 profile 的 dependencies 并激活为 bundle。
+ *
+ * 因此这里**不参与离线 store 的 `storeExists` 门控**：没有离线仓库也必须安装。
+ * 版本同样固定，安装后由插件自身 / 插件市场负责在线升级。
+ */
+export const NPM_PREINSTALLED_PLUGINS: readonly BundledPlugin[] = [
+  // 可视化插件市场（npm 包名 dshmarket；源码参考 plugins/dsh-market/）。
+  { packageName: 'dshmarket', version: '1.45.1' },
+]
+
+/** 首次补种的完整清单：官方运行时 +（无离线）社区插件。 */
 export const SEEDED_PACKAGES: readonly BundledPlugin[] = [OFFICIAL_RUNTIME, ...BUNDLED_PLUGINS]
 
 export function bundledPluginNames(): readonly string[] {
@@ -44,6 +61,11 @@ export function bundledPluginNames(): readonly string[] {
 
 export function seededPackageNames(): readonly string[] {
   return SEEDED_PACKAGES.map(plugin => plugin.packageName)
+}
+
+/** 从 npm 在线预装的社区插件包名（不含离线 store 清单）。 */
+export function npmPreinstalledNames(): readonly string[] {
+  return NPM_PREINSTALLED_PLUGINS.map(plugin => plugin.packageName)
 }
 
 export function isOfficialDshPackage(packageName: string): boolean {

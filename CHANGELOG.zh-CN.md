@@ -10,6 +10,12 @@
   `0.2.0`（物化插件清单回退到应用版本，二者保持同步）。
 - **陈旧运行时引用修正**：`config.bundledDshVersion` 此前仍是 `0.1.2-rc.1`，
   已修正为真实的 `0.1.5-rc.1`（与 `OFFICIAL_DSH_VERSION` 及 CHANGELOG/README 一致）。
+- **终端 `dsh` 修复**：终端 shim 以「模块」方式 import 官方 CLI，导致 0.1.5 的
+  `if (import.meta.main) await runCli()` 守卫恒为假，`dsh --version` 退出码 0 却零输出。
+  现在 shim 在 import 后显式调用导出的 `runCli()`（与启动器 bootstrap 同一修复）。
+- **插件市场随包预装（npm 源下载）**：首启（以及新建/切换 profile）时从 npm registry
+  下载 `dshmarket@1.45.1` 装进当前 profile——它**不打进安装包**，也不需要离线插件仓库。
+  装好后写进 profile 的 `dependencies` 并激活为 bundle，因此与其它社区插件一样可在线升级。
 - TODO：发版前补全 0.2.0 的功能清单。
 
 ## 0.1.4

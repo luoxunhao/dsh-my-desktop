@@ -12,6 +12,16 @@ Version bump to 0.2.0. The bundled DSH runtime is 0.1.5-rc.1.
 - **Stale runtime reference fixed**: `config.bundledDshVersion` was still
   `0.1.2-rc.1`; corrected to the real `0.1.5-rc.1` (matching
   `OFFICIAL_DSH_VERSION` and the CHANGELOG/README docs).
+- **Terminal `dsh` fixed**: the terminal shim imported the official CLI as a
+  module, so 0.1.5's `if (import.meta.main) await runCli()` guard was false and
+  `dsh --version` exited 0 with zero output. The shim now calls the exported
+  `runCli()` explicitly (same fix as the launcher's own bootstrap).
+- **Plugin market preinstalled from npm**: `dshmarket@1.45.1` is seeded into the
+  active profile on first launch (and on profile create/switch) by downloading
+  it from the npm registry — it is **not** packed into the installer and does
+  not require an offline plugin store. Once installed it is written into the
+  profile's `dependencies` and activated as a bundle, so it also upgrades like
+  any other community plugin.
 - TODO: fill in the 0.2.0 feature list here before release.
 
 ## 0.1.4

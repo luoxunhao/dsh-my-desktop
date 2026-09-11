@@ -1,11 +1,30 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { BUNDLED_PLUGINS, OFFICIAL_DSH_VERSION, OFFICIAL_LAUNCH_PEERS, OFFICIAL_RUNTIME, compareReleaseVersions, isDeepSeekOfficialPackage, isOfficialDshPackage, officialDshVersionOverrides, officialRuntimeDependencies, officialRuntimePnpmConfig, planOfficialRuntimeTarget, pnpmAllowBuildsManifest, pnpmWorkspaceYaml, bundledPluginNames, seededPackageNames } from '../src/runtime/bundled-plugins.js'
+import { BUNDLED_PLUGINS, NPM_PREINSTALLED_PLUGINS, STORE_PACKAGES, OFFICIAL_DSH_VERSION, OFFICIAL_LAUNCH_PEERS, OFFICIAL_RUNTIME, compareReleaseVersions, isDeepSeekOfficialPackage, isOfficialDshPackage, officialDshVersionOverrides, officialRuntimeDependencies, officialRuntimePnpmConfig, planOfficialRuntimeTarget, pnpmAllowBuildsManifest, pnpmWorkspaceYaml, bundledPluginNames, npmPreinstalledNames, seededPackageNames } from '../src/runtime/bundled-plugins.js'
 
 test('最小化构建：内置目录为空（不随任何社区插件/市场组件）', () => {
   assert.deepEqual(bundledPluginNames(), [])
   assert.equal(BUNDLED_PLUGINS.length, 0)
+})
+
+test('npm 预装清单纯在线：不进入离线 store，也不改变安装包内容', () => {
+  // 「npm 源下载」的预装不能变成随包离线仓库，否则 prepare-runtime 会开始装配
+  // store.tgz、安装包体积与构建依赖都会跟着变。
+  assert.deepEqual(npmPreinstalledNames(), ['dshmarket'])
+  assert.deepEqual(STORE_PACKAGES, [])
+  assert.equal(BUNDLED_PLUGINS.some(plugin => plugin.packageName === 'dshmarket'), false)
+  assert.equal(seededPackageNames().includes('dshmarket'), false)
+})
+
+test('npm 预装插件钉死精确版本', () => {
+  for (const plugin of NPM_PREINSTALLED_PLUGINS) {
+    assert.match(plugin.version, /^\d+\.\d+\.\d+$/, `${plugin.packageName} 必须是精确版本`)
+  }
+  assert.deepEqual(
+    Object.fromEntries(NPM_PREINSTALLED_PLUGINS.map(plugin => [plugin.packageName, plugin.version])),
+    { dshmarket: '1.45.1' },
+  )
 })
 
 test('所有 DeepSeek 官方作用域包使用同一套隔离判定', () => {

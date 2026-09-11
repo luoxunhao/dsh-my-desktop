@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { OFFICIAL_DSH_VERSION, OFFICIAL_LAUNCH_PEERS, OFFICIAL_RUNTIME, officialDshVersionOverrides } from '../src/runtime/bundled-plugins.js'
-import { applyPendingProfileUpdates, buildSeedPluginArgs, ensureAutoInstallPeersEnabled, isOfficialRuntimeLaunchable, missingOfficialLaunchPeers, officialRuntimeInstallArgs, planBundledPluginSeed, finalizeProfileBundlesAfterInstall, pruneMissingProfileBundles, resolvePnpmStoreDir, seedBundledPlugins, shouldUsePackagedStore, stripOfficialProfileDependencies, writeOfficialRuntimeManifest } from '../src/profiles/plugin-seed.js'
+import { applyPendingProfileUpdates, buildSeedPluginArgs, ensureAutoInstallPeersEnabled, isOfficialRuntimeLaunchable, missingOfficialLaunchPeers, officialRuntimeInstallArgs, planBundledPluginSeed, planNpmPreinstallSeed, finalizeProfileBundlesAfterInstall, pruneMissingProfileBundles, resolvePnpmStoreDir, seedBundledPlugins, shouldUsePackagedStore, stripOfficialProfileDependencies, writeOfficialRuntimeManifest } from '../src/profiles/plugin-seed.js'
 
 const catalog = [
   { packageName: '@sample/plugin-a', version: '0.2.58' },
@@ -97,6 +97,8 @@ test('旧 profile 仅在 bundles 登记的内置插件不能被跳过后清理�
     let installations = 0
     await seedBundledPlugins({
       nodeExecutable: 'node', profileDir: profile, pluginStoreDir: store, catalog,
+      // 本用例只数社区目录的安装次数：关掉 npm 预装，避免它多算一次。
+      npmPreinstallCatalog: [],
       runner: async () => {
         installations++
         manifest.dependencies = Object.fromEntries(catalog.map(plugin => [plugin.packageName, plugin.version]))
@@ -125,6 +127,8 @@ test('seedBundledPlugins 只调用一次 pnpm add，且写入用户 profile', as
       profileDir: profile,
       pluginStoreDir: store,
       catalog,
+      // 本用例断言「一次 pnpm add」：关掉 npm 预装，预装有自己的用例。
+      npmPreinstallCatalog: [],
       runner: async args => { calls.push([...args]) },
     })
     assert.deepEqual(result.seeded, ['@sample/plugin-a', '@sample/plugin-b'])
@@ -191,6 +195,8 @@ test('官方运行时已装但缺少启动 peer 时会补齐', async () => {
       desktopRuntimeDir: runtime,
       pluginStoreDir: store,
       catalog: [],
+      // 本用例针对官方启动 peer 补齐：关掉 npm 预装，避免多出一次调用。
+      npmPreinstallCatalog: [],
       runner: async args => {
         calls.push([...args])
         for (const arg of args) {
@@ -326,6 +332,8 @@ test('复制预装官方运行时成功后不再现场 pnpm add', async () => {
       prebuiltRuntimeDir: prebuilt,
       pluginStoreDir: store,
       catalog: [],
+      // 本用例只针对「复制预装运行时」这一条路：关掉 npm 预装，避免它多出一次 pnpm 调用。
+      npmPreinstallCatalog: [],
       runner: async args => { calls.push([...args]) },
     })
     assert.deepEqual(result.seeded, [OFFICIAL_RUNTIME.packageName])
@@ -376,6 +384,8 @@ test('旧 profile 离线补装缺缓存时在线重试也必须沿用原 store',
     let attempts = 0
     await seedBundledPlugins({
       nodeExecutable: 'node', profileDir: profile, pluginStoreDir: bundledStore, catalog,
+      // 只数离线 store 那条路径的尝试次数：关掉 npm 预装，否则会多算一次在线安装。
+      npmPreinstallCatalog: [],
       runner: async args => {
         attempts++
         if (args.includes('--offline')) throw new Error('ERR_PNPM_NO_OFFLINE_META')
@@ -558,4 +568,82 @@ test('官方 pending 会改运行时目录，不写进 Web profile', async () =>
 test('官方运行时更新会同步锁文件，避免 CI 冻结锁文件阻断启动', () => {
   const args = officialRuntimeInstallArgs('D:\\runtime')
   assert.equal(args.includes('--no-frozen-lockfile'), true)
+})
+
+const preinstallCatalog = [{ packageName: 'dshmarket', version: '1.45.1' }] as const
+
+test('npm 预装计划不受离线 store 缺失影响（store 缺失正是预装的前提）', () => {
+  const plan = planNpmPreinstallSeed({ catalog: preinstallCatalog, declaredPackages: [] })
+  assert.deepEqual(plan, { action: 'add', packages: [...preinstallCatalog] })
+})
+
+test('已声明即视为装好：npm 预装不重复安装', () => {
+  const plan = planNpmPreinstallSeed({ catalog: preinstallCatalog, declaredPackages: ['dshmarket'] })
+  assert.deepEqual(plan, { action: 'skip', reason: 'already-installed' })
+})
+
+test('npm 预装走在线 pnpm add：没有 --offline，注册源与 profile 目录都对', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-preinstall-'))
+  try {
+    const profile = join(root, 'profile')
+    await mkdir(profile)
+    const calls: string[][] = []
+    const result = await seedBundledPlugins({
+      nodeExecutable: 'node',
+      profileDir: profile,
+      // 关键：离线仓库不存在（'' 或缺失目录），预装仍必须发生。
+      pluginStoreDir: join(root, 'no-such-store'),
+      npmPreinstallCatalog: preinstallCatalog,
+      runner: async args => { calls.push([...args]) },
+    })
+    assert.deepEqual(result.seeded, ['dshmarket'])
+    assert.equal(calls.length, 1)
+    const args = calls[0] ?? []
+    assert.equal(args[0], 'add')
+    assert.equal(args.includes('dshmarket@1.45.1'), true)
+    assert.equal(args.includes(`--dir=${profile}`), true)
+    assert.equal(args.includes('--offline'), false, '预装必须是 npm 在线下载，不能带 --offline')
+    assert.equal(args.some(item => item.startsWith('--registry=')), true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('npm 预装成功后写进 dependencies 并激活为 bundle', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-preinstall-bundle-'))
+  try {
+    const profile = join(root, 'profile')
+    await mkdir(profile)
+    const manifestPath = join(profile, 'package.json')
+    const manifest: { dependencies: Record<string, string>; dsh?: { profile?: { bundles?: string[] } } } = { dependencies: {} }
+    await writeFile(manifestPath, JSON.stringify(manifest), 'utf8')
+    const seeded = await seedBundledPlugins({
+      nodeExecutable: 'node',
+      profileDir: profile,
+      pluginStoreDir: join(root, 'no-such-store'),
+      npmPreinstallCatalog: preinstallCatalog,
+      runner: async () => {
+        // 模拟 pnpm 落地：写 dependency + 磁盘上的 bundle 清单。
+        manifest.dependencies = { dshmarket: '1.45.1' }
+        await writeFile(manifestPath, JSON.stringify(manifest), 'utf8')
+        const dir = join(profile, 'node_modules', 'dshmarket')
+        await mkdir(dir, { recursive: true })
+        await writeFile(join(dir, 'package.json'), JSON.stringify({
+          name: 'dshmarket',
+          version: '1.45.1',
+          dsh: { bundle: { patch: './cordis.patch.yml' } },
+        }), 'utf8')
+        await writeFile(join(dir, 'cordis.patch.yml'), '[]\n', 'utf8')
+      },
+    })
+    assert.deepEqual(seeded.seeded, ['dshmarket'])
+    const written = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+      dependencies?: Record<string, string>
+      dsh?: { profile?: { bundles?: string[] } }
+    }
+    assert.equal(written.dependencies?.dshmarket, '1.45.1')
+    assert.equal(written.dsh?.profile?.bundles?.includes('dshmarket'), true, '装好的插件必须成为 profile bundle')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })

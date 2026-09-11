@@ -10,6 +10,7 @@ import { restrictProfileBundlesForRecovery } from '../recovery/recovery-mode.js'
 import {
   BUNDLED_PLUGINS,
   buildRegistry,
+  NPM_PREINSTALLED_PLUGINS,
   OFFICIAL_DSH_VERSION,
   OFFICIAL_LAUNCH_PEERS,
   OFFICIAL_PROFILE_BUNDLES,
@@ -53,6 +54,8 @@ interface SeedOptions {
   pathPrefix?: string
   pnpmEntry?: string
   catalog?: readonly BundledPlugin[]
+  /** 在线预装清单（默认 NPM_PREINSTALLED_PLUGINS）；仅测试注入用。 */
+  npmPreinstallCatalog?: readonly BundledPlugin[]
   runner?: (args: readonly string[]) => Promise<void>
   timeoutMs?: number
 }
@@ -79,6 +82,22 @@ export function communitySeedCatalog(catalog: readonly BundledPlugin[]): Bundled
 /** 社区插件必须写进 profile dependencies 才能单独更新。官方包不进 Web profile。 */
 export function planBundledPluginSeed(input: SeedPlanInput): SeedPlan {
   if (!input.storeExists) return { action: 'skip', reason: 'missing-store' }
+  const declared = new Set(input.declaredPackages)
+  const community = communitySeedCatalog(input.catalog)
+  const missing = community.filter((plugin) => !declared.has(plugin.packageName))
+  if (missing.length === 0) return { action: 'skip', reason: 'already-installed' }
+  return { action: 'add', packages: missing }
+}
+
+/**
+ * 从 npm registry 在线预装插件的补种计划。
+ *
+ * 与 `planBundledPluginSeed` 的关键差别：**不参与离线 store 门控**。这些包本来
+ * 就不在安装包里，store 缺失正是预期状态；能挡住它的只有「profile 的
+ * dependencies 里已经声明过」——那是安装成功的凭据，也是幂等的依据。
+ * 用户自行卸载后不再声明，下次启动会重新预装（与其它随包插件语义一致）。
+ */
+export function planNpmPreinstallSeed(input: { catalog: readonly BundledPlugin[]; declaredPackages: readonly string[] }): SeedPlan {
   const declared = new Set(input.declaredPackages)
   const community = communitySeedCatalog(input.catalog)
   const missing = community.filter((plugin) => !declared.has(plugin.packageName))
@@ -361,9 +380,14 @@ export async function seedBundledPlugins(options: SeedOptions): Promise<SeedResu
   await stripOfficialProfileDependencies(options.profileDir)
   const community = await seedCommunityPlugins(options)
   seeded.push(...community.seeded)
+  // npm 在线预装：与离线 store 无关（没有 store 也要装）。
+  const preinstalled = await seedNpmPreinstalledPlugins(options)
+  seeded.push(...preinstalled.seeded)
   const extraDirs = options.desktopRuntimeDir === undefined ? [] : [options.desktopRuntimeDir]
   await finalizeProfileBundlesAfterInstall(options.profileDir, extraDirs)
-  if (seeded.length === 0) return { seeded, skipped: community.skipped ?? 'already-installed' }
+  if (seeded.length === 0) {
+    return { seeded, skipped: community.skipped ?? preinstalled.skipped ?? 'already-installed' }
+  }
   return { seeded }
 }
 
@@ -451,6 +475,29 @@ async function seedCommunityPlugins(options: SeedOptions): Promise<SeedResult> {
     }
   }
   await reconcileProfileBundles(options.profileDir)
+  return { seeded: plan.packages.map((plugin) => plugin.packageName) }
+}
+
+/**
+ * 从 npm registry 在线预装社区插件（dshmarket 等）。
+ *
+ * 「npm 源下载」就是这条路径：`pnpm add <pkg>@<version> --registry=<buildRegistry()>`，
+ * **不带 `--offline`**，也不要求离线 store 存在。沿用 profile 已记录的 store 目录
+ * （存在时）只为避免 pnpm 的 UNEXPECTED_STORE，而不是为了离线。
+ *
+ * 装完由调用方的 `finalizeProfileBundlesAfterInstall` 把它并入 `dsh.profile.bundles`。
+ */
+async function seedNpmPreinstalledPlugins(options: SeedOptions): Promise<SeedResult> {
+  const catalog = options.npmPreinstallCatalog ?? NPM_PREINSTALLED_PLUGINS
+  if (catalog.length === 0) return { seeded: [] }
+  await ensureProfileScaffold(options.profileDir)
+  const declared = await readDeclaredPackages(options.profileDir)
+  const plan = planNpmPreinstallSeed({ catalog, declaredPackages: declared })
+  if (plan.action === 'skip') return { seeded: [], skipped: plan.reason }
+  const storeDir = resolvePnpmStoreDir(options.profileDir, existsSync(options.pluginStoreDir) ? options.pluginStoreDir : undefined)
+  const runner = options.runner ?? ((pluginArgs) => runPnpm(options, pluginArgs))
+  // 在线安装：绝不给这批量加 --offline，否则预装会随 store 缺失一起消失。
+  await runner(buildSeedPluginArgs(plan.packages, options.profileDir, storeDir === undefined ? {} : { storeDir }))
   return { seeded: plan.packages.map((plugin) => plugin.packageName) }
 }
 
