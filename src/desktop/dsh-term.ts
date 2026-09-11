@@ -74,7 +74,14 @@ export function renderTerminalEntry(profileName: string, binJsPath: string): str
     '      ? [\'plugin\', \'--profile\', profileName, ...userArgs.slice(1)]',
     '      : [\'--profile\', profileName, ...userArgs]',
     'process.argv = [process.execPath, entry, ...args]',
-    'await import(pathToFileURL(entry).href)',
+    // DSH 0.1.5 guards its CLI with `if (import.meta.main) await runCli()`.
+    // Importing the entry as a module leaves that guard false (this wrapper is
+    // the main module), so runCli never ran: `dsh --version` exited 0 with ZERO
+    // output — silent, no error, exactly what the terminal showed. The CLI
+    // exports runCli for embedded launches, so call it explicitly; 0.1.2-era
+    // entries have no export and already ran themselves during the import.
+    'const mod = await import(pathToFileURL(entry).href)',
+    'if (typeof mod.runCli === \'function\') await mod.runCli()',
     '',
   ].join('\n')
 }
