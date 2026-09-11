@@ -80,13 +80,15 @@ test('恢复页是 Vite 构建产物，且不携带外壳的侧栏/标题栏结�
   assert.doesNotMatch(app, /class="steps"/)
 })
 
-test('恢复页在服务未就绪时不提供「返回工作台」', async () => {
+test('恢复页在服务未就绪时不把「重启」渲染成主操作', async () => {
   // The main process refuses the call when the server is not up ("DSH 尚未成功启动"),
-  // so this is an affordance rather than the protection — but offering a button that
-  // always fails is worse than disabling it. The legacy page gated the same way.
+  // so this is an affordance rather than the protection — but presenting an action
+  // that cannot work as the PRIMARY one is worse than leaving it secondary.
+  // The reference gates its restart action on readiness the same way.
   const app = await readFile(new URL('../../src/recovery-ui/App.tsx', import.meta.url), 'utf8')
-  assert.match(app, /status\?\.running !== true/, '未就绪时应禁用返回工作台')
-  assert.match(app, /DSH 尚未成功启动/, '应说明为何不可用')
+  assert.match(app, /variant=\{status\?\.running === true \? 'default' : 'outline'\}/, '未就绪时重启应为次要样式')
+  const service = await readFile(new URL('../../src/recovery/recovery-service.ts', import.meta.url), 'utf8')
+  assert.match(service, /DSH 尚未成功启动/, '应说明为何不可用')
 })
 
 test('恢复页返回工作台会先确认 DSH 页面可用再切换视图', async () => {

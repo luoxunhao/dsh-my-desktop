@@ -73,6 +73,22 @@ export interface RecoveryStatus {
   readonly diagnostic?: unknown
 }
 
+
+/** Data-directory state for the 重置与数据管理 panel. */
+export interface RecoveryDataDirectory {
+  readonly currentDirectory: string
+  readonly usingDefaultDirectory: boolean
+  readonly source: string
+  readonly previousHome?: string
+}
+
+/** Allowlisted "open in the OS" targets — a fixed set, never an arbitrary path. */
+export type RecoveryOpenTarget =
+  | 'settings-document'
+  | 'profile-patch'
+  | 'profile-manifest'
+  | 'profile-directory'
+
 /** The recovery page's preload surface. Absent when the page runs outside the app. */
 interface RecoveryBridge {
   activate: () => Promise<RecoveryStatus>
@@ -87,6 +103,10 @@ interface RecoveryBridge {
   inspectCheckpoint: (slotId: string) => Promise<RecoveryCheckpointInspection>
   restoreCheckpoint: (slotId: string) => Promise<unknown>
   listProfiles: () => Promise<readonly RecoveryProfile[]>
+  dataDirectory: () => Promise<RecoveryDataDirectory>
+  selectDataDirectory: (target: string | null) => Promise<RecoveryDataDirectory>
+  factoryReset: () => Promise<RecoveryDataDirectory>
+  openTarget: (target: RecoveryOpenTarget) => Promise<void>
 }
 
 declare global {
@@ -128,4 +148,8 @@ export const recoveryApi = {
   inspectCheckpoint: (slotId: string): Promise<RecoveryCheckpointInspection> => requireBridge().inspectCheckpoint(slotId),
   restoreCheckpoint: (slotId: string): Promise<unknown> => requireBridge().restoreCheckpoint(slotId),
   listProfiles: (): Promise<readonly RecoveryProfile[]> => requireBridge().listProfiles(),
+  dataDirectory: (): Promise<RecoveryDataDirectory> => requireBridge().dataDirectory(),
+  selectDataDirectory: (target: string | null): Promise<RecoveryDataDirectory> => requireBridge().selectDataDirectory(target),
+  factoryReset: (): Promise<RecoveryDataDirectory> => requireBridge().factoryReset(),
+  openTarget: (target: RecoveryOpenTarget): Promise<void> => requireBridge().openTarget(target),
 }
