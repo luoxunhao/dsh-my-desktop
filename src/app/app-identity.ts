@@ -16,6 +16,8 @@ export function resolveDesktopRuntimeDir(userDataDir: string, options: {
   execPath: string
   platform?: NodeJS.Platform
   canWrite?: (dir: string) => boolean
+  /** DEV ONLY: workspace install of the runtime (prepare-runtime's output). */
+  devRuntimeDir?: string
 }): string {
   const platform = options.platform ?? process.platform
   if (options.isPackaged && platform !== 'darwin') {
@@ -23,6 +25,15 @@ export function resolveDesktopRuntimeDir(userDataDir: string, options: {
     const installDir = path.dirname(options.execPath)
     const canWrite = options.canWrite ?? canWriteDirectory
     if (canWrite(installDir)) return path.join(installDir, 'dsh-runtime')
+  }
+  // DEV: prefer the workspace install produced by `prepare-runtime`
+  // (`runtime-dsh/` beside the app entry). A dev session has no installer
+  // resources to unpack, so when the userData copy is absent the workspace
+  // install is the runtime the session must use — and the bundle-availability
+  // check reads the SAME directory `resolveDshRuntime` resolves to. Divergence
+  // here reported a healthy runtime as "缺少内置 bundle".
+  if (!options.isPackaged && options.devRuntimeDir !== undefined) {
+    return options.devRuntimeDir
   }
   return join(userDataDir, 'dsh-runtime')
 }

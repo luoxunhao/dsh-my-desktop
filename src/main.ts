@@ -226,6 +226,7 @@ async function prepareLaunchOptions(profileDir: string, activeProfileName: strin
   const pathPrefix = resolvePluginBinDir(runtimeOptions)
   const pnpmEntry = pathPrefix === undefined ? process.env.npm_execpath : join(pathPrefix, 'pnpm-package', 'bin', 'pnpm.cjs')
   const desktopRuntimeDir = resolveDesktopRuntimeDir(app.getPath('userData'), {
+      devRuntimeDir: app.isPackaged ? undefined : join(app.getAppPath(), 'runtime-dsh'),
     isPackaged: app.isPackaged,
     execPath: process.execPath,
   })
@@ -579,6 +580,7 @@ async function startApplication(): Promise<void> {
     const activeProfileName = readActiveProfile(profileRoots)
     const profileDir = profileDirFor(profileRoots.home, activeProfileName)
     const desktopRuntimeDir = resolveDesktopRuntimeDir(app.getPath('userData'), {
+      devRuntimeDir: app.isPackaged ? undefined : join(app.getAppPath(), 'runtime-dsh'),
       isPackaged: app.isPackaged,
       execPath: process.execPath,
     })
