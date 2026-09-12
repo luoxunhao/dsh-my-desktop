@@ -19,6 +19,40 @@ Default five-role vocabulary, unchanged. See `agents/triage-labels.md`.
 Single-context: `CONTEXT.md` + `adr/` at the repo root (not `docs/`, which is gitignored).
 See `agents/domain.md`.
 
+## 仓库规则：Git 工作流
+
+**直接在 `main` 上开发、提交、推送。不建功能分支，不走 PR。**
+
+- 引用共享目录里的其它项目时同理：改完直接提交，不要另开分支或 PR。
+- 仓库历史一直是直提 `main`，这条规则是把既有事实写下来，不是新增约束。
+
+### 每次更新版本：版本号、tag、安装包三者必须同步
+
+**升版本时这三件事是一次动作的三个部分，缺一不可：**
+
+1. **改版本号** —— 两处**必须一起改**，它们必须相等：
+   - 根 `package.json` 的 `version`
+   - `plugins/dsh-my-desktop-settings/package.json` 的 `version`
+
+   第二处容易漏。物化插件清单（`resolveDesktopSettingsVersion`）读的是插件自身
+   的版本，应用版本只是回退值；两者不一致会让设置页显示错版本。
+
+2. **打同名 tag** —— 标注 tag（`git tag -a <version>`），不是轻量 tag。
+   标题用 `DSH My Desktop <version>`，正文用中文列出本次改动（对齐 `0.2.0`/`0.2.1`
+   的既有格式）。**tag 名必须与 `package.json` 的 `version` 逐字相等**。
+
+3. **出安装包** —— `pwsh -File scripts\build.ps1 -Target dist-local`。
+   ⚠️ **不要用 `-Target pack-local` 当作发版**：它只出 `release\win-unpacked\` 免安装
+   目录，**不产出 `.exe` 安装器**。曾有整轮修复只跑了 `pack-local`，导致用户装到的
+   安装包不含该修复。发版必须跑 `dist-local`（或 `dist`），并确认
+   `release\dsh-my-desktop-<version>-win-x64.exe` 的时间戳是本次构建。
+
+提交信息用 `chore(release): ...` 前缀（对齐 `e6ce763`）。
+
+> 历史提醒：`0.3.0` 发布过但当时漏打 tag，事后按 `e6ce763` 补齐；`0.2.0` 的 tag
+> 打在了 version bump **之前**（其树内版本号是 `0.1.4`）。这两个都是「没照上面做」
+> 留下的坑，别再重犯。
+
 ## 向用户提问的强制约定
 
 **任何需要用户做决定的问题，必须用 `ask_user_question` 工具提出，不能写成普通回复。**
@@ -111,7 +145,8 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
   而 `dist/` 是 gitignore 的。用 `build` 会让这些断言在干净 clone / CI 上失败。）
 - `build:flat` = 扁平化两个「扁平发布单元」（bridge 15 个 + extract 3 个）到
   `dist/bridge-flat/`、`dist/extract-flat/`；`build:all` 已包含这一步
-- `dist:local` / `pack:local` = `build:all` + `--stage-plugin` + 打包（**日常出包走这个**）
+- `dist:local` / `pack:local` = `build:all` + `--stage-plugin` + 打包（**日常出包走这个**；
+  发版必须用 `dist:local`，见上文「Git 工作流」）
 
 > **一体化构建**：插件是启动器的定制设置页，所有出包路径最终都会构建它
 > （`dist`/`pack` 经 `prepare-runtime` → `build:all`）。`test/prepare-runtime.test.ts` 里有一条
@@ -173,8 +208,9 @@ select 近乎瞬时，所以超时按操作类型分别设置，且**永不挂�
 
 - **磁盘布局**：`<DSH_HOME>/profiles/<name>/`（默认 `DSH_HOME=~/.dsh`）。
 - **选中态**：`%APPDATA%\DSH My Desktop\profile-registry.json`（`{version:1, active}`），
-  由 `src/profiles.ts` 的 `readActiveProfile`/`writeActiveProfile` 维护；缺失或损坏时回退
-  `DEFAULT_PROFILE_NAME = 'web'`。
+  由 `src/profiles/profiles.ts` 的 `readActiveProfile`/`writeActiveProfile` 维护；缺失或损坏时回退
+  `DEFAULT_PROFILE_NAME = 'dsh-my-desktop'`（0.3.0 起由 `web` 改为它，无迁移：已记录
+  `"active": "web"` 的老安装继续用 `web`）。
 - **API**：`listProfiles` / `createProfileDirectory` / `deleteProfileDirectory` /
   `profileDirFor` / `resolveProfileRoots` / `isSafeProfileName`（`src/profiles.ts`）。
 - **启动**：`main.ts` 读 active → `--profile <activeName>` 启动 DSH 子进程。
@@ -243,9 +279,11 @@ Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','By
 
 ## 测试说明（已知的仓库缺口）
 
-`pnpm test` 会跑 `dist/test/*.test.js`。已知有若干用例读 `.github/workflows/desktop-package.yml`，
+`pnpm test` 会跑 `dist/test/*.test.js`。已知有 4 条用例读 `.github/workflows/desktop-package.yml`，
 而本仓库 **没有 `.github/`**，这些用例会因文件不存在（ENOENT）而失败——这是该副本缺 `.github`
 导致的已知缺口，不是被测代码的问题。若需要这些 CI 相关用例通过，需补 `.github/workflows/desktop-package.yml`。
 
-另有 1 条与 `.github` 无关的既有失败：`profile-repair.test.ts` 的「官方 Web bundle 缺失时…」。
-当前基线是 **502 项 / 496 通过 / 5 失败**（全部为上述已知项）。
+当前基线是 **536 项 / 531 通过 / 4 失败**（全部为上述 `.github` 缺口）。
+
+> 注意 `dsh-process.test.ts` 的「重复关闭同一 DSH 子进程是安全的」在整包并发跑时**偶发**超时
+> （单独跑 3/3 通过）。看到它失败先单独复跑一次再判断，不要当成回归。
