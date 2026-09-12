@@ -1,6 +1,6 @@
 {
   "name": "dsh-my-desktop-setting",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "DSH My Desktop 的定制桌面设置插件（host+client）：Profile 管理、插件市场选择、外观/材质、浏览器/LAN、通知等设置页，注册进官方 settings.section。随 DSH My Desktop 一起发布，不单独发布到 registry。",
   "private": true,
   "type": "module",

@@ -49,6 +49,22 @@ Copy-Item (Join-Path $builtPlugin 'cordis.patch.yml') (Join-Path $app 'dsh-my-de
 # 4) the bridge also lives materialized under userData
 Copy-Tree (Join-Path $src 'desktop-bridge') (Join-Path $userData 'desktop-bridge')
 
+# 5) the bundled plugin store. This is the file the first-launch seed installs the
+#    preinstalled plugins FROM, so staging the app without it leaves a new build
+#    that seeds the previous plugin set — including a bundled plugin that then
+#    cannot be found at all. It is extracted once to <installDir>/plugins/store and
+#    cached by SHA256, so refreshing it means refreshing the tgz AND its checksum,
+#    then clearing the extracted tree so the next launch re-extracts.
+foreach ($name in @('plugins-store.tgz', 'plugins-store.tgz.sha256')) {
+  Copy-Item (Join-Path $src $name) (Join-Path $app $name) -Force
+}
+$extractedStore = 'D:\Program Files\DSH My Desktop\plugins\store'
+if (Test-Path $extractedStore) {
+  # Leave vendor-tarballs alone until the archive swap is complete: deleting the
+  # whole tree first would make an interrupted stage leave NO usable store.
+  Remove-Item -Recurse -Force (Join-Path $extractedStore 'vendor-tarballs') -ErrorAction SilentlyContinue
+}
+
 Write-Output 'staged ok'
 Write-Output ("app.asar        {0}" -f (Get-Item (Join-Path $app 'app.asar')).LastWriteTime)
 Write-Output ("shell.html      {0}" -f (Get-Item (Join-Path $app 'frontend\shell\shell.html')).LastWriteTime)
@@ -57,3 +73,6 @@ Write-Output ("bridge host.js  {0}" -f (Get-Item (Join-Path $app 'desktop-bridge
 Write-Output ("userData host   {0}" -f (Get-Item (Join-Path $userData 'desktop-bridge\desktop-host.js')).LastWriteTime)
 Write-Output ("userData index  {0}" -f (Get-Item (Join-Path $userPlugin 'lib\index.js')).LastWriteTime)
 Write-Output ("userData client {0}" -f (Get-Item (Join-Path $userPlugin 'lib\client.js')).LastWriteTime)
+Write-Output ("store           {0}" -f (Get-Item (Join-Path $app 'plugins-store.tgz')).LastWriteTime)
+Write-Output ("store sha256    {0}" -f (Get-Content (Join-Path $app 'plugins-store.tgz.sha256')).Trim())
+Write-Output ("store vendor d  {0}" -f (Test-Path (Join-Path $extractedStore 'vendor-tarballs')))

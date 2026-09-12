@@ -2,6 +2,55 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.4.0
+
+Version bump to 0.4.0. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1 — that
+is still npm's `latest` tag for `@deepseek-ai/dsh` (matching the call made for 0.2.1
+and 0.3.0).
+
+- **`dsh-codex-project` is bundled** as the fifth preinstalled plugin (Codex-style
+  shared subdirectories: a workspace plus extra writable roots across drives, all still
+  under `workspace-write`). It ships as a **prebuilt artifact**, not as source:
+  `vendor/dsh-codex-project/<name>-<version>.tgz` — the upstream package's own
+  `pnpm pack` output, containing the built `lib/` — is committed, checksummed, and
+  copied into the offline store by `prepare-runtime`. The seed then installs it from a
+  `file:` spec. Nothing is built from this repo, and there is no second copy of the
+  source to keep in sync.
+  - This path exists because the version that supports this runtime (0.12.0, peer
+    `^0.1.5-rc.1`) is **not published**: npm's latest is 0.11.0 from the
+    `0.1.2-alpha` line, whose peer range `^0.1.0-rc.6` rejects `0.1.5-rc.x` (semver
+    ranges do not match prereleases) and which upstream documents as unsupported.
+  - The artifact is verified, not trusted: `stageVendorTarball` checks its SHA256 and
+    reads the manifest **out of the archive** to confirm name and version, so a
+    hand-swapped blob or a one-sided version bump fails the build instead of shipping.
+  - **Fixed a bug that made the whole feature a no-op on a real install**: pnpm records
+    its store as `<root>/v11`, and `resolvePnpmStoreDir` returned that verbatim, so the
+    seed looked for the artifact under `<root>/v11/vendor-tarballs/…` while
+    `prepare-runtime` had correctly written it to `<root>/vendor-tarballs/…`. The seed
+    aborted with "artifact missing" and the plugin never appeared — even though it
+    shipped correctly in the installer. `pnpmStoreRoot` now strips pnpm's layout
+    directory, which is also what `--store-dir` expects (verified: passing the root
+    makes pnpm record `<root>/v11`). Three existing tests had encoded the old behaviour
+    as correct and were updated along with it.
+  - It enters through the **profile-bundle** path rather than a `--patch` overlay
+    because its bundle layer disables the core `fs-sandbox` row and mounts its own
+    multi-root fs provider in that seat.
+  - `koffi` (the Windows ACL runner's native half) was already in
+    `ALLOWED_BUILD_PACKAGES`, which is what lets it build during staged assembly.
+- **Two pre-existing store-assembly bugs fixed** (independent of the plugin above): a
+  stale `staging/` manifest from an aborted run was reused as the dependency set for
+  the next build, and registry plugins were staged as `name@version` dependency
+  *values*, which pnpm parses as an npm alias and rejects with
+  `SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER`.
+- **`--stage-plugin` now assembles the plugin store.** It previously staged only the
+  settings plugin, so the fast `dist:local` / `pack:local` path shipped a `store.tgz`
+  that silently stayed at whatever the last full build produced.
+- **`scripts/stage-installed.ps1` now syncs `plugins-store.tgz`** (and its checksum,
+  clearing the extracted tree so the next launch re-extracts). It previously staged
+  the app and bridge but not the store, so an incremental stage into the installed
+  app left the preinstalled plugin set stale — a change that looked applied but was
+  not.
+
 ## 0.3.0
 
 Version bump to 0.3.0. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1 — that is

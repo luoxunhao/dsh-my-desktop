@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { createDesktopHostServices } from './desktop-host.js'
+import { DEFAULT_PROFILE_NAME } from '../profiles/profiles.js'
 
 export const name = 'dsh-desktop-bridge'
 
@@ -19,7 +20,7 @@ export function apply(ctx: CordisLike): void {
   if (process.env.DSH_DESKTOP_HOST !== '1' || !process.connected || typeof process.send !== 'function') return
   const pnpmEntry = process.env.DSH_PNPM_ENTRY
   if (!pnpmEntry || !existsSync(pnpmEntry)) return
-  const profileDir = process.env.DSH_PROFILE_DIR ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles', 'web')
+  const profileDir = process.env.DSH_PROFILE_DIR ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles', DEFAULT_PROFILE_NAME)
 
   // 子进程 → 主进程的 profile 操作请求/应答通道：delete 必须等主进程真正删完目录，
   // 下一次 read() 才不会读到残留。
@@ -52,7 +53,7 @@ export function apply(ctx: CordisLike): void {
   })
 
   const host = createDesktopHostServices({
-    profileName: process.env.DSH_PROFILE_NAME ?? 'web',
+    profileName: process.env.DSH_PROFILE_NAME ?? DEFAULT_PROFILE_NAME,
     profileDir,
     profileRoots: {
       home: process.env.DSH_HOME ?? join(homedir(), '.dsh'),
@@ -69,7 +70,7 @@ export function apply(ctx: CordisLike): void {
     writeFileSync(join(profileDir, '.dsh-desktop-bridge.marker.json'), JSON.stringify({
       ran: true,
       time: new Date().toISOString(),
-      profileName: process.env.DSH_PROFILE_NAME ?? 'web',
+      profileName: process.env.DSH_PROFILE_NAME ?? DEFAULT_PROFILE_NAME,
       hasRoot: typeof (ctx as CordisLike).root === 'object' && (ctx as CordisLike).root !== null,
     }), 'utf8')
   } catch {

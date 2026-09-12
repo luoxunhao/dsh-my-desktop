@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
-import { BUNDLED_PLUGINS, STORE_PACKAGES, OFFICIAL_DSH_VERSION, OFFICIAL_LAUNCH_PEERS, OFFICIAL_RUNTIME, compareReleaseVersions, isDeepSeekOfficialPackage, isOfficialDshPackage, officialDshVersionOverrides, officialRuntimeDependencies, officialRuntimePnpmConfig, planOfficialRuntimeTarget, pnpmAllowBuildsManifest, pnpmWorkspaceYaml, bundledPluginNames, seededPackageNames } from '../src/runtime/bundled-plugins.js'
+import { BUNDLED_PLUGINS, STORE_PACKAGES, OFFICIAL_DSH_VERSION, OFFICIAL_LAUNCH_PEERS, OFFICIAL_RUNTIME, bundledPluginSeedSpec, compareReleaseVersions, isDeepSeekOfficialPackage, isOfficialDshPackage, officialDshVersionOverrides, officialRuntimeDependencies, officialRuntimePnpmConfig, planOfficialRuntimeTarget, pnpmAllowBuildsManifest, pnpmWorkspaceYaml, bundledPluginNames, seededPackageNames, vendorTarballDir, vendorTarballName } from '../src/runtime/bundled-plugins.js'
 
-test('随包社区插件清单：离线预装 4 个社区插件（随 store.tgz 打进安装包）', () => {
+const CODEX = '@luoxunhao/dsh-codex-project'
+
+test('随包社区插件清单：离线预装 5 个插件（随 store.tgz 打进安装包）', () => {
   // 预装走「出包时装配离线 store」而非首启联网下载：清单非空 ⇒ prepare-runtime
   // 会装配并打包 store.tgz，首启零联网即可补种。
-  assert.deepEqual(bundledPluginNames(), ['dshmarket', 'dsh-better-sidebar', 'dsh-vision-router', 'dsh-context'])
+  assert.deepEqual(bundledPluginNames(), ['dshmarket', 'dsh-better-sidebar', 'dsh-vision-router', 'dsh-context', CODEX])
   assert.deepEqual(STORE_PACKAGES, BUNDLED_PLUGINS)
   assert.equal(bundledPluginNames().includes('dshmarket'), true)
 })
@@ -22,8 +28,75 @@ test('随包插件钉死精确版本', () => {
       'dsh-better-sidebar': '0.19.1',
       'dsh-vision-router': '2.1.6',
       'dsh-context': '0.50.0',
+      [CODEX]: '0.12.0',
     },
   )
+})
+
+test('随包插件分两类：registry 社区包 + 随仓产物包，各自来源明确', () => {
+  const vendored = BUNDLED_PLUGINS.filter(plugin => plugin.vendorTarball !== undefined)
+  // 只有 codex-project 走随仓产物：它适配 0.1.5 的版本没发 npm，而 npm 上最新的
+  // 0.11.0 是 0.1.2-alpha 线（peer ^0.1.0-rc.6 拒绝 0.1.5-rc.x）。
+  assert.deepEqual(vendored.map(plugin => plugin.packageName), [CODEX])
+  // 其余社区包必须走 registry 精确版本，不能悄悄带 vendorTarball。
+  for (const plugin of BUNDLED_PLUGINS) {
+    if (plugin.packageName === CODEX) continue
+    assert.equal(plugin.vendorTarball, undefined, `${plugin.packageName} 不应声明 vendorTarball`)
+  }
+})
+
+test('随仓产物 tarball 已入库且校验文件存在', () => {
+  // 产物是二进制 blob：丢了/没提交会让出包阶段直接失败，所以在单测里先钉住。
+  for (const plugin of BUNDLED_PLUGINS) {
+    if (plugin.vendorTarball === undefined) continue
+    const artifact = join(new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), plugin.vendorTarball)
+    assert.equal(existsSync(artifact), true, `缺少随包产物：${plugin.vendorTarball}`)
+    assert.equal(existsSync(`${artifact}.sha256`), true, `缺少产物校验文件：${plugin.vendorTarball}.sha256`)
+  }
+})
+
+test('产物在 store 内的落点由单一函数推导，装配侧与补种侧不会漂移', () => {
+  const store = join(tmpdir(), 'some-store')
+  const plugin = BUNDLED_PLUGINS.find(item => item.vendorTarball !== undefined)!
+  assert.equal(vendorTarballDir(store), join(store, 'vendor-tarballs'))
+  // pnpm 的命名规则：@scope/name → scope-name-version.tgz
+  assert.equal(vendorTarballName(plugin), 'luoxunhao-dsh-codex-project-0.12.0.tgz')
+})
+
+test('产物缺失时报错而不是回退 registry（该版本 npm 上不存在）', async () => {
+  const store = await mkdtemp(join(tmpdir(), 'dsh-vendor-spec-'))
+  try {
+    const plugin = BUNDLED_PLUGINS.find(item => item.vendorTarball !== undefined)!
+    // 回退成 name@version 会让 pnpm 去找一个从不存在的版本；报错要点名期望路径。
+    assert.throws(() => bundledPluginSeedSpec(plugin, store), /产物缺失/)
+    // 没有 storeDir 时同样拒绝，而不是静默降级。
+    assert.throws(() => bundledPluginSeedSpec(plugin, undefined), /需要 store 目录/)
+  } finally {
+    await rm(store, { recursive: true, force: true })
+  }
+})
+
+test('产物就位时补种 spec 指向 file: 路径', async () => {
+  const store = await mkdtemp(join(tmpdir(), 'dsh-vendor-spec-'))
+  try {
+    const plugin = BUNDLED_PLUGINS.find(item => item.vendorTarball !== undefined)!
+    // Put a file exactly where the staging step will put the real artifact.
+    await mkdir(vendorTarballDir(store), { recursive: true })
+    await writeFile(join(vendorTarballDir(store), vendorTarballName(plugin)), 'stub', 'utf8')
+    const spec = bundledPluginSeedSpec(plugin, store)
+    assert.ok(spec.startsWith('file:'), spec)
+    // Forward slashes: the spec is consumed by pnpm, and a Windows path with
+    // backslashes would be mangled by shell/URL parsing.
+    assert.ok(!spec.includes('\\'), spec)
+    assert.ok(spec.endsWith(vendorTarballName(plugin)), spec)
+  } finally {
+    await rm(store, { recursive: true, force: true })
+  }
+})
+
+test('社区插件补种 spec 仍是 registry 的 name@version', () => {
+  const community = BUNDLED_PLUGINS.find(plugin => plugin.vendorTarball === undefined)!
+  assert.equal(bundledPluginSeedSpec(community), `${community.packageName}@${community.version}`)
 })
 
 test('所有 DeepSeek 官方作用域包使用同一套隔离判定', () => {
@@ -34,7 +107,7 @@ test('所有 DeepSeek 官方作用域包使用同一套隔离判定', () => {
 })
 
 test('补种清单 = 官方运行时 + 随包社区插件', () => {
-  assert.deepEqual(seededPackageNames(), ['@deepseek-ai/dsh', 'dshmarket', 'dsh-better-sidebar', 'dsh-vision-router', 'dsh-context'])
+  assert.deepEqual(seededPackageNames(), ['@deepseek-ai/dsh', 'dshmarket', 'dsh-better-sidebar', 'dsh-vision-router', 'dsh-context', CODEX])
 })
 
 test('官方 DSH 家族锁在同一个精确版本', () => {

@@ -69,7 +69,9 @@ test('打包态的 pnpm 与 Node 放在同一目录', () => {
   )
 })
 
-test('Web profile 跟随 DSH_HOME，避免写到错误用户目录', async () => {
+test('默认 profile 跟随 DSH_HOME，避免写到错误用户目录', async () => {
   const { resolveWebProfileDir } = await import('../src/profiles/plugin-seed.js')
-  assert.equal(resolveWebProfileDir('D:\\data\\dsh-home'), join('D:\\data\\dsh-home', 'profiles', 'web'))
+  const { DEFAULT_PROFILE_NAME } = await import('../src/profiles/profiles.js')
+  assert.equal(DEFAULT_PROFILE_NAME, 'dsh-my-desktop')
+  assert.equal(resolveWebProfileDir('D:\\data\\dsh-home'), join('D:\\data\\dsh-home', 'profiles', 'dsh-my-desktop'))
 })

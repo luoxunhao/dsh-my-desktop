@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { OFFICIAL_DSH_VERSION, OFFICIAL_LAUNCH_PEERS, OFFICIAL_RUNTIME, officialDshVersionOverrides } from '../src/runtime/bundled-plugins.js'
-import { applyPendingProfileUpdates, buildSeedPluginArgs, ensureAutoInstallPeersEnabled, isOfficialRuntimeLaunchable, missingOfficialLaunchPeers, officialRuntimeInstallArgs, planBundledPluginSeed, finalizeProfileBundlesAfterInstall, pruneMissingProfileBundles, resolvePnpmStoreDir, seedBundledPlugins, shouldUsePackagedStore, stripOfficialProfileDependencies, writeOfficialRuntimeManifest } from '../src/profiles/plugin-seed.js'
+import { applyPendingProfileUpdates, buildSeedPluginArgs, ensureAutoInstallPeersEnabled, isOfficialRuntimeLaunchable, missingOfficialLaunchPeers, officialRuntimeInstallArgs, planBundledPluginSeed, finalizeProfileBundlesAfterInstall, pnpmStoreRoot, pruneMissingProfileBundles, resolvePnpmStoreDir, seedBundledPlugins, shouldUsePackagedStore, stripOfficialProfileDependencies, writeOfficialRuntimeManifest } from '../src/profiles/plugin-seed.js'
 
 const catalog = [
   { packageName: '@sample/plugin-a', version: '0.2.58' },
@@ -156,6 +156,41 @@ test('后续 pnpm 操作沿用 node_modules 记录的 store 目录', async () =>
     await mkdir(join(root, 'node_modules'))
     await writeFile(join(root, 'node_modules', '.modules.yaml'), 'storeDir: D:\\persistent-store\n', 'utf8')
     assert.equal(resolvePnpmStoreDir(root, 'D:\\fallback-store'), 'D:\\persistent-store')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('记录里的 store 目录要剥掉 pnpm 的 v<N> 布局层，否则随包产物永远找不到', async () => {
+  // pnpm 记的是 <root>/v11，但 --store-dir、vendor-tarballs/、cache/ 都在 <root>。
+  // 原样返回会让产物查找整整差一层目录 —— 这正是「装了新版却没有内置插件」的原因：
+  // 补种去 <root>/v11/vendor-tarballs 找 tarball，而它实际在 <root>/vendor-tarballs。
+  assert.equal(pnpmStoreRoot('D:\\Program Files\\DSH My Desktop\\plugins\\store\\v11'), 'D:\\Program Files\\DSH My Desktop\\plugins\\store')
+  assert.equal(pnpmStoreRoot('C:/x/store/v11'), 'C:/x/store')
+  assert.equal(pnpmStoreRoot('/home/u/.pnpm-store/v10'), '/home/u/.pnpm-store')
+  // 没有版本层就原样返回，不要误伤。
+  assert.equal(pnpmStoreRoot('C:\\x\\store'), 'C:\\x\\store')
+  assert.equal(pnpmStoreRoot('/home/u/.pnpm-store'), '/home/u/.pnpm-store')
+})
+
+test('JSON 形态的 .modules.yaml 同样剥掉 v<N>（读回来的路径必须能直接用于查找）', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-store-state-'))
+  try {
+    await mkdir(join(root, 'node_modules'))
+    const storeRoot = join(root, 'store')
+    // Lay out a store the way the installer does: artifacts beside v11, not inside it.
+    await mkdir(join(storeRoot, 'v11'), { recursive: true })
+    await mkdir(join(storeRoot, 'vendor-tarballs'), { recursive: true })
+    await writeFile(
+      join(root, 'node_modules', '.modules.yaml'),
+      JSON.stringify({ storeDir: join(storeRoot, 'v11') }),
+      'utf8',
+    )
+    const resolved = resolvePnpmStoreDir(root, 'D:\\fallback-store')
+    assert.equal(resolved, storeRoot)
+    // The whole point: the artifact must be reachable from the resolved path.
+    assert.equal(existsSync(join(resolved!, 'vendor-tarballs')), true)
+    assert.ok(!resolved!.endsWith('v11'), resolved!)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -352,13 +387,19 @@ test('启动前会摘掉磁盘上已经不存在的社区 bundle', async () => {
   }
 })
 
-test('pnpm 11 的 JSON 格式 modules 状态仍沿用原有 store', async () => {
+test('pnpm 11 的 JSON 格式 modules 状态仍沿用原有 store（剥掉 v<N> 布局层）', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-store-json-'))
   try {
     await mkdir(join(root, 'node_modules'))
-    const storeDir = 'C:\\Users\\example\\AppData\\Local\\pnpm\\store\\v11'
-    await writeFile(join(root, 'node_modules', '.modules.yaml'), JSON.stringify({ storeDir, packageManager: 'pnpm@11.24.0' }), 'utf8')
-    assert.equal(resolvePnpmStoreDir(root, 'D:\\bundled-store'), storeDir)
+    // pnpm 记录 <root>/v11；调用方要的是 <root>，因为 --store-dir 接受 root，
+    // 且 cache/ 与 vendor-tarballs/ 都躺在 root 旁边（实测：传 root 进 --store-dir，
+    // pnpm 回写的就是 <root>/v11）。
+    await writeFile(
+      join(root, 'node_modules', '.modules.yaml'),
+      JSON.stringify({ storeDir: 'C:\\Users\\example\\AppData\\Local\\pnpm\\store\\v11', packageManager: 'pnpm@11.24.0' }),
+      'utf8',
+    )
+    assert.equal(resolvePnpmStoreDir(root, 'D:\\bundled-store'), 'C:\\Users\\example\\AppData\\Local\\pnpm\\store')
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -368,18 +409,19 @@ test('旧 profile 离线补装缺缓存时在线重试也必须沿用原 store',
   const root = await mkdtemp(join(tmpdir(), 'dsh-seed-store-retry-'))
   try {
     const profile = join(root, 'profile')
-    const originalStore = join(root, 'original-store', 'v11')
+    const recordedStore = join(root, 'original-store', 'v11')
+    const expectedStore = join(root, 'original-store')
     const bundledStore = join(root, 'bundled-store')
     await mkdir(join(profile, 'node_modules'), { recursive: true })
     await mkdir(bundledStore)
-    await writeFile(join(profile, 'node_modules', '.modules.yaml'), JSON.stringify({ storeDir: originalStore }), 'utf8')
+    await writeFile(join(profile, 'node_modules', '.modules.yaml'), JSON.stringify({ storeDir: recordedStore }), 'utf8')
     let attempts = 0
     await seedBundledPlugins({
       nodeExecutable: 'node', profileDir: profile, pluginStoreDir: bundledStore, catalog,
       runner: async args => {
         attempts++
         if (args.includes('--offline')) throw new Error('ERR_PNPM_NO_OFFLINE_META')
-        assert.ok(args.includes(`--store-dir=${originalStore}`), '在线重试丢弃原 store 会导致 ERR_PNPM_UNEXPECTED_STORE')
+        assert.ok(args.includes(`--store-dir=${expectedStore}`), '在线重试丢弃原 store 会导致 ERR_PNPM_UNEXPECTED_STORE')
         assert.equal(args.some(arg => arg.startsWith('--cache-dir=')), false)
       },
     })

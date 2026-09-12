@@ -1,1 +1,8 @@
 patches/*.patch text eol=lf
+
+# Checksum sidecars are read back byte-for-byte by verifyFileSha256. CRLF
+# translation would still pass its trim+regex, but pinning LF keeps the committed
+# blob identical on every platform — a checksum file whose bytes change merely by
+# being checked out is a trap for anyone regenerating it. The vendored plugin
+# artifact's .sha256 is the first TRACKED one (the others are build outputs).
+*.sha256 text eol=lf

@@ -4,6 +4,7 @@ import { prependPath } from '../runtime/plugin-toolchain.js'
 import { parseReadyUrl } from '../infra/readiness.js'
 import { APPLY_PLUGIN_UPDATES_IPC } from '../runtime/bundled-plugins.js'
 import { terminateProcessTree } from '../infra/process-control.js'
+import { DEFAULT_PROFILE_NAME } from '../profiles/profiles.js'
 import type { DshRuntime } from '../runtime/runtime.js'
 
 export { APPLY_PLUGIN_UPDATES_IPC }
@@ -61,7 +62,7 @@ export function startDsh(options: StartDshOptions): Promise<DshServer> {
   // subcommand is a hardcoded alias for `--profile web`, so it can only ever
   // boot the `web` profile and would ignore a selected profile (e.g. `desktop`).
   // Profile selection MUST come before `--patch` and the web app's own flags.
-  const profileName = options.profileName ?? 'web'
+  const profileName = options.profileName ?? DEFAULT_PROFILE_NAME
   const launchArgs = ['--profile', profileName, ...patchArgs, ...webAppArgs()]
   const child = spawn(options.nodeExecutable, [options.bootstrapPath, options.runtime.entry, ...launchArgs], {
     cwd: options.workingDirectory ?? options.runtime.workingDirectory ?? options.runtime.root,

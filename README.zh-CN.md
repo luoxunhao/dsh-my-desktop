@@ -22,11 +22,13 @@ Web 界面承载到原生桌面窗口里。安装包自带 Node.js 与一套自�
 DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工作台 UI。窗口里看到的内容，
 来自 DSH 核心（`@deepseek-ai/dsh`）以及你安装进**当前 profile** 的插件。
 
-本版本（0.3.0）：
+本版本（0.4.0）：
 
-- 离线随包 **4 个社区插件**（`BUNDLED_PLUGINS`）：`dshmarket`、`dsh-better-sidebar`、
-  `dsh-vision-router`、`dsh-context`。出包时装配进 `store.tgz` 打进安装包，
-  首启**零联网**补种进 profile；
+- 离线随包 **5 个插件**（`BUNDLED_PLUGINS`）：社区插件 `dshmarket`、
+  `dsh-better-sidebar`、`dsh-vision-router`、`dsh-context`，外加
+  `dsh-codex-project`（Codex 式工作区共享子目录）。出包时装配进 `store.tgz`
+  打进安装包，首启**零联网**补种进 profile。其中 `dsh-codex-project` 以
+  **已构建并校验过的产物**随包（在 `vendor/` 下），而非源码——原因见 CHANGELOG；
 - 随包一个**内置的桌面设置页**（`dsh-my-desktop-setting` 插件，源码在
   `plugins/dsh-my-desktop-settings/`），启动时注入——见下文；
 - 支持**多 profile 管理**：列出、新建、删除、切换，选中态跨重启保留；
@@ -57,10 +59,14 @@ DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工�
 
 ## Profile
 
-Profile 是受管对象，不是写死的 `web` 目录：
+Profile 是受管对象，不是写死的目录：
 
 - 每个 profile 位于 `<DSH_HOME>/profiles/<name>/`（Windows 为 `~/.dsh/profiles/<name>`）。
-- 选中态存在 `%APPDATA%\DSH My Desktop\profile-registry.json`，缺失或损坏时回退到 `web`。
+- **默认 profile 是 `dsh-my-desktop`**：注册表缺失或损坏时应用落在它上面，随包的
+  4 个社区插件也补种进它。
+- 选中态存在 `%APPDATA%\DSH My Desktop\profile-registry.json`，缺失或损坏时回退到
+  `dsh-my-desktop`。**这个注册表是唯一的落点判断**：已记录过 `"active": "web"` 的
+  老安装会继续用 `web`，不会自动迁移到新默认——要换过去请在设置页切换，或删掉该注册表文件。
 - 可在内置的桌面设置页新建、删除、切换 profile。删除是移入回收站，且**当前 profile 不可删**。
 - 切换 profile 会重启本地 DSH 服务；新建的 profile 首次启动需要自行 seed（pnpm 装依赖），
   **耗时较长是正常的**。
@@ -81,14 +87,15 @@ Profile 是受管对象，不是写死的 `web` 目录：
 
 ## 首次启动
 
-首次启动时，应用会在 `~/.dsh/profiles/web` 准备官方 `web` profile，并把随包的
-4 个社区插件补种进去——**全程不需要联网**（它们以离线 store `store.tgz` 的形式
-随安装包分发）。之后新建或切换到还没有这些插件的 profile 时，同样会补种。
+首次启动时，应用会在 `~/.dsh/profiles/dsh-my-desktop` 准备默认 profile（`dsh-base` +
+`dsh-web-app`），并把随包的 4 个社区插件补种进去——**全程不需要联网**（它们以离线
+store `store.tgz` 的形式随安装包分发）。之后新建或切换到还没有这些插件的 profile 时，
+同样会补种。
 
 要再装别的插件请自行安装，例如用 DSH CLI 指向本应用的运行时：
 
 ```sh
-dsh plugin --profile web add <package>
+dsh plugin --profile dsh-my-desktop add <package>
 ```
 
 随包插件钉死精确版本：升级靠出新版安装包（或在应用内经插件市场升级——市场会把

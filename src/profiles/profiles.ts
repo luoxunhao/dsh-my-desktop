@@ -27,8 +27,18 @@ import { writeTextFileAtomicSync } from '../infra/atomic-file.js'
 import { OFFICIAL_PROFILE_BUNDLES } from '../runtime/bundled-plugins.js'
 import { pnpmWorkspaceYaml } from '../runtime/bundled-plugins.js'
 
-/** Default profile, kept for backward compatibility with existing installs. */
-export const DEFAULT_PROFILE_NAME = 'web'
+/**
+ * Default profile name.
+ *
+ * This app ships a curated profile out of the box, so a fresh install lands on
+ * `dsh-my-desktop` rather than the official runtime's generic `web` profile.
+ *
+ * NOTE: this constant is only consulted when the persisted registry is missing or
+ * unreadable. An install that already recorded `"active": "web"` keeps using `web`
+ * until the user switches profiles explicitly — the default is deliberately NOT a
+ * migration trigger (see the module docs above).
+ */
+export const DEFAULT_PROFILE_NAME = 'dsh-my-desktop'
 
 /** Bundle names that mark a directory as the official Web profile. */
 export const WEB_BUNDLE_NAME = '@deepseek-ai/dsh-web-app'
@@ -117,7 +127,7 @@ function readRegistry(roots: ProfileRoots): ProfileRegistryState {
   }
 }
 
-/** Read the active profile name (defaults to the legacy "web"). */
+/** Read the active profile name (defaults to `DEFAULT_PROFILE_NAME`). */
 export function readActiveProfile(roots: ProfileRoots): string {
   return readRegistry(roots).active
 }
@@ -194,7 +204,7 @@ function describeProfile(home: string, name: string, active: string): ManagedPro
 
 /**
  * List the managed profiles under `<home>/profiles`, prefixed by the default
- * "web" so a fresh install always shows at least one selectable profile.
+ * profile so a fresh install always shows at least one selectable profile.
  */
 export function listProfiles(roots: ProfileRoots, active = readActiveProfile(roots)): readonly ManagedProfile[] {
   const profilesDir = join(roots.home, 'profiles')

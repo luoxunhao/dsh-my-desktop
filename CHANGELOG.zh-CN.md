@@ -2,6 +2,44 @@
 
 [English](CHANGELOG.md)
 
+## 0.4.0
+
+版本升至 0.4.0。随包 DSH 运行时**不变**，仍为 0.1.5-rc.1 —— 它仍是
+`@deepseek-ai/dsh` 在 npm 上的 `latest` 标签（与 0.2.1、0.3.0 的判断一致）。
+
+- **随包预装 `dsh-codex-project`**（第五个）：Codex 式工作区共享子目录——一个工作区
+  外挂任意可写根（可跨盘符），权限仍限 `workspace-write`。它以**已构建好的产物**随包，
+  不是源码：`vendor/dsh-codex-project/<name>-<version>.tgz`（上游包自己 `pnpm pack`
+  的产物，内含构建好的 `lib/`）入库并带校验和，由 `prepare-runtime` 拷进离线 store，
+  首启按 `file:` 说明符补种。本仓库不构建它，也不保留第二份源码。
+  - 之所以走这条路：适配本运行时的 0.12.0（peer `^0.1.5-rc.1`）**没有发布**；
+    npm 上最新是 `0.1.2-alpha` 线的 0.11.0，其 peer 范围 `^0.1.0-rc.6` 按 semver
+    规则拒绝 `0.1.5-rc.x`，上游 README 也明确该线已不支持。
+  - 产物是**校验**而非信任：`stageVendorTarball` 校验 SHA256，并从压缩包里读出
+    清单确认包名与版本——手工替换 blob 或只改一边的版本号都会让出包失败，而不是
+    悄悄发出去。
+  - **修掉一个让该特性在真实安装上完全失效的缺陷**：pnpm 把 store 记成
+    `<root>/v11`，而 `resolvePnpmStoreDir` 原样返回，于是补种去
+    `<root>/v11/vendor-tarballs/…` 找产物，而 `prepare-runtime` 正确地把它写在了
+    `<root>/vendor-tarballs/…`。补种因此以「产物缺失」中止，插件永远不出现——
+    尽管安装包里其实带对了。现在 `pnpmStoreRoot` 会剥掉 pnpm 的布局层，这也正是
+    `--store-dir` 期望的形式（实测：传 root 进去，pnpm 回写的就是 `<root>/v11`）。
+    另有 3 条既有用例把旧行为当成了正确行为，已一并更正。
+  - 它走 **profile bundle** 而非 `--patch` overlay：其 bundle 层要 disable 核心
+    `fs-sandbox` 行，并在该席位挂自己的多根 fs provider。
+  - Windows ACL runner 的原生半 `koffi` 本就在 `ALLOWED_BUILD_PACKAGES` 里，
+    这正是分阶段装配时它能构建成功的原因。
+- **修掉两个既有的 store 装配缺陷**（与上述插件无关）：中断运行留下的旧
+  `staging/` manifest 会被当成下一次的依赖集复用；registry 插件被写成
+  `name@version` 作为 dependencies 的**值**，会被 pnpm 当 npm alias 解析并以
+  `SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER` 失败。
+- **`--stage-plugin` 现在也会装配插件仓库**。此前它只装设置插件，导致
+  `dist:local` / `pack:local` 快速出包路径发出的 `store.tgz` 会静默停在
+  上一次完整构建的内容。
+- **`scripts/stage-installed.ps1` 现在会同步 `plugins-store.tgz`**（连同校验文件，
+  并清掉已解压的树以便下次启动重新解压）。此前它只同步 app 与 bridge、不同步 store，
+  于是「增量同步进已安装应用」会让随包插件集合停在旧版本——看起来生效了，其实没有。
+
 ## 0.3.0
 
 版本升至 0.3.0。随包 DSH 运行时**不变**，仍为 0.1.5-rc.1 —— npm 上 `latest`

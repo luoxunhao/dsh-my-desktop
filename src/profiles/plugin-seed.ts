@@ -10,6 +10,7 @@ import { restrictProfileBundlesForRecovery } from '../recovery/recovery-mode.js'
 import {
   BUNDLED_PLUGINS,
   buildRegistry,
+  bundledPluginSeedSpec,
   OFFICIAL_DSH_VERSION,
   OFFICIAL_LAUNCH_PEERS,
   OFFICIAL_PROFILE_BUNDLES,
@@ -23,6 +24,7 @@ import {
 import { prependPath } from '../runtime/plugin-toolchain.js'
 import { terminateProcessTree } from '../infra/process-control.js'
 import { mergeProfileUpdates, officialRuntimeUpdateVersion, parsePendingUpdates, partitionPackageUpdates, resolvePendingUpdatesPath, type ProfilePackageUpdate } from './profile-updates.js'
+import { DEFAULT_PROFILE_NAME } from './profiles.js'
 import { copyPrebuiltOfficialRuntime } from '../runtime/runtime-prebuilt.js'
 
 export type SeedSkipReason = 'already-installed' | 'missing-store'
@@ -91,6 +93,21 @@ export function shouldUsePackagedStore(targetDir: string): boolean {
   return !existsSync(join(targetDir, 'node_modules'))
 }
 
+/**
+ * Strip pnpm's internal version directory from a recorded `storeDir`.
+ *
+ * pnpm records its store as `<root>/v11` (the layout version), but callers need the
+ * ROOT: that is what `--store-dir` accepts, and what the shipped artifacts
+ * (`vendor-tarballs/`) and cache (`cache/`) sit next to. Returning the recorded path
+ * verbatim makes every artifact lookup miss by one directory — the bug that made a
+ * bundled plugin silently fail to seed.
+ *
+ * Only pnpm's own `<root>/v<N>` form is stripped; a bare path is returned unchanged.
+ */
+export function pnpmStoreRoot(storeDir: string): string {
+  const match = /^(.*)[\\/]v\d+$/.exec(storeDir)
+  return match === null ? storeDir : match[1]!
+}
 export function resolvePnpmStoreDir(targetDir: string, fallback?: string): string | undefined {
   try {
     const modulesState = readFileSync(join(targetDir, 'node_modules', '.modules.yaml'), 'utf8')
@@ -98,10 +115,10 @@ export function resolvePnpmStoreDir(targetDir: string, fallback?: string): strin
     if (modulesState.trimStart().startsWith('{')) {
       const state: unknown = JSON.parse(modulesState)
       if (state !== null && typeof state === 'object' && 'storeDir' in state
-        && typeof state.storeDir === 'string' && state.storeDir !== '') return state.storeDir
+        && typeof state.storeDir === 'string' && state.storeDir !== '') return pnpmStoreRoot(state.storeDir)
     } else {
       const value = /^storeDir:\s*(.+?)\s*$/m.exec(modulesState)?.[1]?.replace(/^['"]|['"]$/g, '')
-      if (value) return value
+      if (value) return pnpmStoreRoot(value)
     }
   } catch {
     // 首次安装还没有 pnpm 状态文件。
@@ -124,7 +141,11 @@ export function buildSeedRemoveArgs(packageNames: readonly string[], targetDir: 
 export function buildSeedPluginArgs(packages: readonly BundledPlugin[], targetDir: string, options: SeedPnpmOptions = {}): string[] {
   return [
     'add',
-    ...packages.map((plugin) => `${plugin.packageName}@${plugin.version}`),
+    // Vendored plugins are not on npm at a compatible version, so they must be
+    // installed from the artifact that shipped inside the store;
+    // `bundledPluginSeedSpec` throws (rather than falling back to the registry)
+    // when that artifact is missing, so a broken build fails loudly here.
+    ...packages.map((plugin) => bundledPluginSeedSpec(plugin, options.storeDir)),
     `--dir=${targetDir}`,
     ...(options.storeDir === undefined ? [] : [`--store-dir=${options.storeDir}`]),
     // pnpm 11 把版本元数据放在 cache-dir；纯离线首启不能依赖当前用户的缓存。
@@ -138,7 +159,7 @@ export function buildSeedPluginArgs(packages: readonly BundledPlugin[], targetDi
 }
 
 export function resolveWebProfileDir(home = process.env.DSH_HOME): string {
-  return join(home ?? join(homedir(), '.dsh'), 'profiles', 'web')
+  return join(home ?? join(homedir(), '.dsh'), 'profiles', DEFAULT_PROFILE_NAME)
 }
 
 export function ensureAutoInstallPeersEnabled(dir: string): void {
@@ -458,7 +479,7 @@ export async function ensureProfileScaffold(profileDir: string, profileName?: st
   await mkdir(profileDir, { recursive: true })
   const manifestPath = join(profileDir, 'package.json')
   if (!existsSync(manifestPath)) {
-    const safeName = typeof profileName === 'string' && profileName !== '' ? profileName : 'web'
+    const safeName = typeof profileName === 'string' && profileName !== '' ? profileName : DEFAULT_PROFILE_NAME
     await writeTextFileAtomic(manifestPath, `${JSON.stringify({
       name: `dsh-profile-${safeName}`,
       private: true,

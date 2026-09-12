@@ -24,12 +24,14 @@ DSH My Desktop is a **launcher and desktop shell**. It does not implement the
 chat / workbench UI itself. What you see inside the window is the DSH core
 (`@deepseek-ai/dsh`) plus any plugins you install into the active profile.
 
-This version (0.3.0):
+This version (0.4.0):
 
-- bundles **four community plugins** offline (`BUNDLED_PLUGINS`): `dshmarket`,
-  `dsh-better-sidebar`, `dsh-vision-router` and `dsh-context`. They are staged
-  into `store.tgz` at build time and seeded into the profile on first launch
-  without any network access;
+- bundles **five plugins** offline (`BUNDLED_PLUGINS`): the community plugins
+  `dshmarket`, `dsh-better-sidebar`, `dsh-vision-router` and `dsh-context`, plus
+  `dsh-codex-project` (Codex-style shared workspace subdirectories). All are staged
+  into `store.tgz` at build time and seeded into the profile on first launch without
+  any network access. `dsh-codex-project` ships as a **prebuilt, checksummed artifact**
+  under `vendor/` rather than as source — see the CHANGELOG for why;
 - ships a **built-in desktop settings page** (the `dsh-my-desktop-setting`
   plugin, source in `plugins/dsh-my-desktop-settings/`), injected at launch — see below;
 - manages **multiple profiles**: list, create, delete and switch, with the
@@ -63,13 +65,19 @@ install later do not overwrite the packaged runtime.
 
 ## Profiles
 
-Profiles are managed objects, not a hardcoded `web` directory:
+Profiles are managed objects, not a hardcoded directory:
 
 - Each profile lives at `<DSH_HOME>/profiles/<name>/` (`~/.dsh/profiles/<name>`
   on Windows).
+- **The default profile is `dsh-my-desktop`**: that is where the app lands when
+  its registry is missing or unreadable, and where the four bundled community
+  plugins are seeded.
 - The active selection is stored in
-  `%APPDATA%\DSH My Desktop\profile-registry.json` and falls back to `web` when
-  missing or unreadable.
+  `%APPDATA%\DSH My Desktop\profile-registry.json` and falls back to
+  `dsh-my-desktop` when missing or unreadable. That registry is the **only**
+  input to profile resolution: an existing install that already recorded
+  `"active": "web"` keeps using `web` rather than migrating to the new default —
+  switch it from the settings page, or delete that registry file.
 - You can create, delete and switch profiles from the built-in desktop settings
   page. Deleting moves the profile to the trash, and the active profile cannot
   be deleted.
@@ -95,17 +103,17 @@ consequences worth knowing:
 
 ## First launch
 
-On first launch the app prepares the official `web` profile under
-`~/.dsh/profiles/web` and seeds the four bundled community plugins into it
-**without any network access** — they ship inside the installer as an offline
-store (`store.tgz`). The same seeding runs when you create or switch to a
-profile that does not have them yet.
+On first launch the app prepares the default profile under
+`~/.dsh/profiles/dsh-my-desktop` (`dsh-base` + `dsh-web-app`) and seeds the four
+bundled community plugins into it **without any network access** — they ship
+inside the installer as an offline store (`store.tgz`). The same seeding runs
+when you create or switch to a profile that does not have them yet.
 
 To add more plugins you install them yourself, for example with the DSH CLI
 against this app's runtime:
 
 ```sh
-dsh plugin --profile web add <package>
+dsh plugin --profile dsh-my-desktop add <package>
 ```
 
 The bundled plugins are pinned to exact versions, so upgrades arrive by

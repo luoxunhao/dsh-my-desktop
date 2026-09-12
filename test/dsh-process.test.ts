@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 
 import { APPLY_PLUGIN_UPDATES_IPC, DSH_WEB_LAUNCH_ARGS, isApplyPluginUpdatesIpc, isAuthenticatedBootstrapRedirect, resolveDesktopWebPort, startDsh, type DshServer } from '../src/bridge/dsh-process.js'
+import { DEFAULT_PROFILE_NAME } from '../src/profiles/profiles.js'
 
 const projectRoot = resolve(import.meta.dirname, '..', '..')
 const fixtureEntry = join(projectRoot, 'test', 'fixtures', 'dsh-fixture.mjs')
@@ -132,8 +133,9 @@ test('启动 overlay 位于 Web 参数之前，热重启继续注入且不依赖
       try {
         const launch = JSON.parse(await readFile(launchFile, 'utf8'))
         // Profile selection is explicit (`--profile <name>`) so a selected
-        // profile other than `web` is actually booted; `--patch` follows.
-        const expectedArgs = ['--profile', 'web', ...patches.flatMap(patchEntry => ['--patch', patchEntry]), '--port', '0', '--no-open']
+        // profile other than the default is actually booted; `--patch` follows.
+        // No `profileName` was passed, so this asserts the app's own default.
+        const expectedArgs = ['--profile', DEFAULT_PROFILE_NAME, ...patches.flatMap(patchEntry => ['--patch', patchEntry]), '--port', '0', '--no-open']
         assert.deepEqual(launch.args, expectedArgs)
         assert.equal(launch.desktop, patches.length === 0 ? undefined : '1')
         assert.equal(launch.ipc, true)

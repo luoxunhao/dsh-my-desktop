@@ -1,8 +1,24 @@
 /** 桌面端随包 npm 目录。全部写入用户 profile，便于官方包和社区包在线升级。 */
 
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+
 export interface BundledPlugin {
   packageName: string
   version: string
+  /**
+   * Repo-relative path of a PREBUILT tarball to install instead of a registry version.
+   *
+   * For first-party plugins that are not published (or whose published line is too
+   * old for this runtime): the built artifact is committed under `vendor/`, and both
+   * `prepare-runtime` (staging it into the offline store) and the seed step (the
+   * `file:` spec) read it from there. Nothing is built from source in this repo.
+   *
+   * The artifact must be self-describing and self-contained — `lib/` + a manifest
+   * whose `files`/`exports` resolve inside the tarball — because installing it runs
+   * no build step.
+   */
+  vendorTarball?: string
 }
 
 /** 官方 DSH 家族统一锁死的版本。打包和在线升级都按这一个号对齐。 */
@@ -49,6 +65,18 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
   // 上下文洞察与管理（context 看板 / 浏览器 / context 命令）。
   // 上游：https://github.com/bowenliang123/dsh-context
   { packageName: 'dsh-context', version: '0.50.0' },
+  // Codex 式工作区共享子目录：一个工作区外挂任意可写根（可跨盘符），权限仍限
+  // workspace-write。源码在 https://github.com/luoxunhao/dsh-codex-project。
+  //
+  // 走 vendorTarball 而不是 registry：npm 上最新的 0.11.0 是 0.1.2-alpha 线，
+  // peer 范围 ^0.1.0-rc.6 拒绝 0.1.5-rc.x（semver 普通范围不匹配预发布版本），
+  // 且上游 README 明确该线宿主服务面已变、不再支持。适配 0.1.5 的 0.12.0 尚未发布，
+  // 所以这里直接随包它**已构建好的产物**（lib/ 四个 js + 清单），本仓库不再构建它。
+  {
+    packageName: '@luoxunhao/dsh-codex-project',
+    version: '0.12.0',
+    vendorTarball: 'vendor/dsh-codex-project/luoxunhao-dsh-codex-project-0.12.0.tgz',
+  },
 ]
 
 /** 离线 store 只放社区插件。 */
@@ -56,6 +84,59 @@ export const STORE_PACKAGES: readonly BundledPlugin[] = BUNDLED_PLUGINS
 
 /** 首次补种的完整清单：官方运行时 + 离线社区插件。 */
 export const SEEDED_PACKAGES: readonly BundledPlugin[] = [OFFICIAL_RUNTIME, ...BUNDLED_PLUGINS]
+
+/**
+ * Directory inside the offline store that holds vendored plugin tarballs.
+ *
+ * `prepare-runtime` copies the committed artifact here at build time, and the seed
+ * step reads it back from the EXTRACTED store, so both sides must derive the same
+ * relative location. Keep this the single definition — a second copy is exactly the
+ * drift that would make seeding look in the wrong place.
+ */
+export const VENDOR_TARBALL_DIR_NAME = 'vendor-tarballs'
+
+/** Absolute path of the vendored-tarball directory inside a given store root. */
+export function vendorTarballDir(storeDir: string): string {
+  return join(storeDir, VENDOR_TARBALL_DIR_NAME)
+}
+
+/** Filename a vendored plugin's tarball gets inside the store (pnpm's own scheme). */
+export function vendorTarballName(plugin: BundledPlugin): string {
+  const scope = plugin.packageName.startsWith('@')
+    ? plugin.packageName.slice(1).replace('/', '-')
+    : plugin.packageName
+  return `${scope}-${plugin.version}.tgz`
+}
+
+/**
+ * pnpm spec for a bundled plugin: a vendored artifact for first-party plugins, the
+ * registry for community packages.
+ *
+ * Vendored plugins are not on npm at a compatible version, so `name@version` cannot
+ * resolve. The seed must point pnpm at the tarball that shipped inside the store it
+ * just extracted. A missing tarball is a BUILD defect, not a fallback: silently
+ * returning a registry spec would send pnpm after a version that does not exist, so
+ * the caller gets an error naming the expected path instead.
+ *
+ * `storeDir` is optional because most seed calls install the official runtime and
+ * launch peers, which are always registry packages. A vendored plugin without a
+ * storeDir cannot be resolved at all, so that combination is rejected rather than
+ * quietly downgraded.
+ */
+export function bundledPluginSeedSpec(plugin: BundledPlugin, storeDir?: string): string {
+  if (plugin.vendorTarball === undefined) return `${plugin.packageName}@${plugin.version}`
+  if (storeDir === undefined) {
+    throw new Error(`随包插件 ${plugin.packageName} 需要 store 目录才能定位随包产物，但调用方未提供 storeDir。`)
+  }
+  const expected = join(vendorTarballDir(storeDir), vendorTarballName(plugin))
+  if (!existsSync(expected)) {
+    throw new Error(
+      `随包插件 ${plugin.packageName} 的产物缺失：${expected}。`
+      + '该版本未发布 npm，无法回退到 registry；请重新出包（prepare-runtime 会重新拷入产物）。',
+    )
+  }
+  return `file:${expected.replaceAll('\\', '/')}`
+}
 
 export function bundledPluginNames(): readonly string[] {
   return BUNDLED_PLUGINS.map(plugin => plugin.packageName)

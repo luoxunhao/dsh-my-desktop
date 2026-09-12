@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import test from 'node:test'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { copyWorkspacePackages, officialRuntimeGlobalNodeModulesRoot, officialRuntimeNpmDependencies, officialRuntimeNpmInstallArgs, pruneStoreForPackaging, removePreparedPath, resolveBundledNodeSha256, stageDesktopSettingsPlugin, validateOfficialRuntimeLayout, writePnpmShims } from '../scripts/prepare-runtime.js'
 import { DESKTOP_BRIDGE_FILES } from '../src/bridge/desktop-host.js'
@@ -571,4 +571,63 @@ test('Linux ARM64 使用原生 runner、独立更新元数据与双格式制品'
     build?: { linux?: { target?: string[] } }
   }
   assert.deepEqual(manifest.build?.linux?.target, ['AppImage', 'deb'])
+})
+
+test('registry 随包插件仍写裸版本号（name@version 会被解析成 npm alias）', async () => {
+  // 这条守住一个真实踩过的坑：把 `dshmarket@1.45.1` 当作 dependencies 的**值**
+  // 会让 pnpm 按 alias 语法解析并以 SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER 失败。
+  const source = await readFile(new URL('../../scripts/prepare-runtime.ts', import.meta.url), 'utf8')
+  assert.match(source, /spec: plugin\.version/)
+  assert.doesNotMatch(source, /spec: `\$\{plugin\.packageName\}@\$\{plugin\.version\}`/)
+})
+
+test('快速出包路径必须装配插件仓库', async () => {
+  const source = await readFile(new URL('../../scripts/prepare-runtime.ts', import.meta.url), 'utf8')
+  // --stage-plugin（dist:local / pack:local）若只装设置插件，store.tgz 就不会更新，
+  // 首启补种拿到的还是上一次出包的插件集合。
+  assert.match(source, /--stage-plugin/)
+  assert.match(source, /await stagePluginStore\(\)/)
+})
+
+test('随仓产物按 file: 说明符进 store，且落点与补种侧一致', async () => {
+  const source = await readFile(new URL('../../scripts/prepare-runtime.ts', import.meta.url), 'utf8')
+  // 装配侧必须把产物拷到 vendorTarballDir/store，并按 pnpm 的 file: 语法引用，
+  // 否则首启补种找不到它（该插件没发 npm，没有第二条路可走）。
+  assert.match(source, /vendorTarballDir/)
+  assert.match(source, /vendorTarballName/)
+  assert.match(source, /spec: `file:\$\{await stageVendorTarball/)
+  // 装配前必须清掉旧产物：版本升级后残留的旧 tarball 会被补种误装。
+  assert.match(source, /removePreparedPath\(vendorTarballDir\(storeDir\)\)/)
+})
+
+test('随仓产物装配校验清单身份与版本，防止产物与清单漂移', async () => {
+  const source = await readFile(new URL('../../scripts/prepare-runtime.ts', import.meta.url), 'utf8')
+  assert.match(source, /verifyFileSha256\(source\)/)
+  assert.match(source, /validateVendorTarballManifest/)
+  assert.match(source, /随包产物身份不匹配/)
+  assert.match(source, /随包产物版本不匹配/)
+})
+
+test('真实产物通过 SHA256 校验（产物已入库且未被改动）', async () => {
+  const { BUNDLED_PLUGINS } = await import('../src/runtime/bundled-plugins.js')
+  const { verifyFileSha256 } = await import('../src/infra/runtime-archive.js')
+  const vendored = BUNDLED_PLUGINS.filter(plugin => plugin.vendorTarball !== undefined)
+  assert.ok(vendored.length > 0, '至少要有一个随仓产物插件')
+  for (const plugin of vendored) {
+    const artifact = fileURLToPath(new URL(`../../${plugin.vendorTarball}`, import.meta.url))
+    // Throws on mismatch: this is what catches a hand-swapped binary blob.
+    verifyFileSha256(artifact)
+  }
+})
+
+test('产物内的清单与 bundled-plugins 声明的身份/版本一致', async () => {
+  const { BUNDLED_PLUGINS } = await import('../src/runtime/bundled-plugins.js')
+  const { validateVendorTarballManifest } = await import('../scripts/prepare-runtime.js')
+  for (const plugin of BUNDLED_PLUGINS) {
+    if (plugin.vendorTarball === undefined) continue
+    const artifact = fileURLToPath(new URL(`../../${plugin.vendorTarball}`, import.meta.url))
+    // Mismatch would mean the committed artifact is not the version this repo
+    // claims to ship — the installer would seed something older than advertised.
+    validateVendorTarballManifest(artifact, plugin)
+  }
 })

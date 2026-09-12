@@ -5,8 +5,8 @@ import { cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'nod
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { ALLOWED_BUILD_PACKAGES, buildRegistry, officialRuntimeDependencies, officialRuntimePnpmConfig, pnpmWorkspaceYaml, STORE_PACKAGES } from '../src/runtime/bundled-plugins.js'
-import { extractTarGz, packDirectoryToTarGz, writeFileSha256 } from '../src/infra/runtime-archive.js'
+import { ALLOWED_BUILD_PACKAGES, buildRegistry, officialRuntimeDependencies, officialRuntimePnpmConfig, pnpmWorkspaceYaml, STORE_PACKAGES, vendorTarballDir, vendorTarballName, type BundledPlugin } from '../src/runtime/bundled-plugins.js'
+import { extractTarGz, packDirectoryToTarGz, verifyFileSha256, writeFileSha256 } from '../src/infra/runtime-archive.js'
 
 const projectRoot = resolve(import.meta.dirname, '..', '..')
 const nodeRoot = join(projectRoot, 'runtime-node')
@@ -86,15 +86,24 @@ async function main(): Promise<void> {
   }
   console.log(`已装配 Node 运行时：${nodeRoot}`)
   console.log(`已装配预装官方运行时：${join(projectRoot, 'runtime-dsh.tgz')}`)
-  if (STORE_PACKAGES.length > 0) {
-    // 最小化构建不随社区插件：仅当重新启用随包社区插件(STORE_PACKAGES 非空)时装配并打包 store。
-    await stageBundledPlugins(pluginRoot, nodeRoot)
-    packDirectoryToTarGz(join(pluginRoot, 'store'), join(pluginRoot, 'store.tgz'))
-    writeFileSha256(join(pluginRoot, 'store.tgz'))
-    console.log(`已装配内置插件仓库：${join(pluginRoot, 'store.tgz')}`)
-  }
+  if (STORE_PACKAGES.length > 0) await stagePluginStore()
   // 随包私有桌面设置插件：把 dsh-my-desktop-setting 的构建产物拷到打包资源。
   await stageDesktopSettingsPlugin()
+}
+
+/**
+ * 装配并打包随包插件离线仓库（`runtime-plugins/store.tgz`）。
+ *
+ * 与官方运行时装配解耦：官方运行时可以复用本地产物（缓存优先），但插件仓库必须
+ * **每次出包都重装**——随包插件清单变了而 store 没重建，安装包里就还是上一次的
+ * 插件集合，而且是静默的。`--stage-plugin` 快速路径也走这里。
+ */
+export async function stagePluginStore(): Promise<void> {
+  if (STORE_PACKAGES.length === 0) return
+  await stageBundledPlugins(pluginRoot, nodeRoot)
+  packDirectoryToTarGz(join(pluginRoot, 'store'), join(pluginRoot, 'store.tgz'))
+  writeFileSha256(join(pluginRoot, 'store.tgz'))
+  console.log(`已装配内置插件仓库：${join(pluginRoot, 'store.tgz')}`)
 }
 
 /**
@@ -197,12 +206,32 @@ export async function writePnpmShims(destinationRoot: string, relativeEntry: str
 export async function stageBundledPlugins(destinationRoot: string, nodeRoot: string): Promise<void> {
   const storeDir = join(destinationRoot, 'store')
   const stagingDir = join(destinationRoot, 'staging')
+  // Wipe stale staging first: an aborted previous run leaves its manifest behind,
+  // and pnpm would then resolve THAT dependency set instead of the one this call
+  // just computed.
+  await removePreparedPath(stagingDir)
+  // Same reason for the vendored-tarball dir: a version bump must not leave the
+  // previous artifact next to the new one, or seeding could install a build nobody
+  // shipped. prepare-runtime is the only writer, so clearing it is safe.
+  await removePreparedPath(vendorTarballDir(storeDir))
+  // Reclaim the retired `local-tarballs/` dir from an older build: nothing writes it
+  // any more, so without this it lingers in store.tgz as dead weight (and as a
+  // second, unverified copy of an artifact that now has exactly one home).
+  await removePreparedPath(join(storeDir, 'local-tarballs'))
   await mkdir(stagingDir, { recursive: true })
-  const stagedPackages = [...STORE_PACKAGES]
+  // Registry plugins keep their BARE version as the dependency value: a
+  // `name@version` string in that position is parsed as an npm ALIAS
+  // (`alias@npm:real`), which fails with SPEC_NOT_SUPPORTED_BY_ANY_RESOLVER.
+  // Vendored plugins point at their committed artifact instead — it is not on npm
+  // at a compatible version, so a registry spec would 404.
+  const stagedPackages = await Promise.all(STORE_PACKAGES.map(async (plugin) =>
+    plugin.vendorTarball === undefined
+      ? { ...plugin, spec: plugin.version }
+      : { ...plugin, spec: `file:${await stageVendorTarball(plugin, storeDir)}` }))
   await writeFile(join(stagingDir, 'package.json'), JSON.stringify({
     name: 'dsh-desktop-bundled-plugins',
     private: true,
-    dependencies: Object.fromEntries(stagedPackages.map(plugin => [plugin.packageName, plugin.version])),
+    dependencies: Object.fromEntries(stagedPackages.map(plugin => [plugin.packageName, plugin.spec])),
   }, undefined, 2) + '\n', 'utf8')
   await writeFile(join(stagingDir, 'pnpm-workspace.yaml'), pnpmWorkspaceYaml(false), 'utf8')
   runStagedPnpm(nodeRoot, [
@@ -229,7 +258,68 @@ export async function stageBundledPlugins(destinationRoot: string, nodeRoot: str
   await removePreparedPath(stagingDir)
 }
 
+/**
+ * Copy a plugin's committed prebuilt tarball into the offline store.
+ *
+ * The artifact is shipped as-is: it already contains the built `lib/` and declares
+ * no `prepare`/`postinstall`, so installing it runs no build step. We only verify
+ * it is the artifact we think it is (checksum + declared identity/version) and put
+ * it where the seed step will look for it.
+ *
+ * Verifying rather than trusting matters because this file is a binary blob in git:
+ * a hand-swapped tarball would otherwise ship silently, and the mismatch would only
+ * surface as odd runtime behaviour on a user's machine.
+ *
+ * Returns the destination path (inside the store) so the caller can build a `file:`
+ * spec that stays valid after the store is extracted to a per-user directory.
+ */
+export async function stageVendorTarball(plugin: BundledPlugin, storeDir: string): Promise<string> {
+  const relative = plugin.vendorTarball
+  if (relative === undefined) throw new Error(`${plugin.packageName} 没有随包产物路径。`)
+  const source = resolve(projectRoot, relative)
+  if (!source.startsWith(projectRoot + sep)) throw new Error(`拒绝读取项目外的随包产物：${source}`)
+  if (!existsSync(source)) {
+    throw new Error(
+      `随包插件产物缺失：${source}\n`
+      + `  该插件 ${plugin.version} 未发布 npm，必须把构建好的 tarball 提交到 ${relative}。`,
+    )
+  }
+  // Checksum first: it is the one check that catches a corrupted/partial copy.
+  verifyFileSha256(source)
+  validateVendorTarballManifest(source, plugin)
+  const destination = join(vendorTarballDir(storeDir), vendorTarballName(plugin))
+  await mkdir(dirname(destination), { recursive: true })
+  await cp(source, destination)
+  console.log(`已装配随包插件产物：${destination}`)
+  return destination
+}
 
+/**
+ * Assert the tarball really is the declared package at the declared version.
+ *
+ * Reading the manifest out of the archive (rather than trusting the filename) keeps
+ * `bundled-plugins.ts` honest: a version bump on one side only fails the build here
+ * instead of producing an installer that seeds a plugin older than it claims.
+ */
+export function validateVendorTarballManifest(tarball: string, plugin: BundledPlugin): void {
+  const listed = spawnSync('tar', ['-xzOf', tarball, 'package/package.json'], { encoding: 'utf8', windowsHide: true })
+  if (listed.status !== 0) throw new Error(`无法读取随包产物清单：${tarball}（${(listed.stderr || '').trim()}）`)
+  let manifest: { name?: unknown, version?: unknown }
+  try {
+    manifest = JSON.parse(listed.stdout) as typeof manifest
+  } catch {
+    throw new Error(`随包产物清单不是合法 JSON：${tarball}`)
+  }
+  if (manifest.name !== plugin.packageName) {
+    throw new Error(`随包产物身份不匹配：${tarball} 声明 ${String(manifest.name)}，期望 ${plugin.packageName}。`)
+  }
+  if (manifest.version !== plugin.version) {
+    throw new Error(
+      `随包产物版本不匹配：${tarball} 是 ${String(manifest.version)}，`
+      + `bundled-plugins.ts 声明 ${plugin.version}。请重新构建产物或同步版本号。`,
+    )
+  }
+}
 
 /** 预装完整官方运行时，首启只需复制，避免现场 pnpm add。 */
 export async function stageOfficialRuntime(destinationRoot: string, nodeRoot: string, storeDir: string): Promise<void> {
@@ -396,9 +486,14 @@ async function isDirectory(entry: { isDirectory(): boolean, isSymbolicLink(): bo
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  // `--stage-plugin`：只装配随包私有插件资源（快速出包 dist:local 用），不重装运行时。
-  if (process.argv.includes('--stage-plugin')) await stageDesktopSettingsPlugin()
-  else await main()
+  // `--stage-plugin`：快速出包路径（dist:local / pack:local）——不重装官方运行时，
+  // 但仍必须装配**随包插件仓库**：store 里没有插件就等于没预装。
+  if (process.argv.includes('--stage-plugin')) {
+    await stageDesktopSettingsPlugin()
+    await stagePluginStore()
+  } else {
+    await main()
+  }
 }
 
 
