@@ -610,6 +610,20 @@ test('官方运行时更新会同步锁文件，避免 CI 冻结锁文件阻断�
  */
 const bundledCatalog = [{ packageName: 'dshmarket', version: '1.45.1' }] as const
 
+/**
+ * Write the desktop settings plugin's state file so the launcher sees a market choice.
+ *
+ * The bundled market is gated on this file: absent or unreadable, the launcher
+ * treats the market as disabled and keeps it out of the profile. Tests that cover
+ * the bundled seed path must therefore opt in explicitly, exactly as a user would
+ * by picking a market in the settings page.
+ */
+async function writeMarketPreference(profileDir: string, provider: 'dsh-market' | 'disabled'): Promise<void> {
+  const dir = join(profileDir, '.dsh-my-settings')
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'state.json'), JSON.stringify({ version: 1, market: { provider } }), 'utf8')
+}
+
 test('随包插件走离线补种：命中 store 时带 --offline 与 store-dir', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-bundled-offline-'))
   try {
@@ -617,6 +631,7 @@ test('随包插件走离线补种：命中 store 时带 --offline 与 store-dir'
     const profile = join(root, 'profile')
     await mkdir(store)
     await mkdir(profile)
+    await writeMarketPreference(profile, 'dsh-market')
     const calls: string[][] = []
     const result = await seedBundledPlugins({
       nodeExecutable: 'node',
@@ -689,6 +704,7 @@ test('随包插件补种后写进 dependencies 并激活为 bundle', async () =>
     const manifestPath = join(profile, 'package.json')
     const manifest: { dependencies: Record<string, string>; dsh?: { profile?: { bundles?: string[] } } } = { dependencies: {} }
     await writeFile(manifestPath, JSON.stringify(manifest), 'utf8')
+    await writeMarketPreference(profile, 'dsh-market')
     const seeded = await seedBundledPlugins({
       nodeExecutable: 'node',
       profileDir: profile,
@@ -714,6 +730,98 @@ test('随包插件补种后写进 dependencies 并激活为 bundle', async () =>
     }
     assert.equal(written.dependencies?.dshmarket, '1.45.1')
     assert.equal(written.dsh?.profile?.bundles?.includes('dshmarket'), true, '装好的插件必须成为 profile bundle')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+/**
+ * 市场选择必须是「不加载」而不是「没装上」
+ *
+ * 用户显式关掉市场后，profile 里残留的声明必须被主动摘掉——否则上一次启用留下的
+ * `dependencies.dshmarket` 与 `bundles` 会让 DSH 继续加载市场，"关闭"就形同虚设。
+ */
+test('未启用市场时不补种 dshmarket（安全默认：读不到偏好即不加载）', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-market-off-'))
+  try {
+    const store = join(root, 'store')
+    const profile = join(root, 'profile')
+    await mkdir(store)
+    await mkdir(profile)
+    // 不写状态文件：等价于用户从未选择过市场，必须按 disabled 处理。
+    const result = await seedBundledPlugins({
+      nodeExecutable: 'node',
+      profileDir: profile,
+      pluginStoreDir: store,
+      catalog: bundledCatalog,
+      runner: async () => { throw new Error('未启用市场时不应发起 pnpm 调用') },
+    })
+    assert.deepEqual(result.seeded, [])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('市场被显式关闭时摘掉残留的 dshmarket 声明与 bundle', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-market-strip-'))
+  try {
+    const store = join(root, 'store')
+    const profile = join(root, 'profile')
+    await mkdir(store)
+    await mkdir(profile)
+    const manifestPath = join(profile, 'package.json')
+    // 上一次启用市场留下的痕迹。
+    await writeFile(manifestPath, JSON.stringify({
+      dependencies: { dshmarket: '1.45.1' },
+      dsh: { profile: { bundles: ['dshmarket'] } },
+    }), 'utf8')
+    await writeMarketPreference(profile, 'disabled')
+    const result = await seedBundledPlugins({
+      nodeExecutable: 'node',
+      profileDir: profile,
+      pluginStoreDir: store,
+      catalog: bundledCatalog,
+      runner: async () => { throw new Error('摘除声明不应触发安装') },
+    })
+    assert.deepEqual(result.seeded, [])
+    const written = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+      dependencies?: Record<string, string>
+      dsh?: { profile?: { bundles?: string[] } }
+    }
+    assert.equal(written.dependencies?.dshmarket, undefined, '关闭市场后不得继续声明 dshmarket')
+    assert.equal(written.dsh?.profile?.bundles?.includes('dshmarket'), false, '关闭市场后不得继续作为 bundle 加载')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('市场关闭时即使包已装入 node_modules 也不会被重新激活为 bundle', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-market-reconcile-'))
+  try {
+    const profile = join(root, 'profile')
+    await mkdir(profile)
+    const manifestPath = join(profile, 'package.json')
+    // 用户自行 `pnpm add dshmarket`：包在盘上、也写进了 dependencies。
+    await writeFile(manifestPath, JSON.stringify({ dependencies: { dshmarket: '1.45.1' } }), 'utf8')
+    const dir = join(profile, 'node_modules', 'dshmarket')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'package.json'), JSON.stringify({
+      name: 'dshmarket',
+      version: '1.45.1',
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }), 'utf8')
+    await writeFile(join(dir, 'cordis.patch.yml'), '[]\n', 'utf8')
+    await writeMarketPreference(profile, 'disabled')
+    // finalize 是先摘后补的收口点：这里必须不把 dshmarket 补回 bundles。
+    await finalizeProfileBundlesAfterInstall(profile)
+    const written = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+      dsh?: { profile?: { bundles?: string[] } }
+    }
+    assert.equal(
+      written.dsh?.profile?.bundles?.includes('dshmarket') ?? false,
+      false,
+      '市场关闭时用户自装的包不得被重新激活',
+    )
   } finally {
     await rm(root, { recursive: true, force: true })
   }

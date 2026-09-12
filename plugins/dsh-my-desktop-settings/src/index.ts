@@ -25,7 +25,6 @@ import type { HostServiceAccess, ProfileBridgeItem } from './host-capability.js'
 import { DesktopSettingsController } from './host-controller.js'
 import type { HostActionPorts } from './host-controller.js'
 import {
-  handleAaSelect,
   handleAppearanceUpdate,
   handleHostAction,
   handleMarketSelect,
@@ -250,7 +249,6 @@ export function apply(ctx: Context, config: Config = {}): void {
   const routes: ReadonlyArray<readonly [string, (req: IncomingMessage, res: ServerResponse) => void | Promise<void>]> = [
     [settingsPaths.state, handleState(handlerCtx)],
     [settingsPaths.marketSelect, handleMarketSelect(handlerCtx)],
-    [settingsPaths.aaSelect, handleAaSelect(handlerCtx)],
     [settingsPaths.notificationsUpdate, handleNotificationsUpdate(handlerCtx)],
     [settingsPaths.appearanceUpdate, handleAppearanceUpdate(handlerCtx)],
     // Profile management (create/select/delete) is a real launcher operation.

@@ -21,7 +21,6 @@ import type {
 } from './contract.js'
 import { findCapability } from './host-capability.js'
 import {
-  parseAaSelect,
   parseAppearanceUpdate,
   parseMarketSelect,
   parseNotificationsUpdate,
@@ -220,27 +219,6 @@ export function handleMarketSelect(ctx: HandlerContext): Handler {
     } catch (cause) {
       ctx.reportError('select market provider', cause)
       finishJson(res, 500, error('market selection could not be saved', 'internal'))
-    }
-  }
-}
-
-/** POST persist the AA preference. */
-export function handleAaSelect(ctx: HandlerContext): Handler {
-  return async (req, res) => {
-    if (!guard(req, res, 'POST')) return
-    const value = await parsePostBody(req, res)
-    if (value === INVALID_BODY) return
-    const request = parseAaSelect(value)
-    if (request === null) return finishJson(res, 400, error('invalid AA selection', 'bad.aa'))
-    try {
-      if (!ctx.controller.persistenceAvailable) {
-        return finishJson(res, 501, error('settings persistence is unavailable in this environment', 'persist.unavailable'))
-      }
-      const acceptance = await ctx.controller.selectAa(request)
-      finishJson(res, 200, acceptance)
-    } catch (cause) {
-      ctx.reportError('select AA', cause)
-      finishJson(res, 500, error('AA selection could not be saved', 'internal'))
     }
   }
 }

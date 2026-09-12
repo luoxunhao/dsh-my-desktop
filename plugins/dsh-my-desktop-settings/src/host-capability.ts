@@ -92,7 +92,6 @@ export interface SettingsLoadedView {
     readonly effective: SettingsMarketProvider
     readonly legacyDefaulted: boolean
   }
-  readonly aa: { readonly requested: boolean; readonly effective: boolean }
   readonly notifications: SettingsNotificationsView
   readonly appearance: SettingsAppearanceView
 }
@@ -225,7 +224,6 @@ export function capabilityManifest(
   }
   push('profile.discover', cap.profiles.length > 0, null, null)
   push('market.preference', true, null, null)
-  push('aa.preference', true, null, null)
   push('notifications.preference', true, null, null)
   push('appearance.preference', true, null, null)
 

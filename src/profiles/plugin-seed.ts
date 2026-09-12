@@ -25,6 +25,7 @@ import { prependPath } from '../runtime/plugin-toolchain.js'
 import { terminateProcessTree } from '../infra/process-control.js'
 import { mergeProfileUpdates, officialRuntimeUpdateVersion, parsePendingUpdates, partitionPackageUpdates, resolvePendingUpdatesPath, type ProfilePackageUpdate } from './profile-updates.js'
 import { DEFAULT_PROFILE_NAME } from './profiles.js'
+import { applyMarketPreference, DSH_MARKET_PACKAGE, isMarketEnabled } from './market-preference.js'
 import { copyPrebuiltOfficialRuntime } from '../runtime/runtime-prebuilt.js'
 
 export type SeedSkipReason = 'already-installed' | 'missing-store'
@@ -315,6 +316,50 @@ export async function stripOfficialProfileDependencies(profileDir: string): Prom
   return removed
 }
 
+/**
+ * Take the market package back out of a profile whose market choice is `disabled`.
+ *
+ * `disabled` must be load-bearing, not merely "not installed": a profile that had
+ * the market enabled in an earlier launch would otherwise keep declaring
+ * `dshmarket` in `dependencies` and keep it in `dsh.profile.bundles`, so DSH would
+ * go on loading the market after the user turned it off. This removes both the
+ * declaration and the bundle entry, mirroring {@link stripOfficialProfileDependencies}.
+ *
+ * Deliberately does NOT touch `node_modules`: leaving the files on disk keeps the
+ * removal cheap and retryable, and an undeclared package has no effect on DSH's
+ * load graph. A later re-enable therefore re-declares rather than re-downloads.
+ * If the source of truth is not a path we own — a user-installed copy of the
+ * market, for instance — it is still removed, because the user's explicit
+ * "do not load a market" outranks how the package got there.
+ *
+ * @returns the packages actually removed (empty when the profile never had one)
+ */
+export async function removeDisabledMarket(profileDir: string): Promise<string[]> {
+  const manifestPath = join(profileDir, 'package.json')
+  if (!existsSync(manifestPath)) return []
+  let manifest: {
+    dependencies?: Record<string, string>
+    dsh?: { profile?: { bundles?: string[] } }
+  }
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as typeof manifest
+  } catch {
+    // A corrupt manifest is repaired by the scaffold path, not here; refusing to
+    // parse must not make seeding throw.
+    return []
+  }
+  const dependencies = { ...(manifest.dependencies ?? {}) }
+  const bundles = [...(manifest.dsh?.profile?.bundles ?? [])]
+  const nextBundles = bundles.filter((name) => name !== DSH_MARKET_PACKAGE)
+  const declared = Object.prototype.hasOwnProperty.call(dependencies, DSH_MARKET_PACKAGE)
+  if (!declared && nextBundles.length === bundles.length) return []
+  delete dependencies[DSH_MARKET_PACKAGE]
+  manifest.dependencies = dependencies
+  manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: nextBundles } }
+  await writeTextFileAtomic(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`)
+  return [DSH_MARKET_PACKAGE]
+}
+
 export async function applyPendingProfileUpdates(options: SeedOptions): Promise<readonly string[]> {
   const pendingPath = resolvePendingUpdatesPath(options.profileDir)
   let pending: ProfilePackageUpdate[] = []
@@ -447,9 +492,14 @@ async function ensureOfficialLaunchPeers(options: SeedOptions, targetDir: string
 
 async function seedCommunityPlugins(options: SeedOptions): Promise<SeedResult> {
   await ensureProfileScaffold(options.profileDir)
+  // The market choice is load-bearing: when the user has not enabled a market,
+  // the market package must not be seeded, must not stay declared, and must not
+  // remain in the profile's bundle list. See `market-preference.ts`.
+  const marketEnabled = isMarketEnabled(options.profileDir)
+  if (!marketEnabled) await removeDisabledMarket(options.profileDir)
   const { declared, installed } = await readProfilePluginNames(options.profileDir)
   const plan = planBundledPluginSeed({
-    catalog: options.catalog ?? BUNDLED_PLUGINS,
+    catalog: applyMarketPreference(options.catalog ?? BUNDLED_PLUGINS, options.profileDir),
     declaredPackages: declared,
     installedPackages: installed,
     storeExists: existsSync(options.pluginStoreDir),
@@ -524,6 +574,11 @@ export async function reconcileProfileBundles(profileDir: string, packageNames?:
     if (allowed !== undefined && !allowed.has(packageName)) continue
     if (isOfficialProfileDependency(packageName)) continue
     if (marketDisabled.has(packageName)) continue
+    // The market choice owns `dshmarket` exclusively: whatever `dependencies`
+    // happens to say, the package is re-activated only when the user's settings
+    // say so. Without this, a user-installed market (`pnpm add dshmarket` in the
+    // profile) would be resurrected into `bundles` right after being removed.
+    if (packageName === DSH_MARKET_PACKAGE && !isMarketEnabled(profileDir)) continue
     if (!hasBundleManifest(profileDir, packageName) || bundles.includes(packageName)) continue
     bundles.push(packageName)
     changed = true

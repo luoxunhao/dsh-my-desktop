@@ -50,12 +50,12 @@ export type DesktopSettingsSectionProps =
   & InjectFace<DesktopSettingsSectionInjected>
 
 type Translate = DesktopSettingsSectionProps['t']
-type BusyOperation = 'load' | 'market' | 'aa' | 'notifications' | 'appearance' | 'host-action' | 'create-profile' | 'select-profile' | 'delete-profile'
+type BusyOperation = 'load' | 'market' | 'notifications' | 'appearance' | 'host-action' | 'create-profile' | 'select-profile' | 'delete-profile'
 type RestartState = 'none' | 'restarting' | 'required'
 
 /** Host-专属 side-effect tokens rendered as action buttons. */
 const HOST_ACTION_TOKENS: readonly {
-  token: Exclude<SettingsCapabilityToken, 'profile.discover' | 'market.preference' | 'aa.preference' | 'notifications.preference' | 'appearance.preference' | 'host.profile-switch' | 'host.web-and-material'>
+  token: Exclude<SettingsCapabilityToken, 'profile.discover' | 'market.preference' | 'notifications.preference' | 'appearance.preference' | 'host.profile-switch' | 'host.web-and-material'>
   label: DesktopSettingsLocaleKey
   busyLabel: DesktopSettingsLocaleKey
 }[] = [
@@ -71,7 +71,6 @@ const MARKET_OPTIONS: readonly {
   body: DesktopSettingsLocaleKey
 }[] = [
   { id: 'disabled', title: 'marketDisabled', body: 'marketDisabledBody' },
-  { id: 'community-market', title: 'communityMarket', body: 'communityMarketBody' },
   { id: 'dsh-market', title: 'dshMarket', body: 'dshMarketBody' },
 ]
 
@@ -283,13 +282,6 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
     }))
   }
 
-  const selectAa = (enabled: boolean): void => {
-    void run('aa', () => persistAndRefresh(async () => {
-      const acceptance = await api.selectAa(enabled)
-      if (acceptance.restartRequired) requestRestart()
-    }))
-  }
-
   const updateNotification = (request: SettingsNotificationsUpdateRequest): void => {
     void run('notifications', () => persistAndRefresh(() => api.updateNotifications(request)))
   }
@@ -305,7 +297,6 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
 
   const disabled = busy !== undefined || restart !== 'none'
   const marketCapability = view ? capabilityOf(view, 'market.preference') : undefined
-  const aaCapability = view ? capabilityOf(view, 'aa.preference') : undefined
   const notificationsCapability = view ? capabilityOf(view, 'notifications.preference') : undefined
   const appearanceCapability = view ? capabilityOf(view, 'appearance.preference') : undefined
   const switchCapability = view ? capabilityOf(view, 'host.profile-switch') : undefined
@@ -315,7 +306,6 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
   )
 
   const marketEnabled = marketCapability?.supported !== false
-  const aaEnabled = aaCapability?.supported !== false
   const appearanceEnabled = appearanceCapability?.supported !== false
   const notificationsEnabled = notificationsCapability?.supported !== false
   const profileManagementEnabled = switchCapability?.supported === true
@@ -450,31 +440,6 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
                 status={view.market.requested === option.id && view.market.requested !== view.market.effective
                   ? t('retryMarket')
                   : view.market.requested === option.id ? t('selected') : undefined}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="dshDesktopSettingsGroup" aria-labelledby="dsh-desktop-aa-title">
-        <div>
-          <h3 id="dsh-desktop-aa-title">{t('aaTitle')}</h3>
-          <p className="dshDesktopSettingsGroupIntro">{t('aaIntro')}</p>
-        </div>
-        {view !== undefined && view.aa.requested === true && !view.aa.effective && restart === 'none' && (
-          <p className="dshDesktopSettingsNotice" role="status">{t('aaLoadFailed')}</p>
-        )}
-        {view !== undefined && (
-          <div className="dshDesktopSettingsList" role="radiogroup" aria-labelledby="dsh-desktop-aa-title">
-            {[false, true].map(enabled => (
-              <Choice
-                key={String(enabled)}
-                title={t(enabled ? 'aaEnabled' : 'aaDisabled')}
-                body={t(enabled ? 'aaEnabledBody' : 'aaDisabledBody')}
-                selected={(view.aa.requested ?? false) === enabled}
-                disabled={!aaEnabled || disabled}
-                action={() => { selectAa(enabled) }}
-                status={(view.aa.requested ?? false) === enabled ? t('selected') : undefined}
               />
             ))}
           </div>

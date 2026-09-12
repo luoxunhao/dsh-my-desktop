@@ -10,7 +10,6 @@
 import type {
   DesktopRestartAcceptance,
   DesktopSettingsView,
-  SettingsAaSelectRequest,
   SettingsAppearanceUpdateRequest,
   SettingsAppearanceView,
   SettingsCapabilityToken,
@@ -61,7 +60,7 @@ export type HostActionResult =
   | { readonly ok: true; readonly acceptance: DesktopRestartAcceptance | { readonly accepted: true } }
   | { readonly ok: false; readonly code: 'host.unsupported' | 'host.offline' | 'host.failed' }
 
-const MARKET_PROVIDERS: readonly string[] = ['disabled', 'community-market', 'dsh-market']
+const MARKET_PROVIDERS: readonly string[] = ['disabled', 'dsh-market']
 
 function isMarketProvider(value: unknown): value is SettingsMarketProvider {
   return typeof value === 'string' && (MARKET_PROVIDERS as readonly string[]).includes(value)
@@ -166,10 +165,6 @@ export class DesktopSettingsController {
         legacyDefaulted: !this.state.hasPersistedState
           && snapshot.market.provider === defaultMarketProvider(),
       },
-      aa: {
-        requested: snapshot.aa.enabled,
-        effective: snapshot.aa.enabled,
-      },
       notifications: snapshot.notifications,
       appearance,
     }
@@ -194,10 +189,6 @@ export class DesktopSettingsController {
         requested: loaded.market.requested,
         effective: loaded.market.effective,
         legacyDefaulted: loaded.market.legacyDefaulted,
-      }),
-      aa: Object.freeze({
-        requested: loaded.aa.requested,
-        effective: loaded.aa.effective,
       }),
       notifications: Object.freeze({
         enabled: loaded.notifications.enabled,
@@ -238,15 +229,6 @@ export class DesktopSettingsController {
       // flagged when the change is persisted and a bridge is ready to apply it.
       restartRequired: changed && marketChangeSupported(this.capability),
     })
-  }
-
-  /** Persist the AA preference. */
-  async selectAa(request: SettingsAaSelectRequest): Promise<DesktopRestartAcceptance> {
-    const previous = this.state.snapshot().aa.enabled
-    const next = this.nextState({ aa: { enabled: request.enabled } })
-    await this.state.mutate(next)
-    const changed = next.aa.enabled !== previous
-    return Object.freeze({ accepted: true, restartRequired: changed })
   }
 
   /** Persist the notifications preference. */
@@ -339,14 +321,13 @@ export class DesktopSettingsController {
     }
   }
 
-  private nextState(patch: Partial<Pick<SettingsState, 'market' | 'aa' | 'notifications' | 'appearance'>>): SettingsState {
+  private nextState(patch: Partial<Pick<SettingsState, 'market' | 'notifications' | 'appearance'>>): SettingsState {
     const snapshot = this.state.snapshot()
     return {
       version: 1,
       market: {
         provider: patch.market?.provider ?? snapshot.market.provider,
       },
-      aa: { enabled: patch.aa?.enabled ?? snapshot.aa.enabled },
       notifications: patch.notifications ?? snapshot.notifications,
       appearance: (patch.appearance ?? snapshot.appearance) as SettingsAppearanceView,
     }
@@ -364,15 +345,6 @@ export function parseMarketSelect(value: unknown): SettingsMarketSelectRequest |
   if (Object.keys(record).length !== 1) return null
   if (!isMarketProvider(record.provider)) return null
   return { provider: record.provider }
-}
-
-/** Validate an AA select body, returning null when malformed. */
-export function parseAaSelect(value: unknown): SettingsAaSelectRequest | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
-  const record = value as Record<string, unknown>
-  if (Object.keys(record).length !== 1) return null
-  if (typeof record.enabled !== 'boolean') return null
-  return { enabled: record.enabled }
 }
 
 /** Validate a notifications update body, returning null when malformed. */

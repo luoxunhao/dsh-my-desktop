@@ -18,8 +18,14 @@
 /** Stable base under which every Host endpoint is registered. */
 export const API_BASE_PATH = '/api/dsh-my-settings'
 
-/** Provider choices a settings page may persist for the plugin market row. */
-export type SettingsMarketProvider = 'disabled' | 'community-market' | 'dsh-market'
+/**
+ * Provider choices a settings page may persist for the plugin market row.
+ *
+ * `disabled` is a real, load-bearing choice: the launcher reads it before boot and
+ * keeps the market package out of the profile's bundle list, so "do not enable a
+ * plugin market" actually means the market is never loaded.
+ */
+export type SettingsMarketProvider = 'disabled' | 'dsh-market'
 
 /**
  * Stable capability tokens the client uses to decide whether a control is
@@ -31,8 +37,6 @@ export type SettingsCapabilityToken =
   | 'profile.discover'
   /** Persist a plugin-market provider preference. */
   | 'market.preference'
-  /** Persist the AA (Agents-Anywhere) preference. */
-  | 'aa.preference'
   /** Persist the notifications preference. */
   | 'notifications.preference'
   /** Persist an appearance preference (material, native frame). */
@@ -119,7 +123,7 @@ export interface SettingsHostIdentityView {
 /**
  * Complete renderer-safe projection returned by the read endpoint.
  * Mirrors the DesktopSettingsView responsibilities the browser client needs
- * (profile/market/aa/notifications/appearance + a capability manifest).
+ * (profile/market/notifications/appearance + a capability manifest).
  */
 export interface DesktopSettingsView {
   /** Name of the currently recognized profile, when one exists. */
@@ -131,7 +135,6 @@ export interface DesktopSettingsView {
     readonly effective: SettingsMarketProvider
     readonly legacyDefaulted: boolean
   }
-  readonly aa: { readonly requested: boolean; readonly effective: boolean }
   readonly notifications: SettingsNotificationsView
   readonly appearance: SettingsAppearanceView
   /** Per-operation capability, so the client can degrade without guessing. */
@@ -156,11 +159,6 @@ export interface SettingsErrorResponse {
 /** Body accepted by the market write. */
 export interface SettingsMarketSelectRequest {
   readonly provider: SettingsMarketProvider
-}
-
-/** Body accepted by the AA write. */
-export interface SettingsAaSelectRequest {
-  readonly enabled: boolean
 }
 
 /** Body accepted by the notifications write. */
@@ -194,8 +192,6 @@ export const settingsPaths = Object.freeze({
   state: `${API_BASE_PATH}/state`,
   /** POST — persist a plugin-market provider preference. */
   marketSelect: `${API_BASE_PATH}/market/select`,
-  /** POST — persist the AA preference. */
-  aaSelect: `${API_BASE_PATH}/aa/select`,
   /** POST — persist the notifications preference. */
   notificationsUpdate: `${API_BASE_PATH}/notifications/update`,
   /** POST — persist an appearance preference. */

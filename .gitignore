@@ -19,6 +19,10 @@ artifacts/
 # 项目文档仅在本地维护，不纳入 Git 仓库。
 /docs/
 
+# Agent 的跨会话工作记录同理只留本地（与上面的 /docs/ 同一理由）。
+# 只忽略 memory/：.workbuddy 下的项目级 skills 是要随仓库共享的，不能整目录忽略。
+/.workbuddy/memory/
+
 runtime-dsh/
 runtime-dsh.tgz
 runtime-dsh.tgz.sha256

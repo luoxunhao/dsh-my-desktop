@@ -1,7 +1,7 @@
 /**
  * Own JSON state persistence for dsh-my-desktop-setting.
  *
- * The plugin persists self-consistent preferences (market provider, AA, the
+ * The plugin persists self-consistent preferences (market provider, the
  * notifications toggles, appearance preference) in its own versioned JSON state
  * file under an explicit, environment-resolved directory. It deliberately does
  * NOT depend on `process.cwd()`, and it does not require a registered
@@ -39,7 +39,6 @@ const MAX_STATE_BYTES = 64 * 1024
 export interface SettingsStateV1 {
   readonly version: 1
   readonly market: { readonly provider: SettingsMarketProvider }
-  readonly aa: { readonly enabled: boolean }
   readonly notifications: SettingsNotificationsView
   readonly appearance: SettingsAppearanceView
 }
@@ -89,7 +88,7 @@ export function resolveStateFilePaths(env: StatePathEnvironment = process.env): 
   return { directory: null, filePath: null }
 }
 
-const MARKET_PROVIDERS: readonly string[] = ['disabled', 'community-market', 'dsh-market']
+const MARKET_PROVIDERS: readonly string[] = ['disabled', 'dsh-market']
 const MATERIALS: readonly string[] = ['off', 'mica', 'acrylic', 'transparent']
 const MODES: readonly string[] = ['compatibility', 'extended', 'advanced']
 
@@ -129,26 +128,27 @@ export function defaultState(): SettingsState {
   return {
     version: STATE_VERSION,
     market: { provider: 'disabled' },
-    aa: { enabled: false },
     notifications: defaultNotifications(),
     appearance: defaultAppearance(),
   }
 }
 
-/** Validate a parsed document or throw. */
+/**
+ * Validate a parsed document or throw.
+ *
+ * A document written by an older build may still carry an `aa` field; unknown
+ * keys are simply ignored rather than rejected, so removing that preference does
+ * not invalidate an existing state file.
+ */
 function parseState(value: unknown): SettingsState {
   if (!isRecord(value) || value.version !== STATE_VERSION) {
     throw new Error(`dsh-my-desktop-setting: unsupported state (expected version ${String(STATE_VERSION)})`)
   }
   const market = value.market
-  const aa = value.aa
   const notifications = value.notifications
   const appearance = value.appearance
   if (!isRecord(market) || !isMarketProvider(market.provider)) {
     throw new Error('dsh-my-desktop-setting: invalid market state')
-  }
-  if (!isRecord(aa) || !isBool(aa.enabled)) {
-    throw new Error('dsh-my-desktop-setting: invalid AA state')
   }
   if (!isRecord(notifications) || !isBool(notifications.enabled)
     || !isRecord(notifications.events)
@@ -164,7 +164,6 @@ function parseState(value: unknown): SettingsState {
   return {
     version: STATE_VERSION,
     market: { provider: market.provider },
-    aa: { enabled: aa.enabled },
     notifications: {
       enabled: notifications.enabled,
       events: {

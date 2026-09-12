@@ -42,11 +42,10 @@ export type {
 
 /** The running profile exposes this much of the plugin-market domain. */
 
-const MARKET_PROVIDERS = new Set<SettingsMarketProvider>(['disabled', 'community-market', 'dsh-market'])
+const MARKET_PROVIDERS = new Set<SettingsMarketProvider>(['disabled', 'dsh-market'])
 const CAPABILITY_TOKENS = new Set<SettingsCapabilityToken>([
   'profile.discover',
   'market.preference',
-  'aa.preference',
   'notifications.preference',
   'appearance.preference',
   'host.profile-switch',
@@ -87,14 +86,12 @@ export interface DesktopSettingsApi {
   read(): Promise<DesktopSettingsView>
   /** POST persist a plugin-market provider preference. */
   selectMarket(provider: SettingsMarketProvider): Promise<DesktopRestartAcceptance>
-  /** POST persist the AA preference. */
-  selectAa(enabled: boolean): Promise<DesktopRestartAcceptance>
   /** POST persist the notifications preference. */
   updateNotifications(request: SettingsNotificationsUpdateRequest): Promise<void>
   /** POST persist an appearance preference. */
   updateAppearance(request: SettingsAppearanceUpdateRequest): Promise<void>
   /** POST a Host-专属 side effect (restart, terminal, …). */
-  performHostAction(token: Exclude<SettingsCapabilityToken, 'profile.discover' | 'market.preference' | 'aa.preference' | 'notifications.preference' | 'appearance.preference' | 'host.profile-switch' | 'host.web-and-material'>): Promise<void>
+  performHostAction(token: Exclude<SettingsCapabilityToken, 'profile.discover' | 'market.preference' | 'notifications.preference' | 'appearance.preference' | 'host.profile-switch' | 'host.web-and-material'>): Promise<void>
   /** POST create a new Web profile through the launcher bridge. */
   createProfile(name: string): Promise<void>
   /** POST switch the active profile through the launcher bridge. */
@@ -270,15 +267,6 @@ function parseMarket(value: unknown): DesktopSettingsView['market'] {
   })
 }
 
-function parseAa(value: unknown): DesktopSettingsView['aa'] {
-  if (!isObject(value)
-    || typeof value.requested !== 'boolean'
-    || typeof value.effective !== 'boolean') {
-    fail('invalid AA in settings response')
-  }
-  return Object.freeze({ requested: value.requested as boolean, effective: value.effective as boolean })
-}
-
 function parseCurrent(value: unknown): string | null {
   if (value === null) return null
   if (typeof value !== 'string' || value.length === 0 || value.length > MAX_PROFILE_NAME_LENGTH) {
@@ -297,7 +285,6 @@ export function parseDesktopSettingsView(value: unknown): DesktopSettingsView {
   const host = parseHostIdentity(value.host)
   const current = parseCurrent(value.current)
   const market = parseMarket(value.market)
-  const aa = parseAa(value.aa)
   const notifications = parseNotifications(value.notifications)
   const appearance = parseAppearance(value.appearance)
   const capabilities = value.capabilities.map(parseCapability)
@@ -308,7 +295,6 @@ export function parseDesktopSettingsView(value: unknown): DesktopSettingsView {
     current,
     host,
     market,
-    aa,
     notifications,
     appearance,
     capabilities: Object.freeze(capabilities),
@@ -423,9 +409,6 @@ export function createDesktopSettingsApi(fetcher: FetchLike = globalThis.fetch.b
     async selectMarket(provider: SettingsMarketProvider) {
       return parseDesktopRestartAcceptance(await readJsonResponse(await post(fetcher, settingsPaths.marketSelect, { provider })))
     },
-    async selectAa(enabled: boolean) {
-      return parseDesktopRestartAcceptance(await readJsonResponse(await post(fetcher, settingsPaths.aaSelect, { enabled })))
-    },
     async updateNotifications(request: SettingsNotificationsUpdateRequest) {
       parseDesktopActionAcceptance(await readJsonResponse(await post(fetcher, settingsPaths.notificationsUpdate, request)))
     },
@@ -448,7 +431,7 @@ export function createDesktopSettingsApi(fetcher: FetchLike = globalThis.fetch.b
   })
 }
 
-function hostActionPath(token: Exclude<SettingsCapabilityToken, 'profile.discover' | 'market.preference' | 'aa.preference' | 'notifications.preference' | 'appearance.preference' | 'host.profile-switch' | 'host.web-and-material'>): string {
+function hostActionPath(token: Exclude<SettingsCapabilityToken, 'profile.discover' | 'market.preference' | 'notifications.preference' | 'appearance.preference' | 'host.profile-switch' | 'host.web-and-material'>): string {
   switch (token) {
     case 'host.restart': return settingsPaths.restart
     case 'host.open-terminal': return settingsPaths.terminalOpen
