@@ -1,52 +1,53 @@
 /**
  * Prepare the bundled `dsh-my-desktop-setting` private plugin as a DSH `--patch`
- * overlay, mirroring how `prepareDesktopBridge` injects its private host+client
- * bundle.
+ * overlay.
  *
- * The plugin is a private, unpublished package (host+client): its built
- * artifacts (`lib/index.js` host entry, `lib/client.js` browser bundle,
- * `cordis.patch.yml`) ship inside the app and are materialized into a writable
- * per-user directory at launch. We then emit a top-level `--patch` overlay whose
- * insert row `name` is a `file:` URL to the host entry, exactly like the desktop
- * bridge (`desktop-host.ts:prepareDesktopBridge`). DSH imports the row directly,
- * so the host half applies in the server; the client half becomes an active
- * loader row whose `lib/client.js` is served by the DSH client-modules registry
- * as `/plugins/dsh-my-desktop-setting/client.js`.
+ * The plugin is a private, unpublished package (host+client). Its built artifacts
+ * (`lib/index.js` host entry, `lib/client.js` browser bundle) ship inside the app
+ * AND live in a per-user **version store** (`desktop-settings-store.ts`), so the
+ * settings page can be upgraded without rebuilding the installer.
  *
- * The plugin deliberately does NOT go into the web profile's
- * `dsh.profile.bundles` (that list is reserved for official bundles + registry
- * community plugins, and `pruneMissingProfileBundles`/`reconcileProfileBundles`
- * would drop or refuse a private package). Injection via `--patch` mirrors the
- * desktop-bridge precedent and needs no seed/reconcile changes.
+ * The overlay's insert row `name` is a `file:` URL pointing at the SELECTED
+ * version's host entry, exactly like the desktop bridge
+ * (`desktop-host.ts:prepareDesktopBridge`). DSH imports the row directly, so the
+ * host half applies in the server; the client half becomes an active loader row
+ * whose `lib/client.js` is served by the DSH client-modules registry as
+ * `/plugins/dsh-my-desktop-setting/client.js`.
+ *
+ * Why the plugin stays OUT of the web profile's `dsh.profile.bundles`:
+ * that list is user- and market-mutable (profiles are created, switched, pruned),
+ * and the desktop settings page is part of the launcher's own UI — it must exist
+ * in every profile, including ones created a second from now. A `--patch` overlay
+ * is launcher-owned and profile-independent, so it cannot be lost that way.
+ * (The older comment claiming `pruneMissingProfileBundles`/`reconcileProfileBundles`
+ * would drop a private package was measured and is no longer true; the real reason
+ * is the lifecycle ownership above.)
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import {
+  compareVersions,
+  DESKTOP_SETTINGS_PACKAGE,
+  installSettingsVersion,
+  resolveDesktopSettingsVersion,
+  selectSettingsVersion,
+  writeActiveSettingsVersion,
+} from './desktop-settings-store.js'
+
 /** Package name of the bundled desktop settings plugin. */
-export const DESKTOP_SETTINGS_PACKAGE = 'dsh-my-desktop-setting'
+export { DESKTOP_SETTINGS_PACKAGE } from './desktop-settings-store.js'
 
 /**
- * Read the shipped plugin's own version so the materialized manifest never
- * drifts from `plugins/dsh-my-desktop-settings/package.json`. Falls back to the app
- * version when the manifest is absent (a dev checkout without the plugin).
+ * Read the shipped plugin's own version (falls back to the app version).
+ * Re-exported so existing callers/tests keep one import site.
  */
-export function resolveDesktopSettingsVersion(sourceDir: string, fallback: string): string {
-  try {
-    const manifest = JSON.parse(readFileSync(join(sourceDir, 'package.json'), 'utf8')) as { version?: unknown }
-    if (typeof manifest.version === 'string' && manifest.version !== '') return manifest.version
-  } catch {
-    // No readable manifest: the caller's fallback (the app version) is correct.
-  }
-  return fallback
-}
+export { resolveDesktopSettingsVersion } from './desktop-settings-store.js'
 
 /** Files copied from the shipped plugin source into the per-user bundle dir. */
-export const DESKTOP_SETTINGS_FILES = [
-  'lib/index.js',
-  'lib/client.js',
-] as const
+export { DESKTOP_SETTINGS_FILES } from './desktop-settings-store.js'
 
 /** Resolve the shipped plugin source directory (packaged resource vs dev checkout). */
 export function resolveDesktopSettingsDir(options: { isPackaged: boolean; appPath: string; resourcesPath: string; pluginDevDir?: string }): string {
@@ -63,56 +64,52 @@ export function resolveDesktopSettingsDir(options: { isPackaged: boolean; appPat
 }
 
 /**
- * Materialize the plugin into a writable dir and return the `--patch` overlay path
- * (or `undefined` when the shipped source is absent — e.g. a dev run without the
- * plugin built, which must not fail the whole desktop launch).
+ * Materialize the plugin into the version store and return the `--patch` overlay
+ * path (or `undefined` when neither the store nor the shipped source has a
+ * loadable copy — e.g. a dev run without the plugin built, which must not fail
+ * the whole desktop launch).
  *
- * `appVersion` is the fallback when the shipped plugin manifest is unreadable;
- * normally the version is read from the plugin's own package.json so it can
- * never drift from a release bump.
+ * Flow:
+ *  1. seed the app's own shipped copy into the store under its own version
+ *     (cheap no-op refresh when already present), so it always participates;
+ *  2. select the highest installed SemVer — that is the independently installed
+ *     newer copy when one exists, otherwise the app's baseline;
+ *  3. point the overlay row's `file:` URL at the selected version.
+ *
+ * `destDir` is the version store root (`<version>/` subdirs live inside it).
+ * `appVersion` is the fallback when the shipped manifest is unreadable.
  */
 export function prepareDesktopSettings(destDir: string, sourceDir: string, appVersion = '0.0.0'): string | undefined {
-  if (!existsSync(join(sourceDir, 'lib', 'index.js'))) return undefined
-  mkdirSync(destDir, { recursive: true })
-  mkdirSync(join(destDir, 'lib'), { recursive: true })
-  for (const file of DESKTOP_SETTINGS_FILES) {
-    const from = join(sourceDir, file)
-    if (!existsSync(from)) throw new Error(`桌面设置插件文件缺失：${from}`)
-    copyFileSync(from, join(destDir, file))
+  const hasSource = existsSync(join(sourceDir, 'lib', 'index.js'))
+  const shippedVersion = hasSource ? resolveDesktopSettingsVersion(sourceDir, appVersion) : undefined
+
+  // Seed the shipped copy so the app's own version is always a candidate.
+  if (hasSource && shippedVersion !== undefined) {
+    installSettingsVersion(destDir, sourceDir, shippedVersion)
   }
-  // A package.json with the DSH bundle/client contract so DSH resolves the
-  // host entry and serves `lib/client.js` for the web profile.
-  writeFileSync(join(destDir, 'package.json'), `${JSON.stringify({
-    name: DESKTOP_SETTINGS_PACKAGE,
-    version: resolveDesktopSettingsVersion(sourceDir, appVersion),
-    type: 'module',
-    main: 'lib/index.js',
-    exports: {
-      '.': './lib/index.js',
-      './client': './lib/client.js',
-      './package.json': './package.json',
-    },
-    dsh: {
-      bundle: { patch: './cordis.patch.yml' },
-      client: {
-        inject: [
-          '@deepseek-ai/dsh-client-locale',
-          '@deepseek-ai/dsh-client-ui-renderer',
-          '@deepseek-ai/dsh-client-ui-settings',
-        ],
-        platform: 'web',
-      },
-    },
-  }, undefined, 2)}\n`, 'utf8')
-  // Client registration (settings.section) happens in the plugin's own client
-  // apply; the host applies via the overlay row below. Keep the package's own
-  // bundle patch empty so DSH does not try to load a second, bare-name row.
-  writeFileSync(join(destDir, 'cordis.patch.yml'), '[]\n', 'utf8')
+
+  // An independently installed newer copy wins; otherwise the baseline does.
+  const selected = selectSettingsVersion(destDir)
+  if (selected === undefined) return undefined
+
+  writeActiveVersion(destDir, selected)
+  const selectedDir = join(destDir, selected)
   const overlayPath = join(destDir, 'settings.patch.yml')
   // JSON is valid YAML; a file: URL handles Windows paths, spaces and CJK dirs.
   writeFileSync(overlayPath, `${JSON.stringify([{ insert: [{
     id: DESKTOP_SETTINGS_PACKAGE,
-    name: pathToFileURL(join(destDir, 'lib', 'index.js')).href,
+    name: pathToFileURL(join(selectedDir, 'lib', 'index.js')).href,
   }] }], undefined, 2)}\n`, 'utf8')
   return overlayPath
 }
+
+/** Record the active version; a diagnostics file must never break the launch. */
+function writeActiveVersion(storeDir: string, version: string): void {
+  try {
+    writeActiveSettingsVersion(storeDir, version)
+  } catch {
+    // Diagnostic write failure must not fail the launch.
+  }
+}
+
+export { compareVersions }

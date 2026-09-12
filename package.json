@@ -29,6 +29,7 @@
     "check": "tsc --noEmit",
     "build:plugin": "pnpm --dir plugins/dsh-my-desktop-settings run build",
     "check:plugin": "pnpm --dir plugins/dsh-my-desktop-settings run typecheck",
+    "settings:install": "node scripts/install-desktop-settings.mjs",
     "build:flat": "node dist/scripts/stage-flat-units.js",
     "build:all": "pnpm run build:plugin && pnpm run build && pnpm run build:recovery-ui && pnpm run build:shell-ui && pnpm run build:flat",
     "check:all": "pnpm run check:plugin && pnpm run check && pnpm run check:recovery-ui && pnpm run check:shell-ui",

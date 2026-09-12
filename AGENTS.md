@@ -133,6 +133,7 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
 
 - `build` = `tsc`（只编译启动器到 `dist/`）；`check` = `tsc --noEmit`
 - `build:plugin` = `pnpm --dir plugins/dsh-my-desktop-settings run build`；`check:plugin` = 同目录 `typecheck`
+- `settings:install` = 构建设置插件并装进 per-user 版本存储（本机直装，不出安装包）
 - **`build:all` = 插件 → 启动器 → 恢复页 → 扁平发布单元**（一体化的默认构建入口）；
   `check:all` = 插件 + 启动器 + 恢复页 三处一起 typecheck
 - `build:recovery-ui` = `vite build`（恢复页前端）；`check:recovery-ui` = `tsc -p tsconfig.recovery-ui.json`
@@ -183,9 +184,24 @@ node bootstrap.mjs <dsh> --profile <当前profile> --patch <bridge.patch.yml> --
   由 `src/desktop-settings-plugin.ts` 的 `prepareDesktopSettings()` 在每次启动时覆盖写入。
 - **跟随 profile**：因为不是"装在某个 profile 里"，切到任何 profile（`web`/`desktop`/自建）
   插件都在，无需重装。
-- **为什么不用 `dsh.profile.bundles`**：那是官方 bundle + registry 社区插件的位置，
-  `pruneMissingProfileBundles`/`reconcileProfileBundles` 会丢弃或拒绝私有包。
-  走 `--patch` 与 desktop-bridge 同一套机制，无需改动 seed/reconcile。
+- **为什么不用 `dsh.profile.bundles`**：不是因为代码会拒绝私有包——实测过，
+  `reconcileProfileBundles`/`pruneMissingProfileBundles`/`finalizeProfileBundlesAfterInstall`
+  都会保留它，直接当 profile bundle 装也能启动（真实原因是**生命周期归属**：profile
+  是用户可建/删/切、且市场可禁用包的地方，而桌面设置页是启动器自身的 UI，必须在**任何**
+  profile（包括刚新建的）里都在。装在 profile 里 ⟹ 新建 profile 就没设置页。）
+- **可独立升级（不用重出 300 MB 安装包）**：插件装在 per-user **版本存储**
+  `%APPDATA%\DSH My Desktop\desktop-settings-plugin\<version>\`，启动时按 SemVer
+  选最高版本（见 `src/bridge/desktop-settings-store.ts`）。overlay row 的 `file:` URL
+  指向**选中的版本目录**，所以换版本不需要 ESM resolver hook（dsh-desktop 需要 hook
+  是因为它按裸包名从两个 root 解析）。
+  - 随包那份每次启动都 seed 进存储（版本相同则刷新内容），因此**只有装更高版本才会
+    生效**；装更低或相同版本不会盖掉随包那份。回滚 = 删掉新版本目录。
+  - 本机改完设置页想立刻看到：
+    ```powershell
+    pnpm run settings:install        # 构建 + 装进版本存储（--dry-run 只看不装）
+    ```
+    然后**完全退出应用再启动**。这**只影响本机**：分发给别人仍要出安装包，
+    因为随包那份才是基线。
 - **物化清单的版本**读插件自身 `package.json`（`resolveDesktopSettingsVersion`），
   缺失/损坏时回退到应用版本——**不要写死版本号**，否则随发布漂移。
 
