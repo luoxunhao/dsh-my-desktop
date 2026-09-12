@@ -24,10 +24,6 @@ test('主窗口导航完成前不结束启动或插件热重载', async () => {
   assert.match(source, /isRecycling = true\s+broadcastShellState\(\)\s+try \{\s+await showStartupWindow\(desktopText\('加载中', 'Loading'\)\)/)
   assert.match(source, /console\.error\('显示启动错误页面失败。'/)
   assert.match(registry, /will-navigate'[\s\S]*?deps\.isNavigating\(\)[\s\S]*?event\.preventDefault\(\)/)
-  assert.match(source, /watchProfileActivation\(profileDir, scheduleProfileActivationRecycle/)
-  assert.match(source, /waitForDshMarketBatchToSettle\(/)
-  assert.match(source, /function handleDshIpc\(message: unknown\): void \{[\s\S]*?scheduleProfileActivationRecycle\(\)/)
-  assert.match(source, /profileActivationRecycleGeneration !== generation\) continue/)
   assert.match(source, /escapeRoute\(/)
   assert.doesNotMatch(source, /contents === state\.windows\.dshView\?\.webContents \|\| contents === state\.windows\.mainWindow\?\.webContents/)
   assert.match(source, /state\.shell\.settingsDialogVisible/)
@@ -263,6 +259,30 @@ test('桌面通知和更新设置使用独立窗口并进入打包资源', async
   // so every created window still gets its menu stripped despite the single call.
   assert.equal((dialogs.match(/removeNativeWindowMenu\(window\)/g) ?? []).length, 1)
   assert.equal((dialogs.match(/openDialogWindow\(/g) ?? []).length, 4)
+})
+
+test('安装插件后不会自动重载 DSH，重载只由用户触发', async () => {
+  // THE BEHAVIOUR THIS PINS: installing a plugin from the market used to reload
+  // the whole workbench by itself — the "installing a plugin force-restarts the
+  // desktop" bug. Two independent triggers did it, and both must stay gone:
+  const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
+  //   1. the launch-time profile-manifest watcher (and its scheduling helpers).
+  assert.doesNotMatch(main, /watchProfileActivation\(/)
+  assert.doesNotMatch(main, /scheduleProfileActivationRecycle/)
+  assert.doesNotMatch(main, /waitForDshMarketBatchToSettle\(/)
+  //   2. the child→main update-applied IPC, which main used to act on.
+  assert.doesNotMatch(main, /isApplyPluginUpdatesIpc/)
+  // `recycleDshForPluginUpdate` still exists — it is the shared MANUAL reload
+  // behind the title-bar tool, Cmd/Ctrl+R and the tray item.
+  assert.match(main, /async function recycleDshForPluginUpdate\(\): Promise<void> \{/)
+  assert.match(main, /else if \(id === 'reload'\) await recycleDshForPluginUpdate\(\)/)
+
+  // The child process must not emit the notification in the first place.
+  const host = await readFile(new URL('../../src/bridge/desktop-host.ts', import.meta.url), 'utf8')
+  assert.doesNotMatch(host, /APPLY_PLUGIN_UPDATES_IPC/)
+  // The constant itself is gone, so no caller can be reintroduced by name.
+  const bundled = await readFile(new URL('../../src/runtime/bundled-plugins.ts', import.meta.url), 'utf8')
+  assert.doesNotMatch(bundled, /apply-plugin-updates/)
 })
 
 test('shell 在 macOS 为交通灯预留空间且状态早到不会读取空 bootstrap', async () => {

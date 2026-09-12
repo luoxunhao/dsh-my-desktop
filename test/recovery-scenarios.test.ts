@@ -73,10 +73,9 @@ async function harness(t: TestContext, options: { installError?: Error; loadErro
   state.launch.lastStartOptions = { bootstrapPath: '', nodeExecutable: '', runtime: {} as never }
   state.launch.lastSeedOptions = { nodeExecutable: '', pluginStoreDir: '', profileDir: profile }
   state.diagnostics.stage = 'renderer-loading'
-  // The recycle path stops the previous server and syncs the profile watcher, so both
-  // handles must live in the store for the extracted code to reach them.
+  // The recycle path stops the previous server, so its handle must live in the
+  // store for the extracted code to reach it.
   state.runtime.server = server as never
-  state.launch.profileWatcher = { sync: () => events.push('sync'), stop: () => events.push('stop-watcher') }
   const scope = vm.createContext({
     ...recovery, ...diagnostics, captureProfileHealthCheckpoint, readProfileHealthCheckpoint,
     startAfterPluginUpdates, startWithProfileSelfRepair, findRecoveryCandidates,
@@ -155,7 +154,7 @@ test('场景01：安装成功且 DSH 加载成功，进入工作台', async t =>
   await h.run('recycleDshForPluginUpdate()')
   assert.equal(h.scope.presentation, 'workbench')
   assert.equal(recovery.isRecoveryModeActive(h.profile), false)
-  assert.deepEqual(h.events, ['startup', 'stop', 'install', 'start', 'workbench', 'sync'])
+  assert.deepEqual(h.events, ['startup', 'stop', 'install', 'start', 'workbench'])
 })
 
 for (const [id, message] of [['02', 'ERR_PNPM_IGNORED_BUILDS node-pty'], ['03', 'ECONNRESET registry.npmjs.org'], ['04', 'EPERM rename package.json']]) {

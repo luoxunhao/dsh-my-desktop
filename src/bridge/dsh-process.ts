@@ -2,12 +2,9 @@ import { spawn, type ChildProcess } from 'node:child_process'
 
 import { prependPath } from '../runtime/plugin-toolchain.js'
 import { parseReadyUrl } from '../infra/readiness.js'
-import { APPLY_PLUGIN_UPDATES_IPC } from '../runtime/bundled-plugins.js'
 import { terminateProcessTree } from '../infra/process-control.js'
 import { DEFAULT_PROFILE_NAME } from '../profiles/profiles.js'
 import type { DshRuntime } from '../runtime/runtime.js'
-
-export { APPLY_PLUGIN_UPDATES_IPC }
 
 const startupTimeoutMs = 45_000
 const maxCapturedOutputLength = 12_000
@@ -127,11 +124,6 @@ function waitForReady(child: ChildProcess, timeoutMs: number): Promise<string> {
       finish(() => reject(new Error(formatEarlyExitMessage(code, capturedOutput))))
     })
   })
-}
-
-export function isApplyPluginUpdatesIpc(message: unknown): boolean {
-  return message === APPLY_PLUGIN_UPDATES_IPC
-    || (typeof message === 'object' && message !== null && 'type' in message && message.type === APPLY_PLUGIN_UPDATES_IPC)
 }
 
 function createServer(child: ChildProcess, url: string, onUnexpectedExit?: (message: string) => void, onIpcMessage?: (message: unknown) => void): DshServer {

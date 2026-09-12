@@ -74,21 +74,18 @@ import { isChineseLocale, localizedShellActions, localizedShellMenus, normalizeS
 import { SHELL_BAR_HEIGHT, SHELL_IPC, type DshNavigationState, type DshShellActionId, type ShellBootstrap, type ShellMenuPopupRequest, type ShellState, type ShellToolId, type ShellToolPopupId } from './desktop/shell-contract.js'
 import { mayAccessDesktopUpdates, mayAccessNotificationPreferences, mayCloseDesktopSettings, mayGetShellBootstrap, mayInvokeShellAction, mayPopupShellMenu, mayReportDshBoot, mayReportDshLocale, mayReportDshNotification, mayReportDshState, mayReportDshTheme, mayReportDshSettingsVisibility, type ShellRendererKind } from './desktop/shell-ipc-policy.js'
 import { DESKTOP_THEME_PALETTES, normalizeDesktopThemeSnapshot, type DesktopColorScheme, type DesktopThemePreference } from './desktop/desktop-theme.js'
-import { DSH_MARKET_STATUS_PATH, waitForDshMarketBatchToSettle } from './desktop/dshmarket-batch.js'
 import { buildWindowsReplyToastXml, loadNotificationPreferences, parseDesktopNotificationBridgeEvent, parseWindowsNotificationReplyActivation, saveNotificationPreferences, shouldShowDesktopNotification, windowsNotificationReplyArguments, type DesktopNotificationEvent, type DesktopNotificationPreferences } from './desktop/desktop-notifications.js'
-import { watchProfileActivation } from './profiles/profile-watch.js'
 import updater from 'electron-updater'
 import { STARTUP_UPDATE_CHECK_DELAY_MS, buildDesktopTrayItems, desktopUpdateChannel, desktopUpdatePrompt, formatDesktopReleaseNotes, loadUpdatePreferences, publicDesktopUpdateError, saveUpdatePreferences, shouldCheckForUpdatesOnStartup, shouldDownloadUpdateAutomatically, type DesktopUpdateAction, type DesktopUpdatePreferences, type DesktopUpdateSnapshot, type DesktopUpdateStatus } from './desktop/desktop-updater.js'
 
 interface DshProcessModule {
-  isApplyPluginUpdatesIpc: (message: unknown) => boolean
   startDsh: (options: StartDshOptions) => Promise<DshServer>
 }
 
 const dshProcessModule = await import(app.isPackaged
   ? pathToFileURL(join(process.resourcesPath, 'desktop-bridge', 'dsh-process.js')).href
   : './bridge/dsh-process.js') as DshProcessModule
-const { isApplyPluginUpdatesIpc, startDsh } = dshProcessModule
+const { startDsh } = dshProcessModule
 
 const { autoUpdater } = updater
 const windowNavigation = new WindowNavigationCoordinator()
@@ -186,8 +183,6 @@ async function shutdownDesktop(exit: () => void): Promise<void> {
       state.update.startupUpdateTimer = undefined
       state.runtime.tray?.destroy()
       state.runtime.tray = undefined
-      state.launch.profileWatcher?.stop()
-      state.launch.profileWatcher = undefined
     },
     stopServer: async () => {
       const extraction = state.runtime.runtimeExtractionTask
@@ -478,7 +473,6 @@ async function startApplication(): Promise<void> {
     startRendererHealthTimer,
     stopRendererHealthTimer,
     reportStartupFailure: async (error, profileDir) => { await reportStartupFailure(error, profileDir) },
-    syncProfileWatcher: () => { state.launch.profileWatcher?.sync() },
     homeDir: () => resolveLauncherProfileRoots(app.getPath('userData')).home,
     listProfiles: () => desktopProfileViews(),
     openTarget: async (target, profileDir) => {
@@ -694,8 +688,8 @@ async function startApplication(): Promise<void> {
       return
     }
     if (started.repaired.length > 0) console.log('已自我修复损坏的插件清单：' + started.repaired.join('、'))
-    state.launch.profileWatcher?.stop()
-    state.launch.profileWatcher = watchProfileActivation(profileDir, scheduleProfileActivationRecycle, { onError: handleUnexpectedMainError })
+    // No profile-manifest watcher: a change there used to reload DSH on its own.
+    // See `recycleDshForPluginUpdate` for why reloading is now user-driven only.
     await openWorkbenchOrRecovery(profileDir, started.server.url)
     const smokeReadyFile = process.env.DSH_DESKTOP_SMOKE_READY_FILE
     if (smokeReadyFile !== undefined && smokeReadyFile !== '') {
@@ -1053,13 +1047,6 @@ function runMainTask(task: Promise<unknown>): void {
 
 
 function handleDshIpc(message: unknown): void {
-  if (isApplyPluginUpdatesIpc(message)) {
-    // A client plugin may emit this IPC after running its own update-all flow.
-    // It has the same contract as a profile mutation, so letting it bypass the
-    // market queue would still interrupt a batch after its first item.
-    scheduleProfileActivationRecycle()
-    return
-  }
   if (!isDesktopHostMessage(message)) return
   if (isDesktopActionMessage(message)) {
     // Launcher-native side effect requested by the settings plugin.
@@ -1097,52 +1084,22 @@ function handleDshIpc(message: unknown): void {
   })())
 }
 
-const DSH_MARKET_BATCH_POLL_MS = 750
-const DSH_MARKET_BATCH_MAX_WAIT_MS = 10 * 60 * 1_000
-
-function scheduleProfileActivationRecycle(): void {
-  if (state.runtime.isQuitting || state.runtime.isRecycling) return
-  state.launch.profileActivationRecyclePending = true
-  state.launch.profileActivationRecycleGeneration += 1
-  if (state.launch.profileActivationRecycleTask !== undefined) return
-  const task = recycleAfterDshMarketBatch()
-  state.launch.profileActivationRecycleTask = task
-  runMainTask(task.finally(() => { state.launch.profileActivationRecycleTask = undefined }))
-}
-
-async function dshMarketOperationStatus(): Promise<unknown> {
-  const url = state.runtime.server?.url
-  if (url === undefined) return undefined
-  try {
-    const response = await fetch(new URL(DSH_MARKET_STATUS_PATH, url), { signal: AbortSignal.timeout(1_000) })
-    if (!response.ok) return undefined
-    return await response.json()
-  } catch {
-    // dshmarket is optional. A missing, stopped, or old market should retain
-    // the normal profile-change restart behavior.
-    return undefined
-  }
-}
-
-async function recycleAfterDshMarketBatch(): Promise<void> {
-  while (state.launch.profileActivationRecyclePending && !state.runtime.isQuitting && !state.runtime.isRecycling) {
-    state.launch.profileActivationRecyclePending = false
-    const generation = state.launch.profileActivationRecycleGeneration
-    const settled = await waitForDshMarketBatchToSettle(
-      dshMarketOperationStatus,
-      () => new Promise(resolve => setTimeout(resolve, DSH_MARKET_BATCH_POLL_MS)),
-      { maxWaitMs: DSH_MARKET_BATCH_MAX_WAIT_MS, pollIntervalMs: DSH_MARKET_BATCH_POLL_MS },
-    )
-    if (!settled) console.warn(`dshmarket 批量更新等待超时（${DSH_MARKET_BATCH_MAX_WAIT_MS}ms），继续重载插件。`)
-    if (state.runtime.isQuitting || state.runtime.isRecycling) return
-    // Another profile change or update-all IPC arrived during the quiet
-    // check. Start the check over rather than restarting a just-continued
-    // batch from its first completion boundary.
-    if (state.launch.profileActivationRecycleGeneration !== generation) continue
-    await recycleDshForPluginUpdate()
-  }
-}
-
+/**
+ * Reload the DSH child process, on demand only.
+ *
+ * WHY NOTHING CALLS THIS AUTOMATICALLY ANY MORE
+ * ---------------------------------------------
+ * Installing a plugin from the market used to reload DSH on its own: the market
+ * reported success over IPC, and a `package.json` watcher treated any profile
+ * manifest change the same way. Both paths are gone — that reload was the
+ * "installing a plugin force-restarts the desktop" behaviour, and it fired even
+ * when the market had already hot-mounted the plugin and nothing needed it.
+ *
+ * Plugin changes now take effect when the user asks: the title bar's reload
+ * tool, Cmd/Ctrl+R, the tray's reload item, or an app restart. This function is
+ * the single implementation they all share; it is deliberately reachable only
+ * from those explicit entry points.
+ */
 async function recycleDshForPluginUpdate(): Promise<void> {
   if (state.runtime.isQuitting || state.runtime.isRecycling || state.launch.lastStartOptions === undefined || state.launch.lastSeedOptions === undefined) return
   const startOptions = state.launch.lastStartOptions
@@ -1180,7 +1137,6 @@ async function recycleDshForPluginUpdate(): Promise<void> {
   } catch (error) {
     await reportStartupFailure(error, seedOptions.profileDir)
   } finally {
-    state.launch.profileWatcher?.sync()
     state.runtime.isRecycling = false
     broadcastShellState()
   }

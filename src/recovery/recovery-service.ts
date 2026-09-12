@@ -101,8 +101,6 @@ export interface RecoveryDeps {
   startRendererHealthTimer: (profileDir: string) => void
   stopRendererHealthTimer: () => void
   reportStartupFailure: (error: unknown, profileDir: string) => Promise<void>
-  /** Keep the profile watcher in sync after a restart. */
-  syncProfileWatcher: () => void
   /** Launcher-resolved harness home, for the checkpoint manager. */
   homeDir: () => string
   /** Managed profiles, for the profile panel. */
@@ -252,7 +250,6 @@ export function createRecoveryService(deps: RecoveryDeps) {
       await deps.reportStartupFailure(error, profileDir)
       throw error
     } finally {
-      deps.syncProfileWatcher()
       deps.setRecycling(false)
       deps.broadcastShellState()
     }

@@ -109,10 +109,6 @@ export interface LaunchState {
    * from the launch decision.
    */
   recoveryRequested: boolean
-  profileWatcher: { stop: () => void, sync: () => void } | undefined
-  profileActivationRecyclePending: boolean
-  profileActivationRecycleTask: Promise<void> | undefined
-  profileActivationRecycleGeneration: number
   isReportingUnexpectedError: boolean
 }
 
@@ -212,10 +208,6 @@ export function createDesktopState(options: {
       lastSeedOptions: undefined,
       // Set from the launch decision during startup; defaults to a failure entry.
       recoveryRequested: false,
-      profileWatcher: undefined,
-      profileActivationRecyclePending: false,
-      profileActivationRecycleTask: undefined,
-      profileActivationRecycleGeneration: 0,
       isReportingUnexpectedError: false,
     },
     update: {

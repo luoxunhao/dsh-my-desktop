@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { PassThrough } from 'node:stream'
 
-import { APPLY_PLUGIN_UPDATES_IPC, OFFICIAL_DSH_VERSION, isDeepSeekOfficialPackage, isOfficialDshPackage } from '../runtime/bundled-plugins.js'
+import { OFFICIAL_DSH_VERSION, isDeepSeekOfficialPackage, isOfficialDshPackage } from '../runtime/bundled-plugins.js'
 import { desktopBridgeClientBundle } from './desktop-bridge-client-source.js'
 import { finalizeProfileBundlesAfterInstall, officialRuntimeInstallArgs, writeOfficialRuntimeManifest } from '../profiles/plugin-seed.js'
 import { terminateProcessTree } from '../infra/process-control.js'
@@ -31,8 +31,6 @@ export interface DesktopHostOptions {
   desktopRuntimeDir?: string
   send?: (message: unknown) => void
   runner?: (args: readonly string[], cwd: string, signal?: AbortSignal) => DesktopPnpmHandle
-  recycleDelayMs?: number
-  isInstalled?: (packageName: string) => boolean
   /** Registry roots used to list/create/select/delete profiles. */
   profileRoots?: { home: string; stateDir: string }
   /**
@@ -117,10 +115,6 @@ export function isDesktopHostMessage(value: unknown): value is DesktopHostMessag
   return isDesktopProfileActionMessage(value) || isDesktopActionMessage(value)
 }
 
-export function shouldRecycleAfterPluginArgs(args: readonly string[]): boolean {
-  return pluginCommandAction(args) !== 'other'
-}
-
 export function packageNameFromSpec(spec: string): string {
   if (spec.startsWith('@')) {
     const rest = spec.slice(1)
@@ -162,53 +156,23 @@ export function officialPluginUpdateVersion(args: readonly string[]): string | u
   return version === '' ? OFFICIAL_DSH_VERSION : version
 }
 
-/** add/update 必须能在 profile 里解析到包，才算安装成功并允许热重启。 */
-export function shouldRecycleAfterPluginResult(
-  args: readonly string[],
-  isInstalled: (packageName: string) => boolean,
-  beforeProfileState?: string,
-  afterProfileState?: string,
-): boolean {
-  const action = pluginCommandAction(args)
-  if (action === 'other') return false
-  const names = pluginCommandPackageNames(args)
-  if (action !== 'remove' && names.length > 0 && !names.every((name) => isInstalled(name))) return false
-  if (beforeProfileState !== undefined && afterProfileState !== undefined) return beforeProfileState !== afterProfileState
-  if (action === 'remove') return true
-  if (names.length === 0) return true
-  return true
-}
-
-/** 仅比较本次命令涉及的运行时状态，避免 pnpm 未替换版本时误重载 DSH。 */
-function profilePackageState(profileDir: string, packageNames: readonly string[]): string | undefined {
-  try {
-    const manifest = JSON.parse(readFileSync(join(profileDir, 'package.json'), 'utf8')) as {
-      dependencies?: Record<string, string>
-      dsh?: { profile?: { bundles?: string[] } }
-    }
-    const dependencies = manifest.dependencies ?? {}
-    const bundles = new Set(manifest.dsh?.profile?.bundles ?? [])
-    return JSON.stringify(packageNames.map((name) => ({
-      name,
-      dependency: dependencies[name],
-      bundled: bundles.has(name),
-      version: installedPackageVersion(profileDir, name),
-    })))
-  } catch {
-    return undefined
-  }
-}
-
-function installedPackageVersion(profileDir: string, packageName: string): string | undefined {
-  try {
-    const manifest = JSON.parse(readFileSync(join(profileDir, 'node_modules', ...packageName.split('/'), 'package.json'), 'utf8')) as { version?: unknown }
-    return typeof manifest.version === 'string' ? manifest.version : undefined
-  } catch {
-    return undefined
-  }
-}
-
 export function createDesktopHostServices(options: DesktopHostOptions) {
+  /**
+   * Run one plugin command and reconcile the profile manifest.
+   *
+   * NO RELOAD IS REQUESTED, ON PURPOSE.
+   *
+   * This used to send the launcher an "apply plugin updates" notification after
+   * a successful add/remove/update, and the launcher reloaded the whole DSH
+   * child process on receipt — so installing a plugin from the market restarted
+   * the workbench under the user. The market hot-mounts most plugins itself, and
+   * even when it cannot, an automatic reload is the wrong way to tell the user:
+   * it interrupts whatever they were doing, unprompted.
+   *
+   * The manifest reconciliation below still runs, because it is what makes the
+   * change take effect on the NEXT start (or on a user-requested reload); only
+   * the "reload right now" notification is gone.
+   */
   const runPlugin = (args: readonly string[], _invokingDir: string, signal?: AbortSignal): DesktopPnpmHandle => {
     const officialSpecs = officialPluginCommandSpecs(args)
     const communitySpecs = pluginCommandPackageNames(args).filter(name => !isDeepSeekOfficialPackage(name))
@@ -218,15 +182,7 @@ export function createDesktopHostServices(options: DesktopHostOptions) {
     const officialVersion = officialPluginUpdateVersion(args)
     if (officialVersion !== undefined && options.desktopRuntimeDir !== undefined) {
       writeOfficialRuntimeManifest(options.desktopRuntimeDir, officialVersion)
-      const handle = (options.runner ?? runBundledPnpm)(officialRuntimeInstallArgs(options.desktopRuntimeDir), options.desktopRuntimeDir, signal)
-      void handle.done.then(async (outcome) => {
-        if (outcome.exitCode !== 0) return
-        const delay = options.recycleDelayMs ?? 400
-        setTimeout(() => {
-          options.send?.(APPLY_PLUGIN_UPDATES_IPC)
-        }, delay).unref?.()
-      }).catch(error => { console.error('官方运行时更新后处理失败。', error) })
-      return handle
+      return (options.runner ?? runBundledPnpm)(officialRuntimeInstallArgs(options.desktopRuntimeDir), options.desktopRuntimeDir, signal)
     }
     if (officialSpecs.length > 0) {
       const message = pluginCommandAction(args) === 'remove'
@@ -235,18 +191,10 @@ export function createDesktopHostServices(options: DesktopHostOptions) {
       return completedPnpmHandle(1, message)
     }
     const packageNames = pluginCommandPackageNames(args)
-    const beforeProfileState = packageNames.length === 0 ? undefined : profilePackageState(options.profileDir, packageNames)
     const handle = (options.runner ?? runBundledPnpm)(args, options.profileDir, signal)
     void handle.done.then(async (outcome) => {
       if (outcome.exitCode !== 0 || pluginCommandAction(args) === 'other') return
-      const isInstalled = options.isInstalled ?? ((packageName) => existsSync(join(options.profileDir, 'node_modules', ...packageName.split('/'), 'package.json')))
       await finalizeProfileBundlesAfterInstall(options.profileDir, [], packageNames.length === 0 ? undefined : packageNames)
-      const afterProfileState = packageNames.length === 0 ? undefined : profilePackageState(options.profileDir, packageNames)
-      if (!shouldRecycleAfterPluginResult(args, isInstalled, beforeProfileState, afterProfileState)) return
-      const delay = options.recycleDelayMs ?? 400
-      setTimeout(() => {
-        options.send?.(APPLY_PLUGIN_UPDATES_IPC)
-      }, delay).unref?.()
     }).catch(error => { console.error('插件安装后处理失败。', error) })
     return handle
   }

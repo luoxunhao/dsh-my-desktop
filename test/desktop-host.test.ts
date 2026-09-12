@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { APPLY_PLUGIN_UPDATES_IPC, OFFICIAL_DSH_VERSION } from '../src/runtime/bundled-plugins.js'
-import { createDesktopHostServices, DESKTOP_BRIDGE_FILES, prepareDesktopBridge, officialPluginUpdateVersion, runBundledPnpm, shouldRecycleAfterPluginArgs, shouldRecycleAfterPluginResult } from '../src/bridge/desktop-host.js'
+import { OFFICIAL_DSH_VERSION } from '../src/runtime/bundled-plugins.js'
+import { createDesktopHostServices, DESKTOP_BRIDGE_FILES, prepareDesktopBridge, officialPluginUpdateVersion, runBundledPnpm } from '../src/bridge/desktop-host.js'
 import { removeDesktopBridgePatch } from '../src/bridge/desktop-bridge-migration.js'
 import { pathToFileURL } from 'node:url'
 
@@ -15,26 +15,23 @@ async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 
   while (!(await predicate()) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10))
 }
 
-test('市场安装和卸载后需要热更新 DSH', () => {
-  assert.equal(shouldRecycleAfterPluginArgs(['add', 'foo@1.0.0']), true)
-  assert.equal(shouldRecycleAfterPluginArgs(['remove', 'foo']), true)
-  assert.equal(shouldRecycleAfterPluginArgs(['list']), false)
-})
+/**
+ * THE BEHAVIOUR THESE CASES PIN: a successful plugin command must NOT ask the
+ * launcher to reload DSH.
+ *
+ * The bridge used to send an update-applied notification after every successful
+ * add/remove/update, and the launcher reloaded the whole workbench on receipt —
+ * so installing a plugin from the market restarted the desktop under the user.
+ * Reloading is now reachable only from an explicit user action (title-bar
+ * reload, Cmd/Ctrl+R, the tray item), so `sent` must stay empty here.
+ */
 
-test('包没落到磁盘时不能当成安装成功并热重启', () => {
-  assert.equal(shouldRecycleAfterPluginResult(['add', 'dsh-file-upload'], () => false), false)
-  assert.equal(shouldRecycleAfterPluginResult(['add', 'dsh-file-upload'], () => true), true)
-  assert.equal(shouldRecycleAfterPluginResult(['remove', 'dsh-file-upload'], () => false), true)
-})
-
-test('desktopPnpm 安装成功后通知桌面端热更新', async () => {
+test('插件安装成功后不得自动重载 DSH', async () => {
   const sent: unknown[] = []
   const host = createDesktopHostServices({
     profileName: 'web',
     profileDir: 'D:\\profile\\web',
-    recycleDelayMs: 0,
     send: (message) => { sent.push(message) },
-    isInstalled: () => true,
     runner: () => {
       const stdout = new PassThrough()
       const stderr = new PassThrough()
@@ -53,11 +50,12 @@ test('desktopPnpm 安装成功后通知桌面端热更新', async () => {
   assert.equal(host.desktopPnpm.connected, true)
   assert.equal(typeof host.desktopPnpm.run, 'function')
   await host.desktopPnpm.runPlugin(['add', 'demo@1.0.0'], 'D:\\profile\\web').done
-  await waitFor(() => sent.length === 1)
-  assert.deepEqual(sent, [APPLY_PLUGIN_UPDATES_IPC])
+  // Give the old delayed notification every chance to appear before asserting.
+  await new Promise(resolve => setTimeout(resolve, 50))
+  assert.deepEqual(sent, [])
 })
 
-test('pnpm 成功但插件版本未变化时不应重载 DSH', async () => {
+test('插件版本未变化时不通知重载', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-stale-update-'))
   try {
     await mkdir(join(root, 'node_modules', 'dsh-better-sidebar'), { recursive: true })
@@ -75,7 +73,6 @@ test('pnpm 成功但插件版本未变化时不应重载 DSH', async () => {
     const host = createDesktopHostServices({
       profileName: 'web',
       profileDir: root,
-      recycleDelayMs: 0,
       send: (message) => { sent.push(message) },
       runner: () => {
         const stdout = new PassThrough()
@@ -99,7 +96,7 @@ test('pnpm 成功但插件版本未变化时不应重载 DSH', async () => {
   }
 })
 
-test('pnpm 成功且插件版本变化时应重载 DSH', async () => {
+test('插件版本真的变化了也不通知重载（重载交给用户）', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-version-update-'))
   try {
     await mkdir(join(root, 'node_modules', 'dsh-better-sidebar'), { recursive: true })
@@ -113,7 +110,6 @@ test('pnpm 成功且插件版本变化时应重载 DSH', async () => {
     const host = createDesktopHostServices({
       profileName: 'web',
       profileDir: root,
-      recycleDelayMs: 0,
       send: (message) => { sent.push(message) },
       runner: () => {
         const stdout = new PassThrough()
@@ -131,8 +127,8 @@ test('pnpm 成功且插件版本变化时应重载 DSH', async () => {
     })
 
     await host.desktopPnpm.runPlugin(['add', 'dsh-better-sidebar'], root).done
-    await waitFor(() => sent.length === 1)
-    assert.deepEqual(sent, [APPLY_PLUGIN_UPDATES_IPC])
+    await new Promise(resolve => setTimeout(resolve, 50))
+    assert.deepEqual(sent, [], '版本变化后仍不得自动重载，重载只能由用户触发')
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -178,7 +174,6 @@ test('安装失败时不得把残留包写进运行清单或重启', async () =>
     const host = createDesktopHostServices({
       profileName: 'web',
       profileDir: root,
-      recycleDelayMs: 0,
       send: (message) => { sent.push(message) },
       runner: () => {
         const stdout = new PassThrough()
@@ -202,32 +197,52 @@ test('安装失败时不得把残留包写进运行清单或重启', async () =>
   }
 })
 
-test('pnpm 成功退出时不应因可选依赖脚本提示阻断热更新', async () => {
-  const sent: unknown[] = []
-  const host = createDesktopHostServices({
-    profileName: 'web',
-    profileDir: 'D:\\profile\\web',
-    recycleDelayMs: 0,
-    send: (message) => { sent.push(message) },
-    isInstalled: () => true,
-    runner: () => {
-      const stdout = new PassThrough()
-      const stderr = new PassThrough()
-      queueMicrotask(() => {
-        stdout.end('Ignored build scripts: sharp, tesseract.js')
-        stderr.end()
-      })
-      return {
-        stdout,
-        stderr,
-        done: Promise.resolve({ exitCode: 0, signal: null }),
-        cancel: () => undefined,
-      }
-    },
-  })
-  await host.desktopPnpm.runPlugin(['add', 'dsh-file-upload@0.4.3'], 'D:\\profile\\web').done
-  await waitFor(() => sent.length === 1)
-  assert.deepEqual(sent, [APPLY_PLUGIN_UPDATES_IPC])
+test('可忽略的依赖脚本提示不影响安装成功的收尾', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-ignored-scripts-'))
+  try {
+    await mkdir(join(root, 'node_modules', 'dsh-file-upload'), { recursive: true })
+    await writeFile(join(root, 'node_modules', 'dsh-file-upload', 'package.json'), JSON.stringify({
+      name: 'dsh-file-upload',
+      dsh: { bundle: { patch: 'cordis.patch.yml' } },
+    }), 'utf8')
+    await writeFile(join(root, 'node_modules', 'dsh-file-upload', 'cordis.patch.yml'), '[]\n', 'utf8')
+    await writeFile(join(root, 'package.json'), JSON.stringify({
+      dependencies: { 'dsh-file-upload': '^0.4.3' },
+      dsh: { profile: { bundles: [] } },
+    }), 'utf8')
+    const sent: unknown[] = []
+    const host = createDesktopHostServices({
+      profileName: 'web',
+      profileDir: root,
+      send: (message) => { sent.push(message) },
+      runner: () => {
+        const stdout = new PassThrough()
+        const stderr = new PassThrough()
+        queueMicrotask(() => {
+          stdout.end('Ignored build scripts: sharp, tesseract.js')
+          stderr.end()
+        })
+        return {
+          stdout,
+          stderr,
+          done: Promise.resolve({ exitCode: 0, signal: null }),
+          cancel: () => undefined,
+        }
+      },
+    })
+    await host.desktopPnpm.runPlugin(['add', 'dsh-file-upload@0.4.3'], root).done
+    await waitFor(async () => {
+      const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } }
+      return manifest.dsh?.profile?.bundles?.includes('dsh-file-upload') === true
+    })
+    // The manifest is reconciled so the plugin is active next start…
+    const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } }
+    assert.equal(manifest.dsh?.profile?.bundles?.includes('dsh-file-upload'), true)
+    // …but nothing asks the launcher to reload now.
+    assert.deepEqual(sent, [])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 test('带注释的空 patch 不会再拼出非法 YAML', () => {
   assert.equal(removeDesktopBridgePatch('# keep\n[]\n'), '# keep\n[]\n')
@@ -363,7 +378,6 @@ test('后续成功安装不会激活上次失败留下的无关依赖', async ()
     const host = createDesktopHostServices({
       profileName: 'web',
       profileDir: root,
-      recycleDelayMs: 0,
       runner: () => successfulHandle(),
     })
     await host.desktopPnpm.runPlugin(['add', 'good-plugin@1.0.0'], root).done

@@ -4,7 +4,7 @@ import test from 'node:test'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 
-import { APPLY_PLUGIN_UPDATES_IPC, DSH_WEB_LAUNCH_ARGS, isApplyPluginUpdatesIpc, isAuthenticatedBootstrapRedirect, resolveDesktopWebPort, startDsh, type DshServer } from '../src/bridge/dsh-process.js'
+import { DSH_WEB_LAUNCH_ARGS, isAuthenticatedBootstrapRedirect, resolveDesktopWebPort, startDsh, type DshServer } from '../src/bridge/dsh-process.js'
 import { DEFAULT_PROFILE_NAME } from '../src/profiles/profiles.js'
 
 const projectRoot = resolve(import.meta.dirname, '..', '..')
@@ -99,12 +99,6 @@ async function assertFixtureStoppedAfterFailure(mode: 'silent' | 'unhealthy', me
   }
 }
 
-
-test('识别插件热更新 IPC', () => {
-  assert.equal(isApplyPluginUpdatesIpc(APPLY_PLUGIN_UPDATES_IPC), true)
-  assert.equal(isApplyPluginUpdatesIpc({ type: APPLY_PLUGIN_UPDATES_IPC }), true)
-  assert.equal(isApplyPluginUpdatesIpc('shutdown'), false)
-})
 
 test('桌面启动 DSH 时必须禁止打开系统浏览器', () => {
   assert.deepEqual([...DSH_WEB_LAUNCH_ARGS], ['web', '--port', '0', '--no-open'])
