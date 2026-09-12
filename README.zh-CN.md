@@ -22,9 +22,11 @@ Web 界面承载到原生桌面窗口里。安装包自带 Node.js 与一套自�
 DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工作台 UI。窗口里看到的内容，
 来自 DSH 核心（`@deepseek-ai/dsh`）以及你安装进**当前 profile** 的插件。
 
-本版本（0.1.3）：
+本版本（0.3.0）：
 
-- 默认不随包任何社区插件（`BUNDLED_PLUGINS` 为空）；
+- 离线随包 **4 个社区插件**（`BUNDLED_PLUGINS`）：`dshmarket`、`dsh-better-sidebar`、
+  `dsh-vision-router`、`dsh-context`。出包时装配进 `store.tgz` 打进安装包，
+  首启**零联网**补种进 profile；
 - 随包一个**内置的桌面设置页**（`dsh-my-desktop-setting` 插件，源码在
   `plugins/dsh-my-desktop-settings/`），启动时注入——见下文；
 - 支持**多 profile 管理**：列出、新建、删除、切换，选中态跨重启保留；
@@ -49,7 +51,7 @@ DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工�
 | Node.js 运行时 + pnpm | ✅ 是 |
 | DSH 官方核心运行时（`@deepseek-ai/dsh` 系列，0.1.5-rc.1） | ✅ 是 |
 | 桌面设置插件（`dsh-my-desktop-setting`） | ✅ 是——由本仓库构建 |
-| 社区 / 第三方 DSH 插件 | ❌ 否 |
+| 社区插件（`dshmarket`、`dsh-better-sidebar`、`dsh-vision-router`、`dsh-context`） | ✅ 是——从随包离线 store 补种 |
 
 核心运行时预装且与 profile 隔离，你之后安装的插件不会覆盖随包运行时。
 
@@ -79,16 +81,18 @@ Profile 是受管对象，不是写死的 `web` 目录：
 
 ## 首次启动
 
-首次启动时，应用会在 `~/.dsh/profiles/web` 准备官方 `web` profile，**不预装任何社区插件**。
+首次启动时，应用会在 `~/.dsh/profiles/web` 准备官方 `web` profile，并把随包的
+4 个社区插件补种进去——**全程不需要联网**（它们以离线 store `store.tgz` 的形式
+随安装包分发）。之后新建或切换到还没有这些插件的 profile 时，同样会补种。
 
-要装插件请自行安装，例如用 DSH CLI 指向本应用的运行时：
+要再装别的插件请自行安装，例如用 DSH CLI 指向本应用的运行时：
 
 ```sh
 dsh plugin --profile web add <package>
 ```
 
-**不随包插件市场**。若想在应用内使用市场 UI，请自行把市场类插件（如 `dshmarket`）
-装进 profile；应用会向需要的插件暴露安装通道，但本身不随任何市场。
+随包插件钉死精确版本：升级靠出新版安装包（或在应用内经插件市场升级——市场会把
+待更新记录写进 profile，与随包预装是同一套机制）。
 
 ## 桌面壳提供了什么
 

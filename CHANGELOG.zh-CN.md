@@ -2,6 +2,25 @@
 
 [English](CHANGELOG.md)
 
+## 0.3.0
+
+版本升至 0.3.0。随包 DSH 运行时**不变**，仍为 0.1.5-rc.1 —— npm 上 `latest`
+标签就是它（`next` 为 0.1.5-rc.2，本次不升，与 0.2.1 时的判断一致）。
+
+- **随包社区插件由 1 个扩到 4 个**：`BUNDLED_PLUGINS` 新增
+  `dsh-better-sidebar@0.19.1`（VSCode 式右侧边栏）、`dsh-vision-router@2.1.6`
+  （为纯文本模型补视觉与像素级工具）、`dsh-context@0.50.0`（上下文看板与管理）。
+  `dshmarket@1.45.1` 早已随包（见 0.2.1 段），本次未动。四者都在出包时装配进
+  离线 store，首启 / 新建或切换 profile 时**零联网**补种，无需用户手动安装。
+- **装配实测通过**：276 个包；`node-pty` 用既有 `ALLOWED_BUILD_PACKAGES` 白名单
+  即可完成原生构建，无需放宽任何构建脚本限制。
+- **代价：`store.tgz` 由 1.9 MB 涨到约 110 MB**（压缩后），这是本次改动的主要代价。
+  四个插件自身代码合计仅约 27 MB，其余是共享依赖（CodeMirror 全家桶、mermaid、
+  puppeteer-core 等）与 registry 缓存元数据。插件升级仍需重新出包。
+- **文档修正**：README（en + zh-CN）里「默认不随包任何社区插件（`BUNDLED_PLUGINS`
+  为空）」「不随包插件市场」的说法自 0.2.1 起即已不成立（`dshmarket` 当时就已随包），
+  现已改为与代码一致，并把版本号从过时的 0.1.3 / 0.2.1 对齐到本版本。
+
 ## 0.2.1
 
 版本升至 0.2.1。随包 DSH 运行时不变，仍为 0.1.5-rc.1。
@@ -51,6 +70,13 @@
 - **移除 `plugins/dsh-market/`**：它是上游参考 clone（自带 `.git`），构建从不使用 ——
   预装走 npm 的 `dshmarket@1.45.1`。不加 ignore 的话它会被提交成一个裸 gitlink，
   使克隆者拿到一个空目录。
+- **预装社区插件扩到 4 个**：`BUNDLED_PLUGINS` 新增 `dsh-better-sidebar@0.19.1`、
+  `dsh-vision-router@2.1.6`、`dsh-context@0.50.0`（`dshmarket@1.45.1` 已于 0.2.0 段
+  随包）。四者都在出包时装配进离线 store，首启 / 新建或切换 profile 时**零联网**补种。
+  装配实测通过：276 个包、`node-pty` 用既有 `ALLOWED_BUILD_PACKAGES` 白名单即可
+  完成原生构建，无需放宽；四个插件自身代码合计约 27 MB，但 `store.tgz` 因共享依赖与
+  registry 缓存元数据涨到约 110 MB —— 安装包体积是这次改动的主要代价。
+  README 里「不随包任何社区插件 / 不随包插件市场」的过时说法同步修正。
 
 ## 0.2.0
 

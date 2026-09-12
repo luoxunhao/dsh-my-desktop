@@ -2,6 +2,31 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.3.0
+
+Version bump to 0.3.0. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1 — that is
+still npm's `latest` tag for `@deepseek-ai/dsh` (`next` is 0.1.5-rc.2, deliberately not
+taken, matching the call made for 0.2.1).
+
+- **Bundled community plugins went from one to four**: `BUNDLED_PLUGINS` gained
+  `dsh-better-sidebar@0.19.1` (a VS Code-like right sidebar),
+  `dsh-vision-router@2.1.6` (vision plus pixel-level tools for text-only models) and
+  `dsh-context@0.50.0` (context dashboard and management). `dshmarket@1.45.1` already
+  shipped (see the 0.2.1 section) and is untouched here. All four are staged into the
+  offline store at build time and seeded into the profile on first launch /
+  profile create-or-switch with **no network access**, so users install nothing by hand.
+- **Assembly verified end to end**: 276 packages; `node-pty` builds its native half
+  under the existing `ALLOWED_BUILD_PACKAGES` allowlist, so no build-script restriction
+  had to be widened.
+- **Cost: `store.tgz` grows from 1.9 MB to ~110 MB** (compressed), which is the main
+  price of this change. The four plugins' own code is only ~27 MB; the rest is shared
+  dependencies (the CodeMirror family, mermaid, puppeteer-core, …) and cached registry
+  metadata. Plugin upgrades still require a new build.
+- **Docs corrected**: the README (en + zh-CN) claims that no community plugin
+  (`BUNDLED_PLUGINS` empty) and no plugin market were bundled had already been untrue
+  since 0.2.1 (`dshmarket` shipped then). They now match the code, and the stated
+  version moved from the stale 0.1.3 / 0.2.1 to this release.
+
 ## 0.2.1
 
 Version bump to 0.2.1. The bundled DSH runtime is unchanged at 0.1.5-rc.1.
@@ -66,6 +91,16 @@ so the changes below reached no tag until now.
   `.git`) that the build never used — preinstall goes through npm's `dshmarket@1.45.1`.
   Left unignored it would have been committed as a bare gitlink, leaving clones with an
   empty directory.
+- **Bundled community plugins grew to four**: `BUNDLED_PLUGINS` gained
+  `dsh-better-sidebar@0.19.1`, `dsh-vision-router@2.1.6` and `dsh-context@0.50.0`
+  (`dshmarket@1.45.1` already shipped via the 0.2.0 work). All four are staged into the
+  offline store at build time and seeded into the profile on first launch / profile
+  create-or-switch with **no network access**. Assembly was verified end to end:
+  276 packages, and `node-pty` builds its native half under the existing
+  `ALLOWED_BUILD_PACKAGES` allowlist — no widening needed. The four plugins' own code is
+  ~27 MB, but `store.tgz` grows to ~110 MB because of shared dependencies and cached
+  registry metadata; installer size is the main cost of this change. The README claims
+  that no community plugin and no plugin market were bundled are now corrected.
 
 ## 0.2.0
 

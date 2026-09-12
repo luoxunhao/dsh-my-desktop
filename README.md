@@ -24,9 +24,12 @@ DSH My Desktop is a **launcher and desktop shell**. It does not implement the
 chat / workbench UI itself. What you see inside the window is the DSH core
 (`@deepseek-ai/dsh`) plus any plugins you install into the active profile.
 
-This version (0.1.3):
+This version (0.3.0):
 
-- bundles **no community plugin** (`BUNDLED_PLUGINS` is empty);
+- bundles **four community plugins** offline (`BUNDLED_PLUGINS`): `dshmarket`,
+  `dsh-better-sidebar`, `dsh-vision-router` and `dsh-context`. They are staged
+  into `store.tgz` at build time and seeded into the profile on first launch
+  without any network access;
 - ships a **built-in desktop settings page** (the `dsh-my-desktop-setting`
   plugin, source in `plugins/dsh-my-desktop-settings/`), injected at launch — see below;
 - manages **multiple profiles**: list, create, delete and switch, with the
@@ -53,7 +56,7 @@ Only Windows x64 has actually been packaged and run here.
 | Node.js runtime + pnpm | Yes |
 | DSH official core runtime (`@deepseek-ai/dsh` family, 0.1.5-rc.1) | Yes |
 | Desktop settings plugin (`dsh-my-desktop-setting`) | Yes — built from this repo |
-| Community / third-party DSH plugins | No |
+| Community plugins (`dshmarket`, `dsh-better-sidebar`, `dsh-vision-router`, `dsh-context`) | Yes — seeded offline from the packaged store |
 
 The core runtime is preinstalled separately from the profile, so plugins you
 install later do not overwrite the packaged runtime.
@@ -93,18 +96,21 @@ consequences worth knowing:
 ## First launch
 
 On first launch the app prepares the official `web` profile under
-`~/.dsh/profiles/web`. It does **not** preinstall any community plugin.
+`~/.dsh/profiles/web` and seeds the four bundled community plugins into it
+**without any network access** — they ship inside the installer as an offline
+store (`store.tgz`). The same seeding runs when you create or switch to a
+profile that does not have them yet.
 
-To add plugins later you install them yourself, for example with the DSH CLI
+To add more plugins you install them yourself, for example with the DSH CLI
 against this app's runtime:
 
 ```sh
 dsh plugin --profile web add <package>
 ```
 
-A plugin market is **not** bundled. If you want a market UI inside the app, you
-install a market plugin (such as `dshmarket`) into the profile yourself; the
-app exposes an install channel to plugins that need it, but no market is shipped.
+The bundled plugins are pinned to exact versions, so upgrades arrive by
+shipping a new build of the app (or by updating them in-app through the market,
+which writes the usual pending-update record).
 
 ## What the desktop shell provides
 

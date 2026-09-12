@@ -32,12 +32,23 @@ export const OFFICIAL_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/
  * 因此首启 / 新建或切换 profile 时**不需要联网**即可补种进 profile。
  *
  * 注意构建代价：非空时 `pnpm run prepare-runtime` 会联网（`DSH_BUILD_REGISTRY`
- * 可指向镜像源），且安装包增大约 3 MB；插件升级需要重新出包。
+ * 可指向镜像源），且装配时间与 store 体积都随清单增长——四个插件的 store.tgz
+ * 实测约 110 MB（压缩后），插件自身代码合计约 27 MB，其余是共享依赖与 registry
+ * 缓存元数据。插件升级需要重新出包。
  */
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
   // 可视化插件市场。上游源码在 https://github.com/dsh-market/dsh-market，
   // 本仓库不保留副本（参考源码目录已删除并 ignore，见 .gitignore）。
   { packageName: 'dshmarket', version: '1.45.1' },
+  // VSCode 式右侧边栏（资源管理器 / 编辑器 / 终端 / git / 浏览器，按会话隔离）。
+  // 上游：https://github.com/omdsh-dev/DSH-better-sidebar
+  { packageName: 'dsh-better-sidebar', version: '0.19.1' },
+  // 为纯文本模型补视觉能力 + 像素级视觉工具（Q&A / grounding / crop / OCR 等）。
+  // 上游：https://github.com/ysr666/dsh-vision-router
+  { packageName: 'dsh-vision-router', version: '2.1.6' },
+  // 上下文洞察与管理（context 看板 / 浏览器 / context 命令）。
+  // 上游：https://github.com/bowenliang123/dsh-context
+  { packageName: 'dsh-context', version: '0.50.0' },
 ]
 
 /** 离线 store 只放社区插件。 */
