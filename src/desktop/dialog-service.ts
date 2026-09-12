@@ -104,8 +104,21 @@ export function createDialogService(deps: DialogDeps) {
   /**
    * Windows flashes the whole window when a parent/modal child closes, because the
    * OS re-enables the owner. Detaching the parent before close avoids the flash.
+   *
+   * MODAL WINDOWS MUST BE SKIPPED. Electron refuses `setParentWindow` on a modal
+   * window with "Can not be called for modal window" (verified against the bundled
+   * Electron 44) — including the `null` detach used here. The throw happens inside
+   * the `close` handler, so it does not abort the close: the window still goes away,
+   * but the exception reaches `process.on('uncaughtException')`, which the launcher
+   * treats as a startup failure and answers by replacing the main window with the
+   * "启动失败" page. In practice that meant closing About (or Shortcuts) *looked*
+   * like it worked and then killed the app's UI.
+   *
+   * Modal windows do not need the workaround anyway: the OS keeps them in front of
+   * their owner, so there is no window to flash behind them.
    */
   function preventWindowsOwnedWindowFlash(window: BrowserWindow): void {
+    if (window.isModal()) return
     window.on('close', () => {
       if (process.platform !== 'win32' || window.isDestroyed() || window.getParentWindow() === null) return
       window.setParentWindow(null)

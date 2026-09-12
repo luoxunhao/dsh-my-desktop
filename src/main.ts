@@ -1816,6 +1816,9 @@ function removeNativeWindowMenu(window: BrowserWindow): void {
 
 /** Windows 关闭 parent/modal 子窗时会 EnableWindow 主窗，自定义标题栏会整窗闪一下。关闭前先断开归属。 */
 function preventWindowsOwnedWindowFlash(window: BrowserWindow): void {
+  // 模态窗口不能调 setParentWindow（含传 null），Electron 会抛
+  // "Can not be called for modal window"。见 desktop/dialog-service.ts 里的说明。
+  if (window.isModal()) return
   window.on('close', () => {
     if (process.platform !== 'win32' || window.isDestroyed() || window.getParentWindow() === null) return
     window.setParentWindow(null)

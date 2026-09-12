@@ -4,6 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!--
+      Theme must be applied BEFORE first paint, before the bundle runs.
+
+      `styles.css` switches on `[data-color-scheme='dark']` and falls back to
+      LIGHT for everything else, so with no attribute the recovery page rendered
+      light even in dark mode — the exact inverse of the title bar's bug.
+      `recovery-service.ts` passes `?theme=<scheme>`, and this is the only place
+      that can consume it early enough: the bundle is a classic script that Vite
+      injects into <head>, and reading the query there would still be after the
+      first paint.
+
+      NOTE the CSP below is `script-src 'self' 'unsafe-inline'`, relaxed from
+      `'self'`: this inline script is blocked otherwise and the page silently
+      reverts to light. `settings.html` and `startup.html` carry the same
+      relaxation for the same reason.
+    -->
+    <script>
+      document.documentElement.dataset.colorScheme =
+        new URLSearchParams(location.search).get('theme') === 'light' ? 'light' : 'dark'
+    </script>
+    <!--
       CSP aligned with the reference implementation. `connect-src 'none'` is the
       strictest line and is affordable precisely because this page talks to the main
       process over IPC: `ipcRenderer.invoke` is not a network request, so it is not
@@ -12,7 +32,7 @@
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     />
     <title>DSH My Desktop — Recovery</title>
   </head>
