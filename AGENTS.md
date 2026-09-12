@@ -186,20 +186,35 @@ select 近乎瞬时，所以超时按操作类型分别设置，且**永不挂�
 
 ## 与 UI / 顶栏改动相关的关键文件
 
-- `assets/shell.html` —— 主窗口顶部 `.bar`（浅/深两套样式、终端/重启/开发者图标、居中标题）。
-  改它不需 `tsc`，dev 从 `assets/` 直接读，重启即生效。
-- **`src/recovery-ui/`** —— 恢复页前端（React + Vite + Tailwind + `@base-ui/react`）。
-  **这是启动器里唯一需要前端构建链的部分**，改后必须跑 `pnpm run build:recovery-ui`
-  （`build:all` 已含此步）。三个必须知道的约束：
-  1. **产物是经典脚本（IIFE），不是 ES module**。恢复页用 `loadFile` 以 `file://` 加载，
-     而浏览器拒绝从 `file://` 文档执行 module 脚本——症状是**窗口一片空白、控制台无报错**。
-     Vite 配置里 `format: 'iife'` 与构建后插件（去掉 `type="module"`/`crossorigin`）正是为此。
-  2. **挂载必须等 DOM 就绪**。经典脚本在 `<head>` 中会早于 `<body>` 执行，
-     裸的 `getElementById('root')` 会返回 null 并抛错。这个坑已被踩过两次。
-  3. **tsconfig 用 `moduleResolution: 'bundler'`**（主 tsconfig 是 NodeNext），
-     因此组件里的 import **不带扩展名**。
-  改完记得 `pnpm run check:recovery-ui`（已含在 `check:all` 里）。
-- `src/shell-contract.ts`、`src/shell-preload.cts`、`src/main.ts` —— 顶栏按钮 IPC
+**所有 UI 代码都在 `frontend/`**，两处：`frontend/shell/`（5 个启动器窗口）与
+`frontend/recovery/`（恢复页）。源码不再散落在 `src/` 与 `assets/`。
+产物落 `dist/frontend/{shell,recovery}/`，打包后落 `resources/frontend/{shell,recovery}/`。
+
+- **`frontend/shell/`** —— 主窗口顶栏 + 关于 / 快捷键 / 设置 / 启动页
+  （React + 手写 CSS，无 Tailwind）。改后必须 `pnpm run build:shell-ui`
+  （`build:all` 已含此步），否则窗口读的还是旧产物。
+- **`frontend/recovery/`** —— 恢复页前端（React + Vite + Tailwind + `@base-ui/react`）。
+  改后必须跑 `pnpm run build:recovery-ui`（`build:all` 已含此步）。
+
+两个前端共有的**硬约束**（踩过，别再踩）：
+
+1. **产物必须是经典脚本（IIFE），不是 ES module**。窗口用 `loadFile` 以 `file://` 加载，
+   而浏览器拒绝从 `file://` 文档执行 module 脚本——症状是**窗口一片空白、控制台无报错**。
+   两个 Vite 配置里的 `format: 'iife'` 与构建后插件（去掉 `type="module"`/`crossorigin`）正是为此。
+   推论：`iife` 隐含 `codeSplitting: false`，而 Vite 8 (Rolldown) 拒绝 IIFE 多入口，
+   所以 shell 的 5 个窗口由 `scripts/build-shell-ui.mjs` **逐个**构建（`DSH_SHELL_ENTRY` 选择）。
+2. **挂载必须等 DOM 就绪**。经典脚本在 `<head>` 中会早于 `<body>` 执行，
+   裸的 `getElementById('root')` 会返回 null 并抛错。这个坑已被踩过两次。
+3. **tsconfig 用 `moduleResolution: 'bundler'`**（主 tsconfig 是 NodeNext），
+   因此组件里的 import **不带扩展名**；跨出 `frontend/` 引用 `src/` 时按相对路径写
+   （如 `../../src/desktop/shell-contract.js`）。
+4. **主题**：两个前端都以 `:root[data-color-scheme="light"|"dark"]` 为准，该属性由
+   HTML 里的首屏同步脚本（读 `?theme=`）设置，React 侧再用 `applyColorScheme` 跟随运行时切换。
+   **漏掉任一侧就会固定成默认主题**（顶栏曾一直深色、恢复页曾一直浅色）。
+
+改完记得 `pnpm run check:all`（含 shell-ui 与 recovery-ui 两处 typecheck）。
+
+- `src/desktop/shell-contract.ts`、`src/shell-preload.cts`、`src/main.ts` —— 顶栏按钮 IPC
   （`dsh-shell:tool` / `dsh-shell:popup-tool`）与 `openDshTerminal` 等实现，改后需 `tsc`。
 - `build/installer.nsh` —— NSIS 安装脚本。安装/卸载阶段**不**做任何同步子进程或改用户 PATH
   的工作（曾因 `nsExec` 调 powershell 写 PATH 而永久卡死，故已移除）；运行时由应用首次启动解压。

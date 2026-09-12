@@ -28,7 +28,7 @@ import { cpSync, existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 const projectRoot = fileURLToPath(new URL('..', import.meta.url))
-const outDir = join(projectRoot, 'dist', 'shell-ui')
+const outDir = join(projectRoot, 'dist', 'frontend', 'shell')
 const assetsDir = join(projectRoot, 'assets')
 
 /**
@@ -43,7 +43,7 @@ const ENTRIES = ['index', 'about', 'shortcuts', 'settings', 'startup']
 /**
  * Static files the built documents reference by RELATIVE path.
  *
- * This matters because the documents are loaded from `dist/shell-ui/`, so a
+ * This matters because the documents are loaded from `dist/frontend/shell/`, so a
  * reference like `shell-icons/xmark.svg` resolves inside THAT directory — not in
  * `dist/` and not in `resources/`. Vite only rewrites the URLs it processes;
  * these are runtime strings (`<img src>` inside JSX, and the icon in
@@ -90,4 +90,4 @@ for (const asset of RUNTIME_ASSETS) {
   cpSync(from, join(outDir, asset), { recursive: true })
 }
 
-console.log(`\nshell-ui: 完成 ${ENTRIES.length} 个入口 -> dist/shell-ui`)
+console.log(`\nshell-ui: 完成 ${ENTRIES.length} 个入口 -> dist/frontend/shell`)

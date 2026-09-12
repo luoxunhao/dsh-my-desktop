@@ -7,7 +7,7 @@
  *
  * Kept as a single minimal declaration rather than pulling in `vite/client`
  * wholesale, which would also bring `import.meta.env` typings this code does not
- * use. Same reasoning as `src/recovery-ui/env.d.ts`.
+ * use. Same reasoning as `frontend/recovery/env.d.ts`.
  */
 declare module '*.css' {
   const content: string

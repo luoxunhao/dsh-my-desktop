@@ -205,7 +205,7 @@ test('打包配置包含恢复页及其运行依赖', async () => {
     build?: { extraResources?: Array<{ from?: string; to?: string; filter?: string[] }> }
   }
   const resources = manifest.build?.extraResources ?? []
-  assert.ok(resources.some(resource => resource.from === 'dist/recovery-ui' && resource.to === 'recovery-ui'))
+  assert.ok(resources.some(resource => resource.from === 'dist/frontend/recovery' && resource.to === 'frontend/recovery'))
   const bridge = resources.filter(resource => resource.to?.startsWith('desktop-bridge/'))
   assert.ok(bridge.some(resource => resource.to === 'desktop-bridge/recovery-mode.js'))
 })
@@ -389,7 +389,7 @@ test('Windows 冒烟保留便携版冷启动路径并检查窗口响应', async 
 test('首启页面会向辅助技术播报初始化阶段', async () => {
   // The startup page is React now; the live-region attributes live on the
   // component and the shipped artifact is the Vite build output.
-  const startup = await readFile(new URL('../../src/shell-ui/StartupWindow.tsx', import.meta.url), 'utf8')
+  const startup = await readFile(new URL('../../frontend/shell/StartupWindow.tsx', import.meta.url), 'utf8')
   assert.match(startup, /role="status"/)
   assert.match(startup, /aria-live="polite"/)
   assert.match(startup, /aria-atomic="true"/)
@@ -405,7 +405,7 @@ test('首启状态文案仍由主进程经 #msg 写入', async () => {
    * a React re-render that dropped the id, or a main-process change that stopped
    * targeting it, would silently freeze the status line.
    */
-  const startup = await readFile(new URL('../../src/shell-ui/StartupWindow.tsx', import.meta.url), 'utf8')
+  const startup = await readFile(new URL('../../frontend/shell/StartupWindow.tsx', import.meta.url), 'utf8')
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   assert.match(startup, /id="msg"/)
   assert.match(main, /getElementById\("msg"\)/)

@@ -37,7 +37,7 @@ test('标题栏预绘制背景与外壳渐变的右端一致', () => {
    * lets the colors be corrected without the test pinning the bug in place.
    */
   const projectRoot = join(import.meta.dirname, '..', '..')
-  const bar = readFileSync(join(projectRoot, 'src', 'shell-ui', 'styles', 'bar.css'), 'utf8')
+  const bar = readFileSync(join(projectRoot, 'frontend', 'shell', 'styles', 'bar.css'), 'utf8')
 
   const darkStop = bar.match(/linear-gradient\(180deg, #222423 0%, (#[0-9a-f]{6}) 100%\)/i)?.[1]
   const lightStop = bar.match(/linear-gradient\(180deg, #ffffff 0%, (#[0-9a-f]{6}) 100%\)/i)?.[1]

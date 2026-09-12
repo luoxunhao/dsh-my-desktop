@@ -71,10 +71,10 @@ test('恢复页是 Vite 构建产物，且不携带外壳的侧栏/标题栏结�
   // must still be a SEPARATE document from the shell: it is loaded into its own
   // WebContentsView with the restricted recovery preload, so it must not pull in the
   // shell's chrome (side bar, title bar, step indicator).
-  const app = await readFile(new URL('../../src/recovery-ui/App.tsx', import.meta.url), 'utf8')
+  const app = await readFile(new URL('../../frontend/recovery/App.tsx', import.meta.url), 'utf8')
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   assert.match(main, /resolveRecoveryUiHtml\(\)/, '恢复窗口应加载构建产物')
-  assert.match(main, /resourcesPath, 'recovery-ui', 'index\.html'/, '打包路径应指向 recovery-ui')
+  assert.match(main, /resourcesPath, 'frontend', 'recovery', 'index\.html'/, '打包路径应指向 frontend/recovery')
   assert.doesNotMatch(app, /dshShell/)
   assert.doesNotMatch(app, /class="titlebar"/)
   assert.doesNotMatch(app, /class="steps"/)
@@ -86,7 +86,7 @@ test('恢复页的「重启」走应用级重启，而不是依赖运行中的 s
   // 重启 from a recovery session (which by definition has no server) always failed.
   // The reference's restart action relaunches the whole APPLICATION with no such
   // precondition.
-  const app = await readFile(new URL('../../src/recovery-ui/App.tsx', import.meta.url), 'utf8')
+  const app = await readFile(new URL('../../frontend/recovery/App.tsx', import.meta.url), 'utf8')
   assert.match(app, /recoveryApi\.restartDesktop\(\)/, '重启按钮应走应用级重启')
   assert.doesNotMatch(app, /copy\.restart, async \(\) => \{ await recoveryApi\.returnToWorkbench/, '重启不得再接到 returnToWorkbench')
   assert.match(app, /variant='default'/, '重启是主操作（无需 server 就绪门槛）')
@@ -139,12 +139,12 @@ test('启动失败会被记录到 profile 的日志文件（恢复页据此展�
   assert.match(main, /join\(profileDir, '\.dsh-desktop-startup-error\.log'\)/)
   // The new UI reads that file through the typed API rather than the page reading it
   // directly — the renderer is sandboxed and has no filesystem access.
-  const app = await readFile(new URL('../../src/recovery-ui/App.tsx', import.meta.url), 'utf8')
+  const app = await readFile(new URL('../../frontend/recovery/App.tsx', import.meta.url), 'utf8')
   assert.match(app, /recoveryApi\.getStartupLog\(\)/)
 })
 
 test('恢复页的配色跟随 DSH 主题，而不是操作系统颜色模式', async () => {
-  const styles = await readFile(new URL('../../src/recovery-ui/styles.css', import.meta.url), 'utf8')
+  const styles = await readFile(new URL('../../frontend/recovery/styles.css', import.meta.url), 'utf8')
   const withoutComments = styles.replace(/\/\*[\s\S]*?\*\//g, '')
   // THE deliberate difference from the reference implementation. The app follows the
   // user's DSH theme, which can disagree with the OS; the legacy page used
@@ -182,11 +182,11 @@ test('关于窗口使用独立丰富页面并进入打包资源', async () => {
   const manifest = await readFile(new URL('../../package.json', import.meta.url), 'utf8')
   // The about window is React now, so its source is the component and its
   // shipped artifact is the Vite build output.
-  const about = await readFile(new URL('../../src/shell-ui/AboutWindow.tsx', import.meta.url), 'utf8')
+  const about = await readFile(new URL('../../frontend/shell/AboutWindow.tsx', import.meta.url), 'utf8')
   // Dialog window construction now lives in the dialog service.
   const dialogs = await readFile(new URL('../../src/desktop/dialog-service.ts', import.meta.url), 'utf8')
   assert.match(main, /showAboutWindow\(\)/)
-  assert.match(manifest, /dist\/shell-ui/)
+  assert.match(manifest, /dist\/frontend\/shell/)
   assert.match(about, /关于这个项目/)
   assert.match(about, /runtimeVersion/)
   assert.match(dialogs, /resizable: false/)
@@ -200,7 +200,7 @@ test('关于窗口使用独立丰富页面并进入打包资源', async () => {
 test('桌面通知和更新设置使用独立窗口并进入打包资源', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   const manifest = await readFile(new URL('../../package.json', import.meta.url), 'utf8')
-  const settings = await readFile(new URL('../../src/shell-ui/SettingsWindow.tsx', import.meta.url), 'utf8')
+  const settings = await readFile(new URL('../../frontend/shell/SettingsWindow.tsx', import.meta.url), 'utf8')
   // Notification construction and the Windows toast identity live in the service.
   const notifications = await readFile(new URL('../../src/desktop/notification-service.ts', import.meta.url), 'utf8')
   assert.match(main, /showDesktopSettingsWindow\(\)/)
@@ -219,7 +219,7 @@ test('桌面通知和更新设置使用独立窗口并进入打包资源', async
   assert.match(notifications, /setOverlayIcon\(/)
   // The toast activator CLSID is still registered on the app at startup.
   assert.match(main, /setToastActivatorCLSID/)
-  assert.match(manifest, /dist\/shell-ui/)
+  assert.match(manifest, /dist\/frontend\/shell/)
   assert.match(manifest, /assets\/task-badges/)
   assert.match(settings, /任务完成通知/)
   assert.match(settings, /approvalsEnabled/)
@@ -229,7 +229,7 @@ test('桌面通知和更新设置使用独立窗口并进入打包资源', async
   // The hand-rolled listbox lives in its own primitive and keeps its full ARIA
   // contract. `role="listbox"`/`role="option"` are what make it announce
   // correctly, so they are asserted where they are actually written.
-  const listbox = await readFile(new URL('../../src/shell-ui/Listbox.tsx', import.meta.url), 'utf8')
+  const listbox = await readFile(new URL('../../frontend/shell/Listbox.tsx', import.meta.url), 'utf8')
   assert.match(listbox, /role="listbox"/)
   assert.match(listbox, /role="option"/)
   assert.match(listbox, /aria-selected/)
@@ -268,15 +268,15 @@ test('桌面通知和更新设置使用独立窗口并进入打包资源', async
 test('shell 在 macOS 为交通灯预留空间且状态早到不会读取空 bootstrap', async () => {
   // The bar is React now; the macOS inset lives in the stylesheet and the
   // "don't render before bootstrap" guard is the `undefined` early return.
-  const bar = await readFile(new URL('../../src/shell-ui/styles/bar.css', import.meta.url), 'utf8')
-  const component = await readFile(new URL('../../src/shell-ui/ShellBar.tsx', import.meta.url), 'utf8')
+  const bar = await readFile(new URL('../../frontend/shell/styles/bar.css', import.meta.url), 'utf8')
+  const component = await readFile(new URL('../../frontend/shell/ShellBar.tsx', import.meta.url), 'utf8')
   assert.match(bar, /html\[data-platform="darwin"\] \.bar\s*\{[^}]*padding-left:\s*80px/)
   assert.match(component, /if \(bootstrap === undefined\) return null/)
 })
 
 test('原生菜单关闭后才清理外壳菜单的选中状态', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  const component = await readFile(new URL('../../src/shell-ui/ShellBar.tsx', import.meta.url), 'utf8')
+  const component = await readFile(new URL('../../frontend/shell/ShellBar.tsx', import.meta.url), 'utf8')
   assert.match(main, /function popupShellMenu\(request: ShellMenuPopupRequest\): Promise<void>/)
   assert.match(main, /menu\.once\('menu-will-close', close\)/)
   assert.match(main, /callback: close/)
@@ -293,7 +293,7 @@ test('DSH 主题变化同步到桌面外壳、原生菜单和辅助窗口', asyn
   // Theme application now lives in the broadcast service and the shared theme
   // contract, rather than in five hand-written documents.
   const broadcast = await readFile(new URL('../../src/desktop/shell-broadcast-service.ts', import.meta.url), 'utf8')
-  const bar = await readFile(new URL('../../src/shell-ui/styles/bar.css', import.meta.url), 'utf8')
+  const bar = await readFile(new URL('../../frontend/shell/styles/bar.css', import.meta.url), 'utf8')
   assert.doesNotMatch(bridge, /inject = \[[^\]]*'theme'/)
   assert.match(dshPreload, /reportDocumentTheme/)
   assert.match(dshPreload, /attributeFilter: \['style'\]/)
@@ -313,7 +313,7 @@ test('DSH 主题变化同步到桌面外壳、原生菜单和辅助窗口', asyn
   // Every window's stylesheet carries the light-theme block the theme contract
   // depends on. This is the property the old per-document assertion protected.
   for (const name of ['bar', 'settings', 'shortcuts', 'about', 'startup']) {
-    const css = await readFile(new URL(`../../src/shell-ui/styles/${name}.css`, import.meta.url), 'utf8')
+    const css = await readFile(new URL(`../../frontend/shell/styles/${name}.css`, import.meta.url), 'utf8')
     assert.match(css, /data-color-scheme="light"/)
   }
   // The DSH content view still receives the theme as a load-time query.

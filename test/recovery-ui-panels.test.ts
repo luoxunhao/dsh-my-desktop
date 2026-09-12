@@ -18,7 +18,7 @@ import test from 'node:test'
  *   5. Chinese and English copy stay structurally identical.
  */
 const projectRoot = join(import.meta.dirname, '..', '..')
-const uiDir = join(projectRoot, 'src', 'recovery-ui')
+const uiDir = join(projectRoot, 'frontend', 'recovery')
 
 function read(relative: string): string {
   return readFileSync(join(uiDir, relative), 'utf8')

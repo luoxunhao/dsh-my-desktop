@@ -5,7 +5,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const outDir = process.argv[2] ?? path.join('.scratch', 'recovery-preview')
-const dist = path.join('dist', 'recovery-ui')
+const dist = path.join('dist', 'frontend', 'recovery')
 const html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8')
 const bundleName = fs.readdirSync(path.join(dist, 'assets')).find(name => name.endsWith('.js'))
 const bundle = fs.readFileSync(path.join(dist, 'assets', bundleName), 'utf8')

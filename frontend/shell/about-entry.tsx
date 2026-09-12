@@ -2,7 +2,7 @@
  * Bundle entry for the launcher's About window.
  *
  * MOUNTING MUST WAIT FOR THE DOM — see the identical note in
- * `src/recovery-ui/main.tsx` and `shell-entry.tsx`. The bundle is a CLASSIC
+ * `frontend/recovery/main.tsx` and `shell-entry.tsx`. The bundle is a CLASSIC
  * script (browsers refuse module scripts over `file://`), and Vite injects it
  * into `<head>`, where it runs BEFORE `<body>` exists. Mounting eagerly throws
  * "missing #root" and the window renders empty with no console error.

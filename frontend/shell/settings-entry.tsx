@@ -3,7 +3,7 @@
  *
  * The DOM-ready guard is required for the same reason as every other window:
  * the bundle is a classic script injected into `<head>`, so it runs before
- * `<body>` exists. See `src/recovery-ui/main.tsx`.
+ * `<body>` exists. See `frontend/recovery/main.tsx`.
  */
 
 import { StrictMode } from 'react'

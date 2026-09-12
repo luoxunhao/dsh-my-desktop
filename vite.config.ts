@@ -52,7 +52,7 @@ function makeFileUrlLoadable(): Plugin {
     name: 'dsh-make-file-url-loadable',
     apply: 'build',
     closeBundle() {
-      const documentPath = join(projectRoot, 'dist', 'shell-ui', SHELL_ENTRIES[resolveShellEntry()])
+      const documentPath = join(projectRoot, 'dist', 'frontend', 'shell', SHELL_ENTRIES[resolveShellEntry()])
       if (!existsSync(documentPath)) return
       const html = readFileSync(documentPath, 'utf8')
       const patched = html
@@ -69,7 +69,8 @@ function makeFileUrlLoadable(): Plugin {
  * ONE BUILD PER WINDOW, ORCHESTRATED BY `build:shell-ui`
  * -----------------------------------------------
  * The title bar, about, shortcuts, settings and startup windows are all React
- * now, and they share a bridge layer, a theme contract and a set of primitives.
+ * now (sources under `frontend/shell/`), and they share a bridge layer, a theme
+ * contract and a set of primitives.
  *
  * They CANNOT be built as multiple inputs of one Vite build, which is worth
  * spelling out because it is not obvious. The documents are loaded over
@@ -108,14 +109,14 @@ function makeFileUrlLoadable(): Plugin {
 const shellEntry = resolveShellEntry()
 
 export default defineConfig({
-  root: join(projectRoot, 'src', 'shell-ui'),
+  root: join(projectRoot, 'frontend', 'shell'),
   base: './',
   plugins: [react(), tailwindcss(), makeFileUrlLoadable()],
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
   build: {
-    outDir: join(projectRoot, 'dist', 'shell-ui'),
+    outDir: join(projectRoot, 'dist', 'frontend', 'shell'),
     // Five builds share this directory; see the note above.
     emptyOutDir: false,
     // Readable output: this ships in a desktop app, and a stack trace from a user's
@@ -123,7 +124,7 @@ export default defineConfig({
     minify: false,
     sourcemap: false,
     rollupOptions: {
-      input: join(projectRoot, 'src', 'shell-ui', SHELL_ENTRIES[shellEntry]),
+      input: join(projectRoot, 'frontend', 'shell', SHELL_ENTRIES[shellEntry]),
       output: {
         format: 'iife',
         entryFileNames: 'assets/[name].js',

@@ -109,7 +109,7 @@ export function createShellBroadcastService(deps: ShellBroadcastDeps) {
    * rather than in the renderer.
    *
    * There is deliberately NO `setTitleBarOverlay` call: the caption buttons are
-   * renderer-drawn now (see `src/shell-ui/WindowControls.tsx`), so no native
+   * renderer-drawn now (see `frontend/shell/WindowControls.tsx`), so no native
    * overlay exists to repaint.
    */
   function applyDesktopTheme(colorScheme: DesktopColorScheme, preference?: DesktopThemePreference): void {

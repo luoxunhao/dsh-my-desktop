@@ -11,9 +11,9 @@ import { readFileSync, writeFileSync } from 'node:fs'
  * This is a separate config from `vite.config.ts` (which builds the shell
  * windows) because the two pages have genuinely different requirements:
  *
- *   - The recovery page is a SINGLE document built from `src/recovery-ui`, with
+ *   - The recovery page is a SINGLE document built from `frontend/recovery`, with
  *     Tailwind and the `@base-ui/react` primitives.
- *   - The shell windows are FIVE documents built from `src/shell-ui`, with
+ *   - The shell windows are FIVE documents built from `frontend/shell`, with
  *     hand-written CSS and no Tailwind.
  *
  * They previously shared one config, which worked only while the recovery page
@@ -45,7 +45,7 @@ function makeFileUrlLoadable(): Plugin {
     name: 'dsh-make-file-url-loadable',
     apply: 'build',
     closeBundle() {
-      const indexPath = join(projectRoot, 'dist', 'recovery-ui', 'index.html')
+      const indexPath = join(projectRoot, 'dist', 'frontend', 'recovery', 'index.html')
       const html = readFileSync(indexPath, 'utf8')
       const patched = html
         .replace(/\s+crossorigin(?=[\s>])/g, '')
@@ -68,14 +68,14 @@ function makeFileUrlLoadable(): Plugin {
  * `dedupe` keeps any transitive copy from being bundled alongside it.
  */
 export default defineConfig({
-  root: join(projectRoot, 'src', 'recovery-ui'),
+  root: join(projectRoot, 'frontend', 'recovery'),
   base: './',
   plugins: [react(), tailwindcss(), makeFileUrlLoadable()],
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
   build: {
-    outDir: join(projectRoot, 'dist', 'recovery-ui'),
+    outDir: join(projectRoot, 'dist', 'frontend', 'recovery'),
     emptyOutDir: true,
     // Readable output: this ships in a desktop app, and a stack trace from a user's
     // machine is far more useful when it is not minified into one line.

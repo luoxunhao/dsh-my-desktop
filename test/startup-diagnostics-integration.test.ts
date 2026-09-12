@@ -23,7 +23,7 @@ test('桌面桥接将 Loader 的结构化启动结果经受限 IPC 交给主进�
     source('shell-ipc-policy.ts'),
     source('main.ts'),
     source('recovery-preload.cts'),
-    readFile(join(process.cwd(), 'src', 'recovery-ui', 'App.tsx'), 'utf8'),
+    readFile(join(process.cwd(), 'frontend', 'recovery', 'App.tsx'), 'utf8'),
   ])
   assert.match(bridge, /loader\.await\(\)/)
   assert.match(bridge, /bridge\.reportBoot\(/)

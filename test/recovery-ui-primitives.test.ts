@@ -17,7 +17,7 @@ import test from 'node:test'
  * mechanism (which is where we intentionally differ from the reference).
  */
 const projectRoot = join(import.meta.dirname, '..', '..')
-const uiDir = join(projectRoot, 'src', 'recovery-ui')
+const uiDir = join(projectRoot, 'frontend', 'recovery')
 
 const styles = readFileSync(join(uiDir, 'styles.css'), 'utf8')
 

@@ -1,7 +1,7 @@
 /**
  * Render-probe for the self-drawn title bar.
  *
- * Loads the REAL built bundle (`dist/shell-ui/assets/shell.js`) against a stub of
+ * Loads the REAL built bundle (`dist/frontend/shell/assets/shell.js`) against a stub of
  * the `dshShell` bridge, then reads back computed styles. This is the only way to
  * exercise a bridge-dependent window outside Electron.
  *
@@ -20,7 +20,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const projectRoot = fileURLToPath(new URL('..', import.meta.url))
-const shellUiDir = join(projectRoot, 'dist', 'shell-ui')
+const shellUiDir = join(projectRoot, 'dist', 'frontend', 'shell')
 
 /** Locate Chrome; the probe is a diagnostic, so a missing browser is not fatal. */
 function findChrome() {

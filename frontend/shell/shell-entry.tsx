@@ -2,7 +2,7 @@
  * Bundle entry for the launcher's title bar.
  *
  * MOUNTING MUST WAIT FOR THE DOM — see the identical note in
- * `src/recovery-ui/main.tsx`. The bundle is a CLASSIC script (modules are
+ * `frontend/recovery/main.tsx`. The bundle is a CLASSIC script (modules are
  * refused over `file://`), and Vite injects it into `<head>`, where it runs
  * BEFORE `<body>` exists. Mounting eagerly throws "missing #root" and the window
  * renders empty with no console error.

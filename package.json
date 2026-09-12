@@ -140,8 +140,8 @@
         "to": "notification.ico"
       },
       {
-        "from": "dist/shell-ui",
-        "to": "shell-ui",
+        "from": "dist/frontend/shell",
+        "to": "frontend/shell",
         "filter": [
           "**/*"
         ]
@@ -228,8 +228,8 @@
         ]
       },
       {
-        "from": "dist/recovery-ui",
-        "to": "recovery-ui"
+        "from": "dist/frontend/recovery",
+        "to": "frontend/recovery"
       }
     ],
     "win": {

@@ -95,7 +95,7 @@ export type ShellToolPopupId = 'reload' | 'developer'
  * Caption-button commands issued by a self-drawn title bar.
  *
  * These exist because the launcher draws its own minimise/maximise/close
- * buttons instead of letting Electron paint them (see `src/shell-ui/WindowControls.tsx`
+ * buttons instead of letting Electron paint them (see `frontend/shell/WindowControls.tsx`
  * for why: the native overlay cannot follow the bar's gradient, which produced a
  * visible color seam against the renderer-drawn icons beside it).
  *

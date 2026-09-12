@@ -42,18 +42,18 @@ test('build:all 包含恢复页构建（否则干净 clone 上产物缺失）', 
 })
 
 test('恢复页产物目录进入打包资源清单', () => {
-  const entry = packageJson.build.extraResources.find(item => item.to === 'recovery-ui')
-  assert.ok(entry !== undefined, 'extraResources 缺少 recovery-ui')
-  assert.equal(entry.from, 'dist/recovery-ui')
+  const entry = packageJson.build.extraResources.find(item => item.to === 'frontend/recovery')
+  assert.ok(entry !== undefined, 'extraResources 缺少 frontend/recovery')
+  assert.equal(entry.from, 'dist/frontend/recovery')
 })
 
 test('构建产物存在（install 后由 build:all 生成）', () => {
-  const html = join(projectRoot, 'dist', 'recovery-ui', 'index.html')
+  const html = join(projectRoot, 'dist', 'frontend', 'recovery', 'index.html')
   assert.equal(existsSync(html), true, `缺少构建产物：${html} —— 请先运行 pnpm run build:recovery-ui`)
 })
 
 test('产物在 file:// 下可加载：无 module 类型、无 crossorigin', () => {
-  const html = readFileSync(join(projectRoot, 'dist', 'recovery-ui', 'index.html'), 'utf8')
+  const html = readFileSync(join(projectRoot, 'dist', 'frontend', 'recovery', 'index.html'), 'utf8')
 
   // A module script is REFUSED over file:// with an opaque origin. The document
   // still loads, so the only symptom is an empty window.
@@ -70,13 +70,13 @@ test('产物在 file:// 下可加载：无 module 类型、无 crossorigin', () 
 })
 
 test('产物是经典脚本包（IIFE）：无顶层 import/export', () => {
-  const assets = join(projectRoot, 'dist', 'recovery-ui', 'assets')
+  const assets = join(projectRoot, 'dist', 'frontend', 'recovery', 'assets')
   assert.equal(existsSync(assets), true)
   // The bundle name is hashed only if configured otherwise; assert on whatever is there.
-  const files = readFileSync(join(projectRoot, 'dist', 'recovery-ui', 'index.html'), 'utf8')
+  const files = readFileSync(join(projectRoot, 'dist', 'frontend', 'recovery', 'index.html'), 'utf8')
     .match(/assets\/[^"']+\.js/)
   assert.ok(files !== null, '产物 HTML 必须引用一个 JS bundle')
-  const bundle = readFileSync(join(projectRoot, 'dist', 'recovery-ui', files[0]!), 'utf8')
+  const bundle = readFileSync(join(projectRoot, 'dist', 'frontend', 'recovery', files[0]!), 'utf8')
   assert.doesNotMatch(bundle, /^\s*(import|export)\s/m, '经典脚本包不应含顶层 import/export')
   assert.match(bundle, /\(function\s*\(\)|\(function\(\)/, '应为 IIFE 形式')
 })
@@ -85,6 +85,6 @@ test('源码挂载在 DOM 就绪之后（经典脚本在 head 中会早于 body 
   // A classic script in <head> runs before <body> exists, so an unguarded
   // getElementById('root') returns null and the page throws — which is exactly what
   // happened before this guard was added.
-  const source = readFileSync(join(projectRoot, 'src', 'recovery-ui', 'main.tsx'), 'utf8')
+  const source = readFileSync(join(projectRoot, 'frontend', 'recovery', 'main.tsx'), 'utf8')
   assert.match(source, /DOMContentLoaded|readyState/, '挂载必须等待 DOM 就绪')
 })

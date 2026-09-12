@@ -711,12 +711,12 @@ async function startApplication(): Promise<void> {
  * The startup / blocking-status page.
  *
  * Like the other shell windows this is now a Vite-built React document, so it
- * resolves from the `shell-ui` build output rather than the raw `assets/` tree.
- * The packaged path is checked first, matching the other resolvers.
+ * resolves from the `frontend/shell` build output rather than the raw `assets/`
+ * tree. The packaged path is checked first, matching the other resolvers.
  */
 function resolveStartupHtml(): string | undefined {
-  const packaged = join(process.resourcesPath, 'shell-ui', 'startup.html')
-  const development = join(app.getAppPath(), 'dist', 'shell-ui', 'startup.html')
+  const packaged = join(process.resourcesPath, 'frontend', 'shell', 'startup.html')
+  const development = join(app.getAppPath(), 'dist', 'frontend', 'shell', 'startup.html')
   if (existsSync(packaged)) return packaged
   if (existsSync(development)) return development
   return undefined
@@ -734,8 +734,8 @@ function resolveStartupHtml(): string | undefined {
  * `build:recovery-ui`.
  */
 function resolveRecoveryUiHtml(): string | undefined {
-  const packaged = join(process.resourcesPath, 'recovery-ui', 'index.html')
-  const development = join(app.getAppPath(), 'dist', 'recovery-ui', 'index.html')
+  const packaged = join(process.resourcesPath, 'frontend', 'recovery', 'index.html')
+  const development = join(app.getAppPath(), 'dist', 'frontend', 'recovery', 'index.html')
   if (existsSync(packaged)) return packaged
   if (existsSync(development)) return development
   return undefined
@@ -1218,9 +1218,9 @@ function resolveWindowIconPath(): string | undefined {
 }
 
 function resolveShellAsset(name: 'shell.html' | 'shortcuts.html' | 'about.html' | 'settings.html'): string {
-  const packaged = join(process.resourcesPath, 'shell-ui', name)
+  const packaged = join(process.resourcesPath, 'frontend', 'shell', name)
   if (existsSync(packaged)) return packaged
-  return join(app.getAppPath(), 'dist', 'shell-ui', name)
+  return join(app.getAppPath(), 'dist', 'frontend', 'shell', name)
 }
 
 function resolvePreload(name: 'shell-preload.cjs' | 'dsh-view-preload.cjs' | 'recovery-preload.cjs'): string {

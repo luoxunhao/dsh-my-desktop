@@ -20,5 +20,5 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true
   },
-  "include": ["src/shell-ui/**/*.ts", "src/shell-ui/**/*.tsx"]
+  "include": ["frontend/shell/**/*.ts", "frontend/shell/**/*.tsx"]
 }

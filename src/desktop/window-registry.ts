@@ -116,7 +116,7 @@ export function createWindowRegistry(deps: WindowRegistryDeps) {
       // the CSS gradient.
       backgroundColor: palette.titleBarBackground,
       // No `titleBarOverlay`: the caption buttons are DRAWN BY THE RENDERER
-      // (src/shell-ui/WindowControls.tsx). The native overlay can only paint a
+      // (frontend/shell/WindowControls.tsx). The native overlay can only paint a
       // SOLID color, so it could never follow the bar's vertical gradient — the
       // seam between a `#f6f7f6` bar and a `#f1f4f3` overlay plate was visible,
       // as was the jump from 72%-black HTML icons to a 100%-black native glyph.

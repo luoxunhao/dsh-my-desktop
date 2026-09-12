@@ -18,13 +18,21 @@ Copy-Tree (Join-Path $src 'desktop-bridge') (Join-Path $app 'desktop-bridge')
 
 # 1b) The shell window documents and the recovery page are NOT read from app.asar:
 #     `resolveShellAsset` and `resolveRecoveryUiHtml` check
-#     `process.resourcesPath/<dir>/` FIRST and only fall back to the app bundle.
-#     Staging just the asar therefore leaves the title bar and the recovery page
-#     running old HTML — a fix that "looks applied" but is not. Both are build
-#     outputs of `build:all` (shell-ui) and `build:recovery-ui`, so copy the whole
-#     directory rather than a hand-listed file.
-Copy-Tree (Join-Path $src 'shell-ui') (Join-Path $app 'shell-ui')
-Copy-Tree (Join-Path $src 'recovery-ui') (Join-Path $app 'recovery-ui')
+#     `process.resourcesPath/frontend/<shell|recovery>/` FIRST and only fall back
+#     to the app bundle. Staging just the asar therefore leaves the title bar and
+#     the recovery page running old HTML — a fix that "looks applied" but is not.
+#     Both are build outputs of `build:all` (shell-ui) and `build:recovery-ui`, so
+#     copy the whole directory rather than a hand-listed file.
+#
+#     Remove the pre-rename `shell-ui/` + `recovery-ui/` first: nothing reads them
+#     any more, and leaving them behind makes it ambiguous which copy is live when
+#     a window still misbehaves after staging.
+foreach ($stale in @('shell-ui', 'recovery-ui')) {
+  $stalePath = Join-Path $app $stale
+  if (Test-Path $stalePath) { Remove-Item -Recurse -Force $stalePath }
+}
+Copy-Tree (Join-Path $src 'frontend\shell') (Join-Path $app 'frontend\shell')
+Copy-Tree (Join-Path $src 'frontend\recovery') (Join-Path $app 'frontend\recovery')
 
 # 2) per-user materialized copies (the running app loads these, not the repo).
 #    Only overwrite lib/ + cordis.patch.yml: the materialized dir keeps its own
@@ -43,8 +51,8 @@ Copy-Tree (Join-Path $src 'desktop-bridge') (Join-Path $userData 'desktop-bridge
 
 Write-Output 'staged ok'
 Write-Output ("app.asar        {0}" -f (Get-Item (Join-Path $app 'app.asar')).LastWriteTime)
-Write-Output ("shell.html      {0}" -f (Get-Item (Join-Path $app 'shell-ui\shell.html')).LastWriteTime)
-Write-Output ("recovery index  {0}" -f (Get-Item (Join-Path $app 'recovery-ui\index.html')).LastWriteTime)
+Write-Output ("shell.html      {0}" -f (Get-Item (Join-Path $app 'frontend\shell\shell.html')).LastWriteTime)
+Write-Output ("recovery index  {0}" -f (Get-Item (Join-Path $app 'frontend\recovery\index.html')).LastWriteTime)
 Write-Output ("bridge host.js  {0}" -f (Get-Item (Join-Path $app 'desktop-bridge\desktop-host.js')).LastWriteTime)
 Write-Output ("userData host   {0}" -f (Get-Item (Join-Path $userData 'desktop-bridge\desktop-host.js')).LastWriteTime)
 Write-Output ("userData index  {0}" -f (Get-Item (Join-Path $userPlugin 'lib\index.js')).LastWriteTime)

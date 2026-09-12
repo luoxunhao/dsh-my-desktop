@@ -13,5 +13,5 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true
   },
-  "include": ["src/recovery-ui/**/*.ts", "src/recovery-ui/**/*.tsx"]
+  "include": ["frontend/recovery/**/*.ts", "frontend/recovery/**/*.tsx"]
 }

@@ -17,7 +17,7 @@ export interface DesktopThemePalette {
    * Set on the `BrowserWindow` itself (`backgroundColor`) and on
    * `setBackgroundColor` during a theme change. It no longer feeds a
    * `titleBarOverlay`, because the caption buttons are renderer-drawn — see
-   * `src/shell-ui/WindowControls.tsx`. It only needs to match the bar closely
+   * `frontend/shell/WindowControls.tsx`. It only needs to match the bar closely
    * enough that the pre-paint flash is not a visible seam.
    */
   readonly titleBarBackground: string
@@ -39,7 +39,7 @@ export const DESKTOP_THEME_PALETTES: Readonly<Record<DesktopColorScheme, Desktop
     shellBackground: '#ffffff',
     shortcutsBackground: '#ffffff',
     // Must match the RIGHT-hand stop of the shell bar's gradient in
-    // src/shell-ui/styles.css, because that is the color the bar actually has
+    // frontend/shell/styles.css, because that is the color the bar actually has
     // where the caption buttons sit. It is used for the window's pre-paint
     // background, so a mismatch shows as a flash on startup.
     titleBarBackground: '#f6f7f6',

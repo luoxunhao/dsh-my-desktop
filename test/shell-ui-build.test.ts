@@ -18,7 +18,7 @@ import test from 'node:test'
  * 3. **The relative asset paths have no files behind them.** The documents load
  *    `shell-icons/*.svg` and `icon.png` by relative URL at runtime (they appear
  *    in JSX, so Vite does not rewrite them). Because the documents are served
- *    from `dist/shell-ui/`, those files must be copied INSIDE that directory —
+ *    from `dist/frontend/shell/`, those files must be copied INSIDE that directory —
  *    the copies at the `resources/` root do not resolve. Missing them means blank
  *    icons in a window that otherwise looks fine.
  * 4. **The five windows are built by five Vite runs.** Vite 8 rejects
@@ -64,9 +64,9 @@ test('build:all 同时保留恢复页与插件构建', () => {
 })
 
 test('外壳窗口产物目录进入打包资源清单', () => {
-  const entry = packageJson.build.extraResources.find(item => item.to === 'shell-ui')
-  assert.ok(entry !== undefined, 'extraResources 缺少 shell-ui')
-  assert.equal(entry.from, 'dist/shell-ui')
+  const entry = packageJson.build.extraResources.find(item => item.to === 'frontend/shell')
+  assert.ok(entry !== undefined, 'extraResources 缺少 frontend/shell')
+  assert.equal(entry.from, 'dist/frontend/shell')
 
   /*
    * The five loose HTML files must NOT still be listed. Shipping them alongside
@@ -83,14 +83,14 @@ test('外壳窗口产物目录进入打包资源清单', () => {
 
 test('构建产物存在（install 后由 build:all 生成）', () => {
   for (const document of DOCUMENTS) {
-    const html = join(projectRoot, 'dist', 'shell-ui', document)
+    const html = join(projectRoot, 'dist', 'frontend', 'shell', document)
     assert.equal(existsSync(html), true, `缺少构建产物：${html} —— 请先运行 pnpm run build:shell-ui`)
   }
 })
 
 test('产物在 file:// 下可加载：无 module 类型、无 crossorigin、相对路径', () => {
   for (const document of DOCUMENTS) {
-    const html = readFileSync(join(projectRoot, 'dist', 'shell-ui', document), 'utf8')
+    const html = readFileSync(join(projectRoot, 'dist', 'frontend', 'shell', document), 'utf8')
 
     // A module script is REFUSED over file:// with an opaque origin. The document
     // still loads, so the only symptom is an empty window.
@@ -106,7 +106,7 @@ test('产物在 file:// 下可加载：无 module 类型、无 crossorigin、相
 
 test('产物是经典脚本包（IIFE）：无顶层 import/export', () => {
   for (const name of WINDOWS) {
-    const bundlePath = join(projectRoot, 'dist', 'shell-ui', 'assets', `${name}.js`)
+    const bundlePath = join(projectRoot, 'dist', 'frontend', 'shell', 'assets', `${name}.js`)
     assert.equal(existsSync(bundlePath), true, `缺少 bundle：${bundlePath}`)
     const bundle = readFileSync(bundlePath, 'utf8')
     assert.doesNotMatch(bundle, /^\s*(import|export)\s/m, `${name}: 经典脚本包不应含顶层 import/export`)
@@ -123,14 +123,14 @@ test('相对路径引用的运行期资源已随产物复制', () => {
    * icons existed but were empty and every glyph rendered blank.
    */
   for (const asset of RELATIVE_ASSETS) {
-    const copied = join(projectRoot, 'dist', 'shell-ui', asset)
+    const copied = join(projectRoot, 'dist', 'frontend', 'shell', asset)
     assert.equal(existsSync(copied), true, `缺少运行期资源：${copied}`)
   }
 
-  const iconsDir = join(projectRoot, 'dist', 'shell-ui', 'shell-icons')
+  const iconsDir = join(projectRoot, 'dist', 'frontend', 'shell', 'shell-icons')
   const referenced = new Set<string>()
   for (const name of WINDOWS) {
-    const source = readFileSync(join(projectRoot, 'dist', 'shell-ui', 'assets', `${name}.js`), 'utf8')
+    const source = readFileSync(join(projectRoot, 'dist', 'frontend', 'shell', 'assets', `${name}.js`), 'utf8')
     for (const match of source.matchAll(/shell-icons\/([\w.-]+\.svg)/g)) referenced.add(match[1]!)
   }
   assert.ok(referenced.size > 0, '至少应引用一个 shell 图标')
@@ -172,7 +172,7 @@ test('源码挂载在 DOM 就绪之后（经典脚本在 head 中会早于 body 
   // getElementById('root') returns null and the window throws.
   for (const name of WINDOWS) {
     const entry = name === 'shell' ? 'shell-entry.tsx' : `${name}-entry.tsx`
-    const source = readFileSync(join(projectRoot, 'src', 'shell-ui', entry), 'utf8')
+    const source = readFileSync(join(projectRoot, 'frontend', 'shell', entry), 'utf8')
     assert.match(source, /DOMContentLoaded|readyState/, `${entry}: 挂载必须等待 DOM 就绪`)
   }
 })
@@ -190,8 +190,8 @@ test('标题栏按钮取色与工具图标同源，且按钮区无独立底色',
    * `--titlebar-fg`, so the light theme drew near-white caption glyphs on a white
    * bar. Checking the name in both files is what makes it loud.
    */
-  const bar = readFileSync(join(projectRoot, 'src', 'shell-ui', 'ShellBar.tsx'), 'utf8')
-  const css = readFileSync(join(projectRoot, 'src', 'shell-ui', 'styles', 'bar.css'), 'utf8')
+  const bar = readFileSync(join(projectRoot, 'frontend', 'shell', 'ShellBar.tsx'), 'utf8')
+  const css = readFileSync(join(projectRoot, 'frontend', 'shell', 'styles', 'bar.css'), 'utf8')
 
   const published = /\[?'(--titlebar-[\w-]+)'/.exec(bar)?.[1]
   const consumed = /\.caption-button \{ color: var\((--titlebar-[\w-]+)\); \}/.exec(css)?.[1]
@@ -222,12 +222,12 @@ test('标题栏按钮由渲染进程绘制（消除两套颜色来源）', () =>
   const broadcast = readFileSync(join(projectRoot, 'src', 'desktop', 'shell-broadcast-service.ts'), 'utf8')
   assert.doesNotMatch(broadcast, /\.setTitleBarOverlay\(/, '不应再重绘原生覆盖层')
 
-  const controls = readFileSync(join(projectRoot, 'src', 'shell-ui', 'WindowControls.tsx'), 'utf8')
+  const controls = readFileSync(join(projectRoot, 'frontend', 'shell', 'WindowControls.tsx'), 'utf8')
   assert.match(controls, /windowControl\(/, '必须经桥接通道发送窗口命令')
 
   // The bar's icons and the caption glyphs must read the SAME custom property,
   // which is what makes the seam structurally impossible rather than merely fixed.
-  const bar = readFileSync(join(projectRoot, 'src', 'shell-ui', 'styles', 'bar.css'), 'utf8')
+  const bar = readFileSync(join(projectRoot, 'frontend', 'shell', 'styles', 'bar.css'), 'utf8')
   assert.match(bar, /\.caption-button \{ color: var\(--titlebar-fg\); \}/, '标题栏按钮必须与工具图标同源取色')
 
   // And the value is shipped from the main process, so the two cannot drift.

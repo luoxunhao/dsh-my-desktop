@@ -5,7 +5,7 @@
  * purpose: `contextBridge` payloads cross a structured-clone boundary, so the
  * preload stays free of the launcher's type vocabulary and the renderer is the
  * one place that asserts the shapes. This module is that single assertion point;
- * nothing else in `src/shell-ui` should touch `window.dshShell` directly.
+ * nothing else in `frontend/shell` should touch `window.dshShell` directly.
  *
  * Every window in the launcher shares this bridge, but not every window can use
  * every method — the preload exposes a superset. That is why access is split
@@ -14,7 +14,7 @@
  * that its IPC policy would reject.
  */
 
-import type { ShellBootstrap, ShellState, ShellToolId } from '../desktop/shell-contract.js'
+import type { ShellBootstrap, ShellState, ShellToolId } from '../../src/desktop/shell-contract.js'
 
 /** The raw, untyped surface the preload installs on `window`. */
 interface RawShellBridge {
