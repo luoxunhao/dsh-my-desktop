@@ -2,6 +2,50 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.2.1
+
+Version bump to 0.2.1. The bundled DSH runtime is unchanged at 0.1.5-rc.1.
+
+- **Closing the About window no longer breaks the app**: `preventWindowsOwnedWindowFlash`
+  detached the parent window on `close` to avoid the Windows owner-flash, but Electron
+  refuses `setParentWindow` on a **modal** window ("Can not be called for modal window").
+  The throw happened inside the `close` handler, so the window still closed — the
+  exception then reached `process.on('uncaughtException')`, which the launcher treats as
+  a startup failure and answers by replacing the main window with the "启动失败" page.
+  Modal windows are now skipped, and they never needed the workaround (the OS keeps them
+  in front of their owner, so there is no window to flash behind them).
+- **Light theme now reaches the title bar**: `bar.css` keys every light-mode rule off
+  `:root[data-color-scheme="light"]`, but nothing ever set that attribute on the shell
+  window — `shell.html` had no pre-paint theme script and `ShellBar` did not apply the
+  bootstrap scheme either, so the bar fell through to its dark defaults while the content
+  below turned light. Both halves are now in place: the document script for the initial
+  paint and `applyColorScheme` for live theme switches.
+- **Recovery page follows the theme in both directions**: the same missing attribute made
+  `styles.css` fall back to its LIGHT branch, so the page rendered light even in dark
+  mode — the exact inverse of the title-bar bug. `?theme=` is now applied before first
+  paint (CSP relaxed to `script-src 'unsafe-inline'` accordingly).
+- **Shell windows migrated to Vite + React**: the five hand-written documents
+  (`assets/{shell,about,shortcuts,settings,startup}.html`) are now React apps. Because
+  the windows load over `file://` each bundle must be a classic script, and Vite 8
+  (Rolldown) rejects IIFE with multiple inputs — so a new `scripts/build-shell-ui.mjs`
+  builds them one at a time. The caption buttons are now renderer-drawn, removing the
+  seam the native `titleBarOverlay` created (it can only paint a solid color).
+- **UI sources consolidated under `frontend/`**: `src/shell-ui` → `frontend/shell` and
+  `src/recovery-ui` → `frontend/recovery`, with build output at
+  `dist/frontend/{shell,recovery}` and packaged output at
+  `resources/frontend/{shell,recovery}`.
+- **`stage-installed.ps1` fixed**: it only synced `app.asar`, but the shell documents and
+  the recovery page resolve from `process.resourcesPath/frontend/` first — so staging
+  silently left the running app on old HTML. It now syncs those directories and removes
+  the pre-rename copies.
+- **`.gitignore` anchored**: the unanchored `runtime/` rule matched `src/runtime/` at any
+  depth, so new files there would have been silently ignored. The build-output rules now
+  carry a leading slash.
+- **`plugins/dsh-market/` removed**: it was an upstream reference clone (with its own
+  `.git`) that the build never used — preinstall goes through npm's `dshmarket@1.45.1`.
+  Left unignored it would have been committed as a bare gitlink, leaving clones with an
+  empty directory.
+
 ## 0.2.0
 
 Version bump to 0.2.0. The bundled DSH runtime is 0.1.5-rc.1.

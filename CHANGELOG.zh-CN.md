@@ -2,6 +2,41 @@
 
 [English](CHANGELOG.md)
 
+## 0.2.1
+
+版本升至 0.2.1。随包 DSH 运行时不变，仍为 0.1.5-rc.1。
+
+- **关闭「关于」不再拖垮应用**：`preventWindowsOwnedWindowFlash` 在 `close` 时断开父窗
+  以规避 Windows 的主窗闪烁，但 Electron 拒绝对**模态窗口**调用 `setParentWindow`
+  （"Can not be called for modal window"）。该异常抛在 `close` 处理器内，窗口照常关闭，
+  却会冒到 `process.on('uncaughtException')` —— 启动器将其视为启动失败，并把主窗口
+  替换成「启动失败」页。现在模态窗口直接跳过；它们本也不需要该规避（系统会把模态窗
+  压在父窗之上，身后没有可闪的主窗）。
+- **浅色主题现在能到达顶栏**：`bar.css` 的浅色规则全部以
+  `:root[data-color-scheme="light"]` 为准，但从未有人把该属性写到外壳窗口上 ——
+  `shell.html` 没有首屏前置主题脚本，`ShellBar` 也没有应用 bootstrap 里的主题，
+  于是顶栏退回深色默认值，而下方内容已变浅。现在两侧齐备：文档脚本负责首屏，
+  `applyColorScheme` 负责运行时的主题切换。
+- **恢复页双向跟随主题**：同一个缺失属性使 `styles.css` 退回**浅色**分支，导致深色模式下
+  恢复页反而是浅的 —— 与顶栏问题方向相反的同一个 bug。现在 `?theme=` 在首屏前即生效
+  （CSP 相应放宽 `script-src 'unsafe-inline'`）。
+- **外壳窗口迁移到 Vite + React**：五个手写文档
+  （`assets/{shell,about,shortcuts,settings,startup}.html`）改为 React 应用。因为窗口以
+  `file://` 加载，每个 bundle 必须是经典脚本，而 Vite 8 (Rolldown) 拒绝 IIFE 多入口 ——
+  故新增 `scripts/build-shell-ui.mjs` 逐个构建。窗口按钮改由渲染进程自绘，消除了原生
+  `titleBarOverlay` 造成的接缝（它只能涂纯色）。
+- **UI 源码统一到 `frontend/`**：`src/shell-ui` → `frontend/shell`，
+  `src/recovery-ui` → `frontend/recovery`；产物落 `dist/frontend/{shell,recovery}`，
+  打包后落 `resources/frontend/{shell,recovery}`。
+- **`stage-installed.ps1` 修正**：它原本只同步 `app.asar`，但外壳文档与恢复页是优先从
+  `process.resourcesPath/frontend/` 读取的 —— 于是同步后运行中的应用仍在读旧 HTML。
+  现已同步这两个目录，并清除改名前的旧副本。
+- **`.gitignore` 锚定**：无前导斜杠的 `runtime/` 会匹配任意层级的 `src/runtime/`，
+  导致该目录下新增文件被静默忽略。构建产物规则现已加前导斜杠。
+- **移除 `plugins/dsh-market/`**：它是上游参考 clone（自带 `.git`），构建从不使用 ——
+  预装走 npm 的 `dshmarket@1.45.1`。不加 ignore 的话它会被提交成一个裸 gitlink，
+  使克隆者拿到一个空目录。
+
 ## 0.2.0
 
 版本升至 0.2.0。随包 DSH 运行时为 0.1.5-rc.1。

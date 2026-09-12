@@ -48,7 +48,7 @@ function checkpointFor(f: ReturnType<typeof fixture>) {
     profileDir: f.profileDir,
     homeDir: f.homeDir,
     profileName: 'web',
-    appVersion: '0.2.0',
+    appVersion: '0.2.1',
   })
 }
 
@@ -75,7 +75,7 @@ test('已捕获的槽带出时间、版本、文件数与总大小', () => {
     const slots = projectCheckpointSlots(checkpointFor(f).listSlots(), 'web')
     const captured = slots.find(slot => slot.status === 'available')
     assert.ok(captured !== undefined, '应有一个可用槽')
-    assert.equal(captured.appVersion, '0.2.0')
+    assert.equal(captured.appVersion, '0.2.1')
     assert.equal(typeof captured.capturedAt, 'string')
     assert.equal(Number.isFinite(Date.parse(captured.capturedAt!)), true)
 
