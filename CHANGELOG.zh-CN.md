@@ -6,6 +6,21 @@
 
 版本升至 0.2.1。随包 DSH 运行时不变，仍为 0.1.5-rc.1。
 
+这是**第一个真正带 `0.2.1` 版本号**的代码树：`0.2.0` tag 打在 version bump 之前
+（见 0.2.0 段末的说明），因此下列改动此前没有任何 tag 承载。
+
+- **版本对齐**：根 `package.json` 与随包插件 `dsh-my-desktop-setting` 均升至
+  `0.2.1`（物化插件清单回退到应用版本，二者保持同步）。同时补完 0.2.0 时就该做
+  的修正：`config.bundledDshVersion` 此前仍是 `0.1.2-rc.1`，现与
+  `OFFICIAL_DSH_VERSION`（`0.1.5-rc.1`）及 README 文档一致。
+- **终端 `dsh` 修复**：终端 shim 以「模块」方式 import 官方 CLI，导致 0.1.5 的
+  `if (import.meta.main) await runCli()` 守卫恒为假，`dsh --version` 退出码 0 却零输出
+  —— 与 0.2.0 的启动挂起同根因，只是发生在终端 shim 而非 bootstrap。
+- **插件市场随包离线预装**：`dshmarket@1.45.1` 以离线 pnpm store
+  （`plugins-store.tgz`）打进安装包，首启（以及新建/切换 profile）时补种进当前
+  profile，**无需联网**。启用 store 重新接通了本就存在的链路：`prepare-runtime`
+  装配 `store.tgz`、`extraResources` 随包携带、运行时解压步骤还原到 `plugins/store`。
+  代价是插件升级需重新出包，安装包增大 ~1.8 MB（store 压缩后）。
 - **关闭「关于」不再拖垮应用**：`preventWindowsOwnedWindowFlash` 在 `close` 时断开父窗
   以规避 Windows 的主窗闪烁，但 Electron 拒绝对**模态窗口**调用 `setParentWindow`
   （"Can not be called for modal window"）。该异常抛在 `close` 处理器内，窗口照常关闭，
@@ -39,21 +54,32 @@
 
 ## 0.2.0
 
-版本升至 0.2.0。随包 DSH 运行时为 0.1.5-rc.1。
+随包 DSH 运行时升至 0.1.5-rc.1，并修掉随之而来的启动死锁。
 
-- **版本对齐**：根 `package.json` 与随包插件 `dsh-my-desktop-setting` 均升至
-  `0.2.0`（物化插件清单回退到应用版本，二者保持同步）。
-- **陈旧运行时引用修正**：`config.bundledDshVersion` 此前仍是 `0.1.2-rc.1`，
-  已修正为真实的 `0.1.5-rc.1`（与 `OFFICIAL_DSH_VERSION` 及 CHANGELOG/README 一致）。
-- **终端 `dsh` 修复**：终端 shim 以「模块」方式 import 官方 CLI，导致 0.1.5 的
-  `if (import.meta.main) await runCli()` 守卫恒为假，`dsh --version` 退出码 0 却零输出。
-  现在 shim 在 import 后显式调用导出的 `runCli()`（与启动器 bootstrap 同一修复）。
-- **插件市场随包离线预装**：`dshmarket@1.45.1` 以离线 pnpm store
-  （`plugins-store.tgz`）打进安装包，首启（以及新建/切换 profile）时补种进当前
-  profile，**无需联网**。启用 store 重新接通了本就存在的链路：`prepare-runtime`
-  装配 `store.tgz`、`extraResources` 随包携带、运行时解压步骤还原到 `plugins/store`。
-  代价是插件升级需重新出包，安装包增大 ~1.8 MB（store 压缩后）。
-- TODO：发版前补全 0.2.0 的功能清单。
+以下三处修复针对的是同一起回归：运行时升级后，启动器与运行时在若干处各算各的，
+且症状表现为**静默挂起**而非报错。
+
+- **0.1.5 启动不再挂死**（`fix(runtime)`）：升到 0.1.5-rc.1 后桌面端卡在
+  「server-starting」直到 45 秒超时。0.1.5 给 CLI 加了主模块守卫
+  （`if (import.meta.main) await runCli()`），但 bootstrap 是用 `import()` 加载
+  `bin.js` 的，故 `import.meta.main === false`，`runCli()` 从未执行 —— 进程活着、
+  零输出、永不监听。现在 bootstrap 走真正会执行的调用路径。
+  定位方式：直跑 `bin.js`（20 秒内监听）与经 bootstrap（stdout/stderr/ipc 全静默）
+  二分对比。
+- **bundle 检查与运行时解析统一到同一目录**（`fix(runtime)`）：
+  `resolveDshRuntime` 与 `assertOfficialProfileBundlesAvailable` 各自独立计算运行时
+  目录，导致 dev 下前者命中健康的 `runtime-dsh/`，后者却去看残缺的
+  `userData\dsh-runtime`。于是对一个存在且正确的运行时报出荒谬的
+  「缺少内置插件 dsh-base」。
+- **dev 启动能找到 workspace 运行时**（`fix(runtime)`）：dev 的运行时候选链
+  （`DSH_RUNTIME_ROOT` → `resources\dsh` → `..\deepseek-harness`）无法命中
+  `prepare-runtime` 刚装配好的完整 `runtime-dsh/`，于是 `userData` 解包损坏时
+  dev 直接报错，而打包版会自愈。现把 `<appPath>/runtime-dsh` 加为 dev-only 候选，
+  不影响打包解析。
+
+> **关于 `0.2.0` tag**：它指向 `303e498`，即上述三处运行时修复。version bump 与
+> 现已归入 0.2.1 段的各项都发生在其后，因此**该 tag 对应的代码树里
+> `package.json` 仍是 `0.1.4`**。真正携带 `0.2.1` 的是下面的 0.2.1 段。
 
 ## 0.1.4
 

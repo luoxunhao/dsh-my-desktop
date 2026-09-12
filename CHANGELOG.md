@@ -6,6 +6,27 @@
 
 Version bump to 0.2.1. The bundled DSH runtime is unchanged at 0.1.5-rc.1.
 
+This is the first tree that actually carries version `0.2.1`: the `0.2.0` tag was
+cut before the version bump landed (see the note at the end of the 0.2.0 section),
+so the changes below reached no tag until now.
+
+- **Version alignment**: root `package.json` and the bundled
+  `dsh-my-desktop-setting` plugin both bumped to `0.2.1` (the materialized plugin
+  manifest falls back to the app version, so they stay in lockstep). This also
+  completes the correction started in 0.2.0: `config.bundledDshVersion` had still
+  read `0.1.2-rc.1` and now matches `OFFICIAL_DSH_VERSION` (`0.1.5-rc.1`) as well
+  as the README docs.
+- **Terminal `dsh` fixed**: the terminal shim imported the official CLI as a
+  module, so 0.1.5's `if (import.meta.main) await runCli()` guard was false and
+  `dsh --version` exited 0 with zero output — the same root cause as the 0.2.0
+  startup hang, in the terminal shim instead of the bootstrap.
+- **Plugin market preinstalled offline**: `dshmarket@1.45.1` ships inside the
+  installer as an offline pnpm store (`plugins-store.tgz`) and is seeded into the
+  active profile on first launch (and on profile create/switch) **without network
+  access**. Enabling the store reconnected machinery that already existed:
+  `prepare-runtime` assembles `store.tgz`, `extraResources` ships it, and the
+  runtime extraction step unpacks it to `plugins/store`. Plugin upgrades now
+  require a new build; the installer grows by ~1.8 MB (compressed store).
 - **Closing the About window no longer breaks the app**: `preventWindowsOwnedWindowFlash`
   detached the parent window on `close` to avoid the Windows owner-flash, but Electron
   refuses `setParentWindow` on a **modal** window ("Can not be called for modal window").
@@ -48,26 +69,37 @@ Version bump to 0.2.1. The bundled DSH runtime is unchanged at 0.1.5-rc.1.
 
 ## 0.2.0
 
-Version bump to 0.2.0. The bundled DSH runtime is 0.1.5-rc.1.
+The bundled DSH runtime moved to 0.1.5-rc.1 and startup stopped deadlocking on it.
 
-- **Version alignment**: root `package.json` and the bundled
-  `dsh-my-desktop-setting` plugin both bumped to `0.2.0` (the materialized
-  plugin manifest falls back to the app version, so they stay in lockstep).
-- **Stale runtime reference fixed**: `config.bundledDshVersion` was still
-  `0.1.2-rc.1`; corrected to the real `0.1.5-rc.1` (matching
-  `OFFICIAL_DSH_VERSION` and the CHANGELOG/README docs).
-- **Terminal `dsh` fixed**: the terminal shim imported the official CLI as a
-  module, so 0.1.5's `if (import.meta.main) await runCli()` guard was false and
-  `dsh --version` exited 0 with zero output. The shim now calls the exported
-  `runCli()` explicitly (same fix as the launcher's own bootstrap).
-- **Plugin market preinstalled offline**: `dshmarket@1.45.1` ships inside the
-  installer as an offline pnpm store (`plugins-store.tgz`) and is seeded into the
-  active profile on first launch (and on profile create/switch) **without
-  network access**. Enabling the store reconnected machinery that already
-  existed: `prepare-runtime` assembles `store.tgz`, `extraResources` ships it,
-  and the runtime extraction step unpacks it to `plugins/store`. Plugin upgrades
-  now require a new build; the installer grows by ~1.8 MB (compressed store).
-- TODO: fill in the 0.2.0 feature list here before release.
+All three fixes below repair the same regression class introduced by that runtime
+upgrade: the launcher and the runtime had drifted apart in ways that produced a
+**silent hang** rather than an error.
+
+- **Startup no longer hangs on 0.1.5** (`fix(runtime)`): after the 0.1.5-rc.1
+  upgrade the launcher stalled on "server-starting" until the 45-second timeout.
+  0.1.5 added a main-module guard to the CLI (`if (import.meta.main) await
+  runCli()`), but the bootstrap loads `bin.js` via `import()`, so
+  `import.meta.main` was `false` and `runCli()` never ran — the process stayed
+  alive with zero output and never listened. The bootstrap now invokes the CLI
+  through the path that actually executes. Diagnosed by bisecting against a
+  direct `bin.js` run (listened in 20s) versus the bootstrap (fully silent).
+- **Bundle check and runtime resolution agreed on one directory**
+  (`fix(runtime)`): `resolveDshRuntime` and `assertOfficialProfileBundlesAvailable`
+  each computed the runtime directory independently, so in dev the first found a
+  healthy `runtime-dsh/` while the second inspected a stale, partially-unpacked
+  `userData\dsh-runtime`. The result was a nonsensical "missing bundled plugin
+  dsh-base" error for a runtime that was present and correct.
+- **Dev startup finds the workspace runtime** (`fix(runtime)`): the dev candidate
+  chain (`DSH_RUNTIME_ROOT` → `resources\dsh` → `..\deepseek-harness`) could not
+  reach the complete `runtime-dsh/` that `prepare-runtime` had just assembled, so
+  a damaged `userData` unpack meant a hard error in dev while the packaged build
+  self-healed. `<appPath>/runtime-dsh` is now a dev-only candidate, with no effect
+  on packaged resolution.
+
+> **Note on the `0.2.0` tag**: it points at `303e498`, i.e. the three runtime
+> fixes above. The version bump and the items now listed under 0.2.1 landed
+> afterwards, so the tagged tree still reports version `0.1.4` in
+> `package.json`. The 0.2.1 section below is what actually carries `0.2.1`.
 
 ## 0.1.4
 
