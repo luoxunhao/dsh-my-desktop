@@ -30,8 +30,8 @@
     "build:plugin": "pnpm --dir plugins/dsh-my-desktop-settings run build",
     "check:plugin": "pnpm --dir plugins/dsh-my-desktop-settings run typecheck",
     "build:flat": "node dist/scripts/stage-flat-units.js",
-    "build:all": "pnpm run build:plugin && pnpm run build && pnpm run build:recovery-ui && pnpm run build:flat",
-    "check:all": "pnpm run check:plugin && pnpm run check && pnpm run check:recovery-ui",
+    "build:all": "pnpm run build:plugin && pnpm run build && pnpm run build:recovery-ui && pnpm run build:shell-ui && pnpm run build:flat",
+    "check:all": "pnpm run check:plugin && pnpm run check && pnpm run check:recovery-ui && pnpm run check:shell-ui",
     "test": "pnpm run build:all && node --test dist/test/*.test.js",
     "start": "pnpm run build:all && electron .",
     "prepare-runtime": "pnpm run build:all && node dist/scripts/prepare-runtime.js",
@@ -41,7 +41,9 @@
     "pack:local": "pnpm run build:all && node dist/scripts/prepare-runtime.js --stage-plugin && electron-builder --dir",
     "smoke:mac": "pnpm run build:all && node dist/scripts/smoke-macos-package.mjs",
     "smoke:linux": "pnpm run build:all && node dist/scripts/smoke-linux-package.mjs",
-    "build:recovery-ui": "vite build",
+    "build:shell-ui": "node scripts/build-shell-ui.mjs",
+    "check:shell-ui": "tsc -p tsconfig.shell-ui.json",
+    "build:recovery-ui": "vite build --config vite.recovery-ui.config.ts",
     "check:recovery-ui": "tsc -p tsconfig.recovery-ui.json"
   },
   "devDependencies": {
@@ -138,24 +140,11 @@
         "to": "notification.ico"
       },
       {
-        "from": "assets/startup.html",
-        "to": "startup.html"
-      },
-      {
-        "from": "assets/shell.html",
-        "to": "shell.html"
-      },
-      {
-        "from": "assets/shortcuts.html",
-        "to": "shortcuts.html"
-      },
-      {
-        "from": "assets/about.html",
-        "to": "about.html"
-      },
-      {
-        "from": "assets/settings.html",
-        "to": "settings.html"
+        "from": "dist/shell-ui",
+        "to": "shell-ui",
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "assets/task-badges",

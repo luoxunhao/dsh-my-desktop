@@ -180,14 +180,15 @@ test('桌面菜单使用窗口内坐标且 DSH 客户端桥接导出标准插件
 test('关于窗口使用独立丰富页面并进入打包资源', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   const manifest = await readFile(new URL('../../package.json', import.meta.url), 'utf8')
-  const about = await readFile(new URL('../../assets/about.html', import.meta.url), 'utf8')
+  // The about window is React now, so its source is the component and its
+  // shipped artifact is the Vite build output.
+  const about = await readFile(new URL('../../src/shell-ui/AboutWindow.tsx', import.meta.url), 'utf8')
   // Dialog window construction now lives in the dialog service.
   const dialogs = await readFile(new URL('../../src/desktop/dialog-service.ts', import.meta.url), 'utf8')
   assert.match(main, /showAboutWindow\(\)/)
-  assert.match(manifest, /assets\/about\.html/)
+  assert.match(manifest, /dist\/shell-ui/)
   assert.match(about, /关于这个项目/)
   assert.match(about, /runtimeVersion/)
-  assert.match(about, /overflow:hidden/)
   assert.match(dialogs, /resizable: false/)
   assert.match(dialogs, /frame: false/)
   assert.match(dialogs, /minimizable: false/)
@@ -199,7 +200,7 @@ test('关于窗口使用独立丰富页面并进入打包资源', async () => {
 test('桌面通知和更新设置使用独立窗口并进入打包资源', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   const manifest = await readFile(new URL('../../package.json', import.meta.url), 'utf8')
-  const settings = await readFile(new URL('../../assets/settings.html', import.meta.url), 'utf8')
+  const settings = await readFile(new URL('../../src/shell-ui/SettingsWindow.tsx', import.meta.url), 'utf8')
   // Notification construction and the Windows toast identity live in the service.
   const notifications = await readFile(new URL('../../src/desktop/notification-service.ts', import.meta.url), 'utf8')
   assert.match(main, /showDesktopSettingsWindow\(\)/)
@@ -218,25 +219,31 @@ test('桌面通知和更新设置使用独立窗口并进入打包资源', async
   assert.match(notifications, /setOverlayIcon\(/)
   // The toast activator CLSID is still registered on the app at startup.
   assert.match(main, /setToastActivatorCLSID/)
-  assert.match(manifest, /assets\/settings\.html/)
+  assert.match(manifest, /dist\/shell-ui/)
   assert.match(manifest, /assets\/task-badges/)
   assert.match(settings, /任务完成通知/)
   assert.match(settings, /approvalsEnabled/)
   assert.match(settings, /questionsEnabled/)
-  assert.match(settings, /role="listbox"/)
-  assert.match(settings, /class="select-menu"/)
+  assert.match(settings, /Listbox/)
   assert.doesNotMatch(settings, /<select/)
+  // The hand-rolled listbox lives in its own primitive and keeps its full ARIA
+  // contract. `role="listbox"`/`role="option"` are what make it announce
+  // correctly, so they are asserted where they are actually written.
+  const listbox = await readFile(new URL('../../src/shell-ui/Listbox.tsx', import.meta.url), 'utf8')
+  assert.match(listbox, /role="listbox"/)
+  assert.match(listbox, /role="option"/)
+  assert.match(listbox, /aria-selected/)
+  assert.match(listbox, /aria-expanded/)
+  assert.match(listbox, /className="select-menu"/)
+  assert.match(listbox, /className="select-option"/)
   assert.match(main, /mayReportDshLocale/)
   assert.match(main, /broadcastShellBootstrap/)
-  assert.match(settings, /api\.onBootstrap/)
-  assert.match(settings, /id="updatesNav"/)
-  assert.match(settings, /id="updatesPage"/)
-  assert.match(settings, /data-value="notify"/)
-  assert.match(settings, /data-value="auto-download"/)
-  assert.match(settings, /data-value="manual"/)
-  assert.match(settings, /api\.updateUpdatePreferences/)
-  assert.match(settings, /api\.desktopUpdateAction/)
-  assert.match(settings, /api\.closeDesktopSettings/)
+  assert.match(settings, /onBootstrap/)
+  assert.match(settings, /auto-download/)
+  assert.match(settings, /'manual'/)
+  assert.match(settings, /updateUpdatePreferences/)
+  assert.match(settings, /desktopUpdateAction/)
+  assert.match(settings, /closeDesktopSettings/)
   // The close-desktop-settings channel is registered by the shell IPC registrar.
   const shellIpc = await readFile(new URL('../../src/desktop/shell-ipc-registrar.ts', import.meta.url), 'utf8')
   assert.match(shellIpc, /SHELL_IPC\.closeDesktopSettings/)
@@ -259,47 +266,56 @@ test('桌面通知和更新设置使用独立窗口并进入打包资源', async
 })
 
 test('shell 在 macOS 为交通灯预留空间且状态早到不会读取空 bootstrap', async () => {
-  const shell = await readFile(new URL('../../assets/shell.html', import.meta.url), 'utf8')
-  assert.match(shell, /data-platform="darwin"[^}]*padding-left:80px/)
-  assert.ok(shell.indexOf('document.documentElement.dataset.platform=window.dshShell.platform') < shell.indexOf('<style>'))
-  assert.match(shell, /bootstrap\?\.locale/)
-  assert.match(shell, /state\?\?value\.state/)
+  // The bar is React now; the macOS inset lives in the stylesheet and the
+  // "don't render before bootstrap" guard is the `undefined` early return.
+  const bar = await readFile(new URL('../../src/shell-ui/styles/bar.css', import.meta.url), 'utf8')
+  const component = await readFile(new URL('../../src/shell-ui/ShellBar.tsx', import.meta.url), 'utf8')
+  assert.match(bar, /html\[data-platform="darwin"\] \.bar\s*\{[^}]*padding-left:\s*80px/)
+  assert.match(component, /if \(bootstrap === undefined\) return null/)
 })
 
 test('原生菜单关闭后才清理外壳菜单的选中状态', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
-  const shell = await readFile(new URL('../../assets/shell.html', import.meta.url), 'utf8')
+  const component = await readFile(new URL('../../src/shell-ui/ShellBar.tsx', import.meta.url), 'utf8')
   assert.match(main, /function popupShellMenu\(request: ShellMenuPopupRequest\): Promise<void>/)
   assert.match(main, /menu\.once\('menu-will-close', close\)/)
   assert.match(main, /callback: close/)
-  assert.match(shell, /function clearOpenMenu\(button=openMenu\)/)
-  assert.match(shell, /try\{await api\.popupTool\([\s\S]*?\)\}finally\{clearOpenMenu\(button\)\}/)
-  assert.match(shell, /document\.addEventListener\('pointerdown',[\s\S]*?clearOpenMenu\(\)/)
-  assert.doesNotMatch(shell, /:root\[data-color-scheme="light"\] \.menu:hover,:root\[data-color-scheme="light"\] \.menu\[aria-expanded="true"\]\{background/)
+  // The open-tool state is cleared in a `finally`, so a rejected popup cannot
+  // leave the button stuck in `aria-expanded="true"`.
+  assert.match(component, /try \{\s*await shellBridge\(\)\.popupTool\([\s\S]*?\} finally \{/)
+  assert.match(component, /addEventListener\('pointerdown', clear, true\)/)
 })
 
 test('DSH 主题变化同步到桌面外壳、原生菜单和辅助窗口', async () => {
   const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
   const bridge = await readFile(new URL('../../src/bridge/desktop-bridge-client-source.ts', import.meta.url), 'utf8')
   const dshPreload = await readFile(new URL('../../src/dsh-view-preload.cts', import.meta.url), 'utf8')
-  const shell = await readFile(new URL('../../assets/shell.html', import.meta.url), 'utf8')
-  const settings = await readFile(new URL('../../assets/settings.html', import.meta.url), 'utf8')
-  const shortcuts = await readFile(new URL('../../assets/shortcuts.html', import.meta.url), 'utf8')
-  const about = await readFile(new URL('../../assets/about.html', import.meta.url), 'utf8')
-  const startup = await readFile(new URL('../../assets/startup.html', import.meta.url), 'utf8')
+  // Theme application now lives in the broadcast service and the shared theme
+  // contract, rather than in five hand-written documents.
+  const broadcast = await readFile(new URL('../../src/desktop/shell-broadcast-service.ts', import.meta.url), 'utf8')
+  const bar = await readFile(new URL('../../src/shell-ui/styles/bar.css', import.meta.url), 'utf8')
   assert.doesNotMatch(bridge, /inject = \[[^\]]*'theme'/)
   assert.match(dshPreload, /reportDocumentTheme/)
   assert.match(dshPreload, /attributeFilter: \['style'\]/)
-  // Theme application (nativeTheme, title-bar overlay) lives in the broadcast service.
-  const broadcast = await readFile(new URL('../../src/desktop/shell-broadcast-service.ts', import.meta.url), 'utf8')
   assert.match(broadcast, /nativeTheme\.themeSource = preference/)
-  assert.match(broadcast, /setTitleBarOverlay/)
-  assert.match(shell, /linear-gradient\(180deg,#222423 0%,#1d201e 100%\)/)
-  assert.match(shell, /linear-gradient\(180deg,#ffffff 0%,#f6f7f6 100%\)/)
-  for (const source of [shell, settings, shortcuts, about, startup]) {
-    assert.match(source, /data-color-scheme="light"/)
+  /*
+   * The native caption-button overlay is GONE. It could only paint a solid
+   * color, so it could not follow the bar's gradient and produced a visible
+   * seam against the renderer-drawn icons beside it. The buttons are drawn by
+   * `WindowControls.tsx` now, which is why the palette's symbol color is shipped
+   * through the bootstrap instead of pushed into Electron.
+   */
+  assert.doesNotMatch(broadcast, /\.setTitleBarOverlay\(/)
+  assert.doesNotMatch(await readFile(new URL('../../src/desktop/window-registry.ts', import.meta.url), 'utf8'), /titleBarOverlay:\s*\{/)
+  assert.match(broadcast, /titleBar: \{ background: palette\.titleBarBackground, symbol: palette\.titleBarSymbol \}/)
+  assert.match(bar, /linear-gradient\(180deg, #222423 0%, #1d201e 100%\)/)
+  assert.match(bar, /linear-gradient\(180deg, #ffffff 0%, #f6f7f6 100%\)/)
+  // Every window's stylesheet carries the light-theme block the theme contract
+  // depends on. This is the property the old per-document assertion protected.
+  for (const name of ['bar', 'settings', 'shortcuts', 'about', 'startup']) {
+    const css = await readFile(new URL(`../../src/shell-ui/styles/${name}.css`, import.meta.url), 'utf8')
+    assert.match(css, /data-color-scheme="light"/)
   }
-  for (const source of [shell, settings, shortcuts, about]) assert.match(source, /dataset\.colorScheme=value\.colorScheme/)
   // The DSH content view still receives the theme as a load-time query.
   assert.match(main, /loadFile\(html, \{ query: \{ theme: state\.shell\.colorScheme \} \}\)/)
 })

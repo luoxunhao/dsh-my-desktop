@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      CSP for the About window.
+
+      Identical to `shell.html`'s, and `img-src 'self' data:` is required here for
+      the same reason but with more weight: this window loads three kinds of
+      image — the hero `icon.png`, the close button's `shell-icons/xmark.svg`,
+      and the build-hashed copies Vite emits into `assets/`. `img-src 'none'`
+      would blank the app icon and the close glyph.
+
+      `style-src 'unsafe-inline'` is still needed despite the CSS now being a
+      separate file: React sets `color-scheme` as an inline style property on
+      `<html>` from the bootstrap.
+
+      `connect-src 'none'` holds: every bridge call is `ipcRenderer.invoke`, which
+      is not a network request and is not governed by this directive.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <title>关于 DSH My Desktop</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./about-entry.tsx"></script>
+  </body>
+</html>

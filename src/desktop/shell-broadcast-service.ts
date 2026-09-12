@@ -73,6 +73,7 @@ export function createShellBroadcastService(deps: ShellBroadcastDeps) {
   /** The full payload a shell renderer needs on load or after a theme change. */
   function shellBootstrap(): ShellBootstrap {
     const locale = deps.locale()
+    const palette = DESKTOP_THEME_PALETTES[shell.colorScheme]
     return {
       actions: localizedShellActions(locale, process.platform),
       colorScheme: shell.colorScheme,
@@ -82,6 +83,7 @@ export function createShellBroadcastService(deps: ShellBroadcastDeps) {
       runtimeVersion: OFFICIAL_DSH_VERSION,
       state: currentShellState(),
       version: deps.appVersion(),
+      titleBar: { background: palette.titleBarBackground, symbol: palette.titleBarSymbol },
     }
   }
 
@@ -101,9 +103,14 @@ export function createShellBroadcastService(deps: ShellBroadcastDeps) {
   /**
    * Apply a colour scheme (and optionally persist the preference).
    *
-   * Repaints every window's native background from the palette and, on Windows and
-   * Linux, updates the title-bar overlay so the non-client edge matches. macOS uses
-   * the system title bar, hence the platform guard.
+   * Repaints every window's native background from the palette. The windows
+   * themselves re-theme from the bootstrap broadcast; these native colors only
+   * cover the frame area before the first paint, which is why they are set here
+   * rather than in the renderer.
+   *
+   * There is deliberately NO `setTitleBarOverlay` call: the caption buttons are
+   * renderer-drawn now (see `src/shell-ui/WindowControls.tsx`), so no native
+   * overlay exists to repaint.
    */
   function applyDesktopTheme(colorScheme: DesktopColorScheme, preference?: DesktopThemePreference): void {
     shell.colorScheme = colorScheme
@@ -116,9 +123,6 @@ export function createShellBroadcastService(deps: ShellBroadcastDeps) {
     setWindowBackground(windows.settingsWindow, palette.settingsBackground)
     setWindowBackground(windows.shortcutsWindow, palette.shortcutsBackground)
     setWindowBackground(windows.aboutWindow, palette.aboutBackground)
-    if (process.platform !== 'darwin' && windows.mainWindow !== undefined && !windows.mainWindow.isDestroyed()) {
-      windows.mainWindow.setTitleBarOverlay({ color: palette.titleBarBackground, symbolColor: palette.titleBarSymbol, height: SHELL_BAR_HEIGHT })
-    }
   }
 
   /** Push the update snapshot to the settings window only. */

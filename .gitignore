@@ -1,19 +1,23 @@
 # 安装包、运行时和构建输出只保留在本地或 GitHub Release，不提交源码仓库。
-dist/
-release/
-runtime/
-runtime-node/
-runtime-plugins/
+# 全部锚定到仓库根：这些规则针对的是根目录下的产物目录，若不加前导斜杠，
+# 一条 `runtime/` 会匹配任意层级的同名目录 —— 它曾经把源码目录 src/runtime/
+# 一并命中，导致该目录下新增文件被静默忽略（已跟踪的旧文件不受影响，
+# 所以问题只在「新建文件」时才暴露）。新增同类规则时保持这个风格。
+/dist/
+/release/
+/runtime/
+/runtime-node/
+/runtime-plugins/
 node_modules/
 
 # 开发过程产物仅保留在本地。
-coverage/
+/coverage/
 *.log
 artifacts/
-output/
+/output/
 
 # 项目文档仅在本地维护，不纳入 Git 仓库。
-docs/
+/docs/
 
 runtime-dsh/
 runtime-dsh.tgz

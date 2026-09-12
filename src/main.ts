@@ -707,11 +707,18 @@ async function startApplication(): Promise<void> {
   }
 }
 
+/**
+ * The startup / blocking-status page.
+ *
+ * Like the other shell windows this is now a Vite-built React document, so it
+ * resolves from the `shell-ui` build output rather than the raw `assets/` tree.
+ * The packaged path is checked first, matching the other resolvers.
+ */
 function resolveStartupHtml(): string | undefined {
-  const packaged = join(process.resourcesPath, 'startup.html')
-  const dev = join(app.getAppPath(), 'assets', 'startup.html')
+  const packaged = join(process.resourcesPath, 'shell-ui', 'startup.html')
+  const development = join(app.getAppPath(), 'dist', 'shell-ui', 'startup.html')
   if (existsSync(packaged)) return packaged
-  if (existsSync(dev)) return dev
+  if (existsSync(development)) return development
   return undefined
 }
 
@@ -1211,8 +1218,9 @@ function resolveWindowIconPath(): string | undefined {
 }
 
 function resolveShellAsset(name: 'shell.html' | 'shortcuts.html' | 'about.html' | 'settings.html'): string {
-  const packaged = join(process.resourcesPath, name)
-  return existsSync(packaged) ? packaged : join(app.getAppPath(), 'assets', name)
+  const packaged = join(process.resourcesPath, 'shell-ui', name)
+  if (existsSync(packaged)) return packaged
+  return join(app.getAppPath(), 'dist', 'shell-ui', name)
 }
 
 function resolvePreload(name: 'shell-preload.cjs' | 'dsh-view-preload.cjs' | 'recovery-preload.cjs'): string {

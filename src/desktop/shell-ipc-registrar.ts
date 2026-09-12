@@ -22,16 +22,18 @@
  * into this module would freeze `undefined` into every handler. The
  * `desktop-state-late-binding` test guards that.
  */
-import { ipcMain, type WebContents } from 'electron'
+import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 
 import { SHELL_IPC, type DshNavigationState, type ShellMenuPopupRequest, type ShellToolId, type ShellToolPopupId } from './shell-contract.js'
 import {
   mayAccessDesktopUpdates,
   mayAccessNotificationPreferences,
   mayCloseDesktopSettings,
+  mayControlWindow,
   mayGetShellBootstrap,
   mayInvokeShellAction,
   mayPopupShellMenu,
+  mayReadWindowState,
   mayReportDshBoot,
   mayReportDshLocale,
   mayReportDshNotification,
@@ -178,6 +180,30 @@ export function createShellIpcRegistrar(deps: ShellIpcDeps) {
     ipcMain.handle(SHELL_IPC.closeDesktopSettings, event => {
       if (!mayCloseDesktopSettings(deps.rendererKind(event.sender))) return
       state.windows.settingsWindow?.close()
+    })
+
+    // Caption buttons for the self-drawn title bars (`main`, `about`, `shortcuts`).
+    // The target window is resolved from the SENDER, never from `state.windows.*`:
+    // `about` and `shortcuts` are transient dialogs, and a command aimed at "the
+    // main window" would minimise the wrong one — or, worse, a stale handle.
+    ipcMain.removeHandler(SHELL_IPC.windowControl)
+    ipcMain.handle(SHELL_IPC.windowControl, (event, command: unknown) => {
+      if (!mayControlWindow(deps.rendererKind(event.sender))) return
+      if (command !== 'minimize' && command !== 'toggle-maximize' && command !== 'close') return
+      const target = BrowserWindow.fromWebContents(event.sender)
+      if (target === null || target.isDestroyed()) return
+      if (command === 'minimize') target.minimize()
+      else if (command === 'close') target.close()
+      else if (target.isMaximized()) target.unmaximize()
+      else target.maximize()
+    })
+
+    ipcMain.removeHandler(SHELL_IPC.windowState)
+    ipcMain.handle(SHELL_IPC.windowState, event => {
+      if (!mayReadWindowState(deps.rendererKind(event.sender))) return
+      const target = BrowserWindow.fromWebContents(event.sender)
+      if (target === null || target.isDestroyed()) return
+      return { maximized: target.isMaximized() }
     })
   }
 

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Theme must be applied BEFORE first paint.
+
+      This window has no bridge to learn the theme from (see StartupWindow.tsx),
+      so the main process passes `?theme=<scheme>` on the URL and this inline
+      script mirrors it onto <html>. It is intentionally inline and synchronous:
+      a deferred script would let the dark default flash before the light theme
+      applies.
+
+      The bundler leaves this script alone — it is not a module and has no src.
+    -->
+    <script>
+      document.documentElement.dataset.colorScheme =
+        new URLSearchParams(location.search).get('theme') === 'light' ? 'light' : 'dark'
+    </script>
+    <!--
+      `img-src 'self' data:` — the window renders `./icon.png`, resolved relative
+      to this document. `connect-src 'none'` holds: this window makes no bridge or
+      network calls at all.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <link rel="icon" type="image/png" href="./icon.png" />
+    <title>DSH My Desktop</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./startup-entry.tsx"></script>
+  </body>
+</html>

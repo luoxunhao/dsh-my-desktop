@@ -1,0 +1,148 @@
+/*
+ * The About window.
+ *
+ * Ported from the inline `<style>` block in `assets/about.html`, values included:
+ * the dark palette is written as the default and every light rule is a
+ * `:root[data-color-scheme="light"]` override, exactly as in the original file.
+ *
+ * This window shares no chrome with `bar.css` — it draws its OWN frame (a flat
+ * `#202322` / `#fff` ground, a bottom-only border, and a close button that is
+ * deliberately unlike a caption button: 46x35 instead of Windows' 46x32, and on
+ * hover the plate turns `#c42b1c` while the glyph flips to WHITE). `bar.css`
+ * gives its close button a light ink that STAYS light over that same red plate.
+ * The selectors differ today (`.titlebar-close img` vs. `.caption-button svg`),
+ * so nothing would actually collide — but the two `:root` blocks and the two `*`
+ * resets would, and a window importing both is one selector rename away from a
+ * silently wrong glyph color. The two stylesheets are therefore kept separate,
+ * exactly as `styles/shortcuts.css` is: `bar.css` is imported only by
+ * `shell-entry.tsx`, this file only by `about-entry.tsx`, and each entry gets its
+ * own CSS bundle.
+ *
+ * THEME CONTRACT
+ * --------------
+ * Identical to `bar.css`: the default block is the dark theme and every light
+ * value is a `:root[data-color-scheme="light"]` override, so the ported rules stay
+ * recognizable next to the file they came from. The attribute is set on `<html>`
+ * from the bootstrap before the first paint, and the main process has already
+ * painted the native window in `DESKTOP_THEME_PALETTES[...].aboutBackground`
+ * (`#202322` dark / `#ffffff` light) — which is why the two values below match
+ * that palette exactly. Before this port the attribute came from a tiny inline
+ * `<script>` that read a `?theme=` query parameter; the bootstrap subsumes it.
+ */
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  background: #202322;
+  color: #eef0ef;
+}
+
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #202322; }
+
+/*
+ * The window is frameless (`frame: false` in dialog-service.ts), so this 1px
+ * border IS the window's edge. It is drawn by the body rather than by the OS,
+ * which means it disappears into the background on a maximised window — the
+ * About dialog is non-resizable and fixed-size, so that never happens.
+ */
+body { border: 1px solid #343836; }
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* ----------------------------------------------------------------- title bar */
+
+.titlebar {
+  -webkit-app-region: drag;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  border-bottom: 1px solid #303432;
+  color: #c8cdca;
+  font-size: 12px;
+  user-select: none;
+}
+
+.titlebar-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/*
+ * Close button.
+ *
+ * `-webkit-app-region: no-drag` is MANDATORY, not cosmetic. The button lives
+ * inside `.titlebar`'s drag region, and a control left inside a drag region
+ * never receives a click at all: it looks right and is silently dead. This is
+ * the same trap `WindowControls.tsx` documents at length.
+ *
+ * It is a hand-rolled button rather than `<WindowControls>` on purpose. That
+ * component renders the Windows trio at the Windows metrics (46x32 per button,
+ * a `--titlebar-fg` glyph that stays light on hover); `about.html` specifies a
+ * single button at 46x35 whose glyph turns white over the red hover plate. Both
+ * are defensible; the task is a faithful port, so the original's geometry and
+ * hover treatment win. The BEHAVIOR is still the shared one — see the note in
+ * AboutWindow.tsx about routing through `windowControl('close')`.
+ *
+ * 35px is not a typo in the source: the titlebar is 36px with a 1px bottom
+ * border, so the button covers the whole 35px content box.
+ */
+.titlebar-close {
+  -webkit-app-region: no-drag;
+  margin-left: auto;
+  width: 46px;
+  height: 35px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.titlebar-close:hover { background: #c42b1c; }
+.titlebar-close img { width: 13px; height: 13px; filter: invert(90%); }
+
+/* --------------------------------------------------------------------- body */
+
+main { max-width: 496px; margin: 0 auto; padding: 20px 0 24px; }
+
+.hero { display: flex; gap: 20px; align-items: center; margin-bottom: 20px; }
+.icon { width: 76px; height: 76px; border-radius: 18px; box-shadow: 0 8px 24px #0007; }
+
+h1 { font-size: 24px; line-height: 1.25; margin: 0 0 7px; letter-spacing: -0.02em; }
+.tagline { margin: 0; color: #aeb4b1; font-size: 14px; line-height: 1.55; }
+
+.card { background: #292c2b; border: 1px solid #3a3e3c; border-radius: 14px; padding: 16px 20px; margin-top: 12px; }
+
+.meta { display: grid; grid-template-columns: 1fr auto; gap: 12px 20px; font-size: 13px; }
+.meta dt { color: #aeb4b1; }
+/* `tabular-nums` keeps the two version rows from shifting as their digits load in. */
+.meta dd { margin: 0; color: #f3f5f4; font-variant-numeric: tabular-nums; }
+
+h2 { font-size: 14px; margin: 0 0 10px; color: #f3f5f4; }
+.copy { font-size: 13px; color: #c8cdca; line-height: 1.7; margin: 0; }
+ul { margin: 12px 0 0; padding-left: 19px; color: #c8cdca; font-size: 13px; line-height: 1.7; }
+
+footer { margin-top: 16px; padding-top: 14px; border-top: 1px solid #353937; color: #898f8c; font-size: 12px; line-height: 1.55; }
+
+/* -------------------------------------------------------------- light theme */
+
+:root[data-color-scheme="light"] { color-scheme: light; background: #fff; color: #0f1115; }
+:root[data-color-scheme="light"] body { border-color: #0000001a; background: #fff; }
+:root[data-color-scheme="light"] .titlebar { border-bottom-color: #0000001a; color: #61666b; background: #f9fafb; }
+/* `xmark.svg` is authored white-ish; in light mode it is pushed to black at 72%. */
+:root[data-color-scheme="light"] .titlebar-close img { filter: brightness(0); opacity: 0.72; }
+:root[data-color-scheme="light"] .titlebar-close:hover img { filter: brightness(0) invert(1); opacity: 1; }
+:root[data-color-scheme="light"] .icon { box-shadow: 0 8px 24px #0003; }
+:root[data-color-scheme="light"] .tagline,
+:root[data-color-scheme="light"] .meta dt { color: #61666b; }
+:root[data-color-scheme="light"] .card { border-color: #0000001a; background: #f9fafb; }
+:root[data-color-scheme="light"] .meta dd,
+:root[data-color-scheme="light"] h2 { color: #0f1115; }
+:root[data-color-scheme="light"] .copy,
+:root[data-color-scheme="light"] ul { color: #43454a; }
+:root[data-color-scheme="light"] footer { border-top-color: #0000001a; color: #81858c; }

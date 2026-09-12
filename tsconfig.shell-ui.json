@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    /*
+     * `node` is required, not incidental. The shell windows consume shared
+     * contracts from `src/desktop/` that type several values as
+     * `NodeJS.Platform` (`ShellBootstrap.platform`, and the icon resolver). Those
+     * are type-only imports — no Node runtime is reachable from these bundles —
+     * but the namespace still has to resolve for the types to compile.
+     */
+    "types": ["node"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true
+  },
+  "include": ["src/shell-ui/**/*.ts", "src/shell-ui/**/*.tsx"]
+}

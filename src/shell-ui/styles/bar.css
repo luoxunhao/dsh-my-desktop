@@ -1,0 +1,257 @@
+/*
+ * Shared window chrome for every React-rendered launcher window.
+ *
+ * Ported from the inline `<style>` blocks in `assets/*.html`, with one
+ * substantive change: the title bar no longer has two color authorities. The
+ * toolbar icons and the caption buttons both derive from the same custom
+ * properties, so they cannot drift.
+ *
+ * THEME CONTRACT
+ * --------------
+ * The theme arrives as `data-color-scheme` on `<html>`, set from the bootstrap
+ * before first paint. Every themed rule is written as a
+ * `:root[data-color-scheme="..."]` override of a dark-mode default, matching the
+ * original files so the ported values stay recognizable.
+ *
+ * WHY THE BAR COLORS ARE CUSTOM PROPERTIES
+ * ----------------------------------------
+ * `--titlebar-fg` is the icon color; the caption buttons and the toolbar icons
+ * both use it. The main process still owns the value (`titleBarSymbol` in
+ * desktop-theme.ts) and ships it through the bootstrap, because it also paints
+ * the window's pre-first-paint background — one owner, two consumers.
+ */
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  background: #1a1c1b;
+  color: #d7d9d8;
+  /* Overwritten from the bootstrap on every window. */
+  --titlebar-fg: #d7d9d8;
+}
+
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+
+button {
+  -webkit-app-region: no-drag;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- title bar */
+
+.bar {
+  position: relative;
+  -webkit-app-region: drag;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  /* The right padding clears the caption buttons; see `.caption-buttons`. */
+  padding: 0 8px;
+  background: linear-gradient(180deg, #222423 0%, #1d201e 100%);
+  border-bottom: 1px solid #2b2e2c;
+  user-select: none;
+}
+
+html[data-platform="darwin"] .bar { padding-left: 80px; }
+
+.bar-tools { display: flex; align-items: center; gap: 2px; }
+
+.icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  opacity: 0.86;
+  transition: background 0.12s, opacity 0.12s;
+}
+
+.icon:hover:not(:disabled) { background: #ffffff14; opacity: 1; }
+.icon:disabled { opacity: 0.3; }
+
+/*
+ * The toolbar glyphs are monochrome SVGs authored in black, pushed to the
+ * caption color with a filter. `brightness(0)` first makes them pure black (so
+ * the source color cannot leak through), then the invert/sepia chain lifts them
+ * to the target tone, and `opacity` sets the final weight.
+ *
+ * This filter is what produced the 72%-black tone that used to jump against the
+ * 100%-black native glyphs. The native glyphs are gone, so the toolbar's tone is
+ * now the reference the caption buttons match.
+ */
+.icon img {
+  width: 15px;
+  height: 15px;
+  filter: invert(88%) sepia(4%) saturate(30%) hue-rotate(90deg) brightness(0.98);
+}
+
+.divider { width: 1px; height: 18px; background: #363937; margin: 0 4px; flex: none; }
+
+.identity {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+}
+
+.identity .word {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  color: #e9ebea;
+  white-space: nowrap;
+}
+
+/* Version pill; clicking it opens the about window. */
+.identity .version {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 10px;
+  font-size: 11px;
+  color: #9aa09c;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid #3a3d3b;
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.identity .version:hover { color: #e9ebea; border-color: #4c504d; background: #ffffff12; }
+.identity .version:active { background: #ffffff1a; }
+.identity .version:focus-visible { outline: 2px solid #8a9e94; outline-offset: 2px; }
+.identity .version .chevron { width: 8px; height: 8px; opacity: 0.75; pointer-events: none; }
+
+.status {
+  position: absolute;
+  /* Sits left of the caption buttons rather than under them. */
+  right: 148px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #8f9592;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 30%;
+}
+
+.identity .word, .status { pointer-events: none; }
+
+/* ------------------------------------------------------------ caption buttons */
+
+/*
+ * Self-drawn window controls.
+ *
+ * These occupy the strip the native `titleBarOverlay` used to own. They are
+ * absolutely positioned so the bar's flex layout (and therefore the centred
+ * identity block) is unaffected by their width.
+ *
+ * `-webkit-app-region: no-drag` is mandatory: they sit inside the bar's drag
+ * region, and a button left in a drag region never receives clicks — it looks
+ * correct and is silently dead.
+ *
+ * NO BACKGROUND OF ITS OWN. The strip is transparent so the bar's gradient shows
+ * through uninterrupted. Giving it a solid fill (as the native overlay needed)
+ * is exactly what created the visible seam this rewrite removes.
+ */
+.caption-buttons {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  -webkit-app-region: no-drag;
+}
+
+.caption-button {
+  width: 46px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  -webkit-app-region: no-drag;
+  transition: background 0.12s, color 0.12s;
+}
+
+/*
+ * Glyph geometry. A 12x12 viewBox with 1px strokes reads as a native caption
+ * glyph at this size; `vector-effect` keeps the stroke 1px at any DPI so the
+ * buttons do not look heavier on scaled displays.
+ */
+.caption-button svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  stroke-linecap: square;
+  vector-effect: non-scaling-stroke;
+}
+
+/*
+ * THE FIX: both icon sets read the same color.
+ *
+ * The toolbar icons use `--titlebar-fg` via a filter, the caption glyphs use it
+ * as `currentColor`. One value, published by the main process, so the "jump"
+ * between the two groups is structurally impossible.
+ */
+.caption-button { color: var(--titlebar-fg); }
+
+/* Hover fills match Windows' own caption behavior; close gets the system red. */
+.caption-button:hover { background: #ffffff14; }
+.caption-button:active { background: #ffffff24; }
+.caption-button--close:hover { background: #c42b1c; color: #fff; }
+.caption-button--close:active { background: #b3271a; color: #fff; }
+.caption-button:focus-visible { outline: 2px solid #8a9e94; outline-offset: -2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .icon, .identity .version, .caption-button { transition: none; }
+}
+
+/* ------------------------------------------------------------- light theme */
+
+:root[data-color-scheme="light"] { color-scheme: light; background: #ffffff; color: #1a1d1c; }
+
+:root[data-color-scheme="light"] .bar {
+  background: linear-gradient(180deg, #ffffff 0%, #f6f7f6 100%);
+  border-bottom: 1px solid #e7e8e7;
+}
+
+:root[data-color-scheme="light"] .icon:hover:not(:disabled) { background: #2631480f; }
+:root[data-color-scheme="light"] .icon img { filter: brightness(0) opacity(0.72); }
+:root[data-color-scheme="light"] .divider { background: #0000001a; }
+:root[data-color-scheme="light"] .identity .word { color: #171a19; }
+:root[data-color-scheme="light"] .identity .version,
+:root[data-color-scheme="light"] .status { color: #6b726e; }
+:root[data-color-scheme="light"] .identity .version { border-color: #d8dbd9; background: #ffffff; }
+:root[data-color-scheme="light"] .identity .version:hover { color: #171a19; border-color: #b9bebb; background: #00000008; }
+:root[data-color-scheme="light"] .identity .version:active { background: #00000012; }
+
+:root[data-color-scheme="light"] .caption-button:hover { background: #00000012; }
+:root[data-color-scheme="light"] .caption-button:active { background: #0000001f; }
+:root[data-color-scheme="light"] .caption-button--close:hover,
+:root[data-color-scheme="light"] .caption-button--close:active { background: #c42b1c; color: #fff; }
+
+@media (max-width: 760px) {
+  .identity .version { height: 18px; padding: 0 7px; }
+  .identity .version .chevron { display: none; }
+  .status { max-width: 20%; }
+}

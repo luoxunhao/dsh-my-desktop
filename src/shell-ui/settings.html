@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Theme before first paint, same reason as the startup window: the main
+      process passes `?theme=<scheme>` and this synchronous inline script mirrors
+      it onto <html>. The settings window is a normal framed dialog, so unlike the
+      title bar it never receives a bridge broadcast before the document loads.
+    -->
+    <script>
+      document.documentElement.dataset.colorScheme =
+        new URLSearchParams(location.search).get('theme') === 'light' ? 'light' : 'dark'
+    </script>
+    <!--
+      `img-src 'self' data:` — the listbox chevrons load from `shell-icons/`.
+      `connect-src 'none'` holds: every bridge call is `ipcRenderer.invoke`, which
+      is not governed by this directive.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <title>桌面端设置</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./settings-entry.tsx"></script>
+  </body>
+</html>

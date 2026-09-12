@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Theme must be applied BEFORE first paint — the same inline script the
+      startup and settings windows carry.
+
+      This page is the SOLE owner of the title bar, and without this script the
+      bar had no theme at all: `bar.css` keys every light-mode rule off
+      `:root[data-color-scheme="light"]`, `window-registry.ts` passes
+      `?theme=<scheme>` on the URL, but nothing mirrored it onto <html> here and
+      `ShellBar`'s bootstrap handler did not either. The attribute was therefore
+      never set, so the bar fell through to its dark `:root` defaults and stayed
+      dark under a light theme while the DSH view below it turned light.
+
+      It is intentionally inline and synchronous: a deferred or module script
+      would let the dark default paint first and flash. `ShellBar` re-applies the
+      scheme from the bootstrap as well, because this script only covers the
+      initial load — a live theme change arrives over IPC, not over the URL.
+    -->
+    <script>
+      document.documentElement.dataset.colorScheme =
+        new URLSearchParams(location.search).get('theme') === 'light' ? 'light' : 'dark'
+    </script>
+    <!--
+      CSP for the title bar.
+
+      Two directives differ from the recovery page and both are required:
+
+      `img-src 'self'` — the toolbar and caption glyphs are SVGs loaded from
+      `shell-icons/`. The recovery page can afford `img-src 'none'`; this window
+      cannot, and a blocked icon here is a blank button.
+
+      `connect-src 'none'` still holds: every bridge call is `ipcRenderer.invoke`,
+      which is not a network request and is not governed by this directive.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <title>DSH My Desktop</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./shell-entry.tsx"></script>
+  </body>
+</html>

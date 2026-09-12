@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      CSP for the keyboard-shortcuts window.
+
+      `img-src 'self' data:` is required: both glyphs (`shell-icons/xmark.svg` in
+      the header, `shell-icons/magnifying-glass.svg` in the search field) are
+      images, and a blocked icon here is a blank button or a missing search
+      affordance. This is the same directive the title bar uses, for the same
+      reason.
+
+      `connect-src 'none'` still holds: every bridge call is `ipcRenderer.invoke`,
+      which is not a network request and is not governed by this directive.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <title>DSH My Desktop</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./shortcuts-entry.tsx"></script>
+  </body>
+</html>

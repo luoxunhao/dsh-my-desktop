@@ -115,7 +115,13 @@ export function createWindowRegistry(deps: WindowRegistryDeps) {
       // aligned with the title-bar wash instead of leaving a white seam above
       // the CSS gradient.
       backgroundColor: palette.titleBarBackground,
-      ...(process.platform === 'darwin' ? {} : { titleBarOverlay: { color: palette.titleBarBackground, symbolColor: palette.titleBarSymbol, height: SHELL_BAR_HEIGHT } }),
+      // No `titleBarOverlay`: the caption buttons are DRAWN BY THE RENDERER
+      // (src/shell-ui/WindowControls.tsx). The native overlay can only paint a
+      // SOLID color, so it could never follow the bar's vertical gradient — the
+      // seam between a `#f6f7f6` bar and a `#f1f4f3` overlay plate was visible,
+      // as was the jump from 72%-black HTML icons to a 100%-black native glyph.
+      // Drawing all six controls in one document leaves exactly one color
+      // authority, in both themes.
       ...(windowIcon === undefined ? {} : { icon: windowIcon }),
       webPreferences: {
         contextIsolation: true,

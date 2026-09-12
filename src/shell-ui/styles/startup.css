@@ -1,0 +1,95 @@
+/*
+ * Startup / blocking-status window.
+ *
+ * Ported from the inline <style> in `assets/startup.html`. The selectors are
+ * unchanged; what changed is that `#root` now wraps the content, so `body`'s
+ * grid centring applies to the React root and the root carries the layout.
+ *
+ * This is the one window that paints before any bridge exists, so it must look
+ * correct with only the URL-derived `data-color-scheme` attribute.
+ */
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #0f1115;
+  color: #f3f4f6;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body { display: grid; place-items: center; }
+
+/* React's mount point: transparent to layout, so `body`'s centring still lands. */
+#root { display: contents; }
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  animation: fade-in 0.45s ease both;
+}
+
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  object-fit: cover;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.spinner {
+  width: 42px;
+  height: 42px;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: #6ea8ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+/*
+ * The status line is written by the main process through `executeJavaScript`
+ * (see StartupWindow.tsx). `white-space: pre-wrap` matters: the messages it
+ * pushes contain explicit newlines.
+ */
+#msg {
+  margin: 0;
+  max-width: 420px;
+  color: #9aa3af;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+:root[data-color-scheme="light"] { color-scheme: light; }
+:root[data-color-scheme="light"] body { background: #fff; color: #0f1115; }
+:root[data-color-scheme="light"] .icon { box-shadow: 0 12px 32px rgba(15, 17, 21, 0.18); }
+:root[data-color-scheme="light"] .spinner { border-color: rgba(15, 17, 21, 0.12); border-top-color: #4176e6; }
+:root[data-color-scheme="light"] #msg { color: #61666b; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage { animation: none; }
+  .spinner { animation-duration: 1.6s; }
+}

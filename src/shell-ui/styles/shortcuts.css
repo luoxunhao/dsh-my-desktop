@@ -1,0 +1,172 @@
+/*
+ * Keyboard-shortcuts window.
+ *
+ * Ported from the inline `<style>` block in `assets/shortcuts.html`. This window
+ * shares no chrome with `bar.css` — it has no title bar, no drag region and no
+ * caption buttons — so the two stylesheets are deliberately separate rather than
+ * one theme partial plus one window partial. `bar.css` is imported only by
+ * `shell-entry.tsx`; this file is imported only by `shortcuts-entry.tsx`, and
+ * each entry gets its own CSS bundle.
+ *
+ * THEME CONTRACT
+ * --------------
+ * Identical to `bar.css`: the default block is the dark theme and every light
+ * value is a `:root[data-color-scheme="light"]` override, so the ported rules stay
+ * recognizable next to the file they came from. The attribute is set on `<html>`
+ * from the bootstrap before the first paint (`applyColorScheme` in `api.ts`), and
+ * the main process has already painted the native window in
+ * `DESKTOP_THEME_PALETTES[...].shortcutsBackground` — which is why the two
+ * backgrounds below (`#262827` / `#ffffff`) match the palettes exactly.
+ *
+ * TWO VALUES THAT ARE SAFE TO PORT AS-IS
+ * --------------------------------------
+ * `scrollbar-color` is honored by Chromium, which is the only engine this ever
+ * runs in. The borders and shadows carry the original's balanced hex form
+ * (`#858b8830` = `#858b88` at 19% alpha, `#00000029`, `#2631480f`); they are
+ * quoted verbatim rather than normalized so a future diff against the source
+ * shows real changes only.
+ */
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  background: #262827;
+  color: #f1f2f1;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { overflow: hidden; }
+
+/*
+ * The page is one column: a fixed header, a fixed search field, and a list that
+ * takes the remaining height and scrolls on its own. `min-height: 0` is what
+ * makes that work — without it the flex item refuses to shrink below its content
+ * height and the list pushes the window into a second scrollbar.
+ */
+main {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 24px 18px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+h1 { font-size: 20px; margin: 0; font-weight: 650; }
+
+.close {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  display: grid;
+  place-items: center;
+}
+.close:hover { background: #393c3b; }
+.close img { width: 14px; filter: invert(90%); }
+
+.search {
+  height: 38px;
+  border: 1px solid #4c504e;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  margin-bottom: 13px;
+  background: #2c2e2d;
+}
+.search:focus-within { border-color: #858b88; box-shadow: 0 0 0 2px #858b8830; }
+.search img { width: 14px; filter: invert(72%); }
+
+/*
+ * The field fills whatever the label has left. `outline: 0` is not laziness: the
+ * focus ring belongs to the `.search` pill via `:focus-within`, and leaving the
+ * browser's own ring on the input as well would draw two.
+ */
+input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f3f4f3;
+  font: inherit;
+}
+input::placeholder { color: #909592; }
+
+/* The scroller. `padding-right` keeps rows clear of the scrollbar track. */
+#list { overflow: auto; min-height: 0; padding-right: 4px; scrollbar-color: #565b58 transparent; }
+
+.section { margin-top: 14px; }
+.section:first-child { margin-top: 4px; }
+
+h2 { font-size: 14px; margin: 0 0 8px; color: #dadcdb; }
+
+/*
+ * A row is label-left, keys-right, with the keys pinned so a long label never
+ * compresses them. `min-height` (rather than a fixed height) keeps the row from
+ * collapsing when the label wraps in a narrow window.
+ */
+.row {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 7px 0;
+  color: #c9ccca;
+  font-size: 14px;
+}
+
+.keys { display: flex; gap: 5px; flex: none; }
+
+/*
+ * One key cap per split part. The line-height is `1.7` on a 12px font, which is
+ * what gives the cap its height without a vertical padding rule; `box-shadow`
+ * draws the single-pixel bottom edge that reads as a key.
+ */
+kbd {
+  font: 12px/1.7 "Segoe UI", sans-serif;
+  color: #d9dcda;
+  background: #3b3e3d;
+  border: 1px solid #4a4e4c;
+  border-radius: 5px;
+  padding: 0 7px;
+  box-shadow: 0 1px 0 #171918;
+}
+
+.empty { padding: 42px 0; text-align: center; color: #939895; }
+
+/* ------------------------------------------------------------- light theme */
+
+:root[data-color-scheme="light"] {
+  color-scheme: light;
+  background: #ffffff;
+  color: #0f1115;
+}
+
+:root[data-color-scheme="light"] .close:hover { background: #2631480f; }
+/* `brightness(0)` first, so the source glyph color cannot leak through. */
+:root[data-color-scheme="light"] .close img,
+:root[data-color-scheme="light"] .search img { filter: brightness(0); opacity: .6; }
+:root[data-color-scheme="light"] .search { border-color: #00000029; background: #f9fafb; }
+:root[data-color-scheme="light"] .search:focus-within { border-color: #81858c; box-shadow: 0 0 0 2px #81858c30; }
+:root[data-color-scheme="light"] input { color: #0f1115; }
+:root[data-color-scheme="light"] input::placeholder { color: #81858c; }
+:root[data-color-scheme="light"] #list { scrollbar-color: #d4d4d4 transparent; }
+:root[data-color-scheme="light"] h2 { color: #43454a; }
+:root[data-color-scheme="light"] .row { color: #61666b; }
+:root[data-color-scheme="light"] kbd {
+  border-color: #cfd3d6;
+  background: #f1f3f5;
+  color: #43454a;
+  box-shadow: 0 1px 0 #cfd3d6;
+}
+:root[data-color-scheme="light"] .empty { color: #81858c; }

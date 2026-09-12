@@ -280,7 +280,7 @@ test('一体化构建：所有出包脚本都先构建插件', async () => {
   // launcher's own settings page) and the flat units last (they re-export the
   // launcher's compiled output).
   const buildAll = scripts['build:all'] ?? ''
-  const order = ['build:plugin', 'build', 'build:recovery-ui', 'build:flat']
+  const order = ['build:plugin', 'build', 'build:recovery-ui', 'build:shell-ui', 'build:flat']
     // The step must be followed by a separator or end-of-string, otherwise the bare
     // `build` token matches inside `build:plugin` (a prefix of it) and the order
     // check silently compares the wrong positions.
@@ -387,11 +387,29 @@ test('Windows 冒烟保留便携版冷启动路径并检查窗口响应', async 
 })
 
 test('首启页面会向辅助技术播报初始化阶段', async () => {
-  const startup = await readFile(new URL('../../assets/startup.html', import.meta.url), 'utf8')
+  // The startup page is React now; the live-region attributes live on the
+  // component and the shipped artifact is the Vite build output.
+  const startup = await readFile(new URL('../../src/shell-ui/StartupWindow.tsx', import.meta.url), 'utf8')
   assert.match(startup, /role="status"/)
   assert.match(startup, /aria-live="polite"/)
   assert.match(startup, /aria-atomic="true"/)
   assert.match(startup, /<h1>DSH My Desktop<\/h1>/)
+})
+
+test('首启状态文案仍由主进程经 #msg 写入', async () => {
+  /*
+   * The startup window has no shell bridge: it runs inside the DSH content view,
+   * which uses the content preload. Its status text is therefore written by the
+   * main process through `executeJavaScript` against the element with id `msg`.
+   * That is a hard cross-process contract, so both halves are asserted together:
+   * a React re-render that dropped the id, or a main-process change that stopped
+   * targeting it, would silently freeze the status line.
+   */
+  const startup = await readFile(new URL('../../src/shell-ui/StartupWindow.tsx', import.meta.url), 'utf8')
+  const main = await readFile(new URL('../../src/main.ts', import.meta.url), 'utf8')
+  assert.match(startup, /id="msg"/)
+  assert.match(main, /getElementById\("msg"\)/)
+  assert.match(main, /getElementById\('msg'\)/)
 })
 
 test('Windows 冒烟兼容 alpha.2+ 启动 token 鉴权', async () => {
