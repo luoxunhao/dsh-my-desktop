@@ -35,7 +35,8 @@ export const OFFICIAL_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/
  * 可指向镜像源），且安装包增大约 3 MB；插件升级需要重新出包。
  */
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
-  // 可视化插件市场（npm 包名 dshmarket；源码参考 plugins/dsh-market/）。
+  // 可视化插件市场。上游源码在 https://github.com/dsh-market/dsh-market，
+  // 本仓库不保留副本（参考源码目录已删除并 ignore，见 .gitignore）。
   { packageName: 'dshmarket', version: '1.45.1' },
 ]
 

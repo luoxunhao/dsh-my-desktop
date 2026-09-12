@@ -28,3 +28,14 @@ System.Management.Automation.Internal.Host.InternalHost
 # pnpm 本地内容寻址存储（本机缓存，不入库）。
 .pnpm-store/
 
+# 上游 dshmarket 参考源码，非本仓库构建单元：随包预装走 npm 下载
+# dshmarket@<version>（见 pnpm-workspace.yaml 里同一处决策与 prepare-runtime.ts 的
+# stageBundledPlugins），仓库内零引用。
+#
+# 之所以要 ignore 而不是放着不管：该目录自带 .git，一旦顺手 `git add` 就会被记成
+# 一个 gitlink（模式 160000，只存 commit 指针、不存内容），而根仓库没有 .gitmodules，
+# 克隆者会拿到一个空目录且无从补回 —— 构建在毫不相关的地方失败。
+# 需要阅读上游实现时直接看 GitHub，或临时 clone 到本路径。
+/plugins/dsh-market/
+
+/_recover_f81081b4
