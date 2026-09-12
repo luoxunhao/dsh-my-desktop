@@ -22,13 +22,14 @@ Web 界面承载到原生桌面窗口里。安装包自带 Node.js 与一套自�
 DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工作台 UI。窗口里看到的内容，
 来自 DSH 核心（`@deepseek-ai/dsh`）以及你安装进**当前 profile** 的插件。
 
-本版本（0.4.0）：
+本版本（0.5.0）：
 
-- 离线随包 **5 个插件**（`BUNDLED_PLUGINS`）：社区插件 `dshmarket`、
+- 离线随包 **6 个插件**（`BUNDLED_PLUGINS`）：社区插件 `dshmarket`、
   `dsh-better-sidebar`、`dsh-vision-router`、`dsh-context`，外加
-  `dsh-codex-project`（Codex 式工作区共享子目录）。出包时装配进 `store.tgz`
-  打进安装包，首启**零联网**补种进 profile。其中 `dsh-codex-project` 以
-  **已构建并校验过的产物**随包（在 `vendor/` 下），而非源码——原因见 CHANGELOG；
+  `dsh-codex-project`（Codex 式工作区共享子目录）与 `dsh-quote`（把选中内容引用进
+  上下文）。出包时装配进 `store.tgz` 打进安装包，首启**零联网**补种进 profile。
+  其中 `dsh-codex-project` 与 `dsh-quote` 以**已构建并校验过的产物**随包
+  （在 `vendor/` 下），而非源码——原因见 CHANGELOG；
 - 随包一个**内置的桌面设置页**（`dsh-my-desktop-setting` 插件，源码在
   `plugins/dsh-my-desktop-settings/`），启动时注入——见下文；
 - 支持**多 profile 管理**：列出、新建、删除、切换，选中态跨重启保留；

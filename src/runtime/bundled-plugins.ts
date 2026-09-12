@@ -77,6 +77,18 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
     version: '0.12.0',
     vendorTarball: 'vendor/dsh-codex-project/luoxunhao-dsh-codex-project-0.12.0.tgz',
   },
+  // 会话里选中一段文字 → 「添加到对话」：以一次性注入上下文搭在下一条真实用户消息上，
+  // 不进入消息正文。源码在 https://github.com/luoxunhao/dsh-quote。
+  //
+  // 同为 vendorTarball：npm 上只有 0.0.1，本地适配版是 0.1.0（未发布）。它的 peer
+  // 声明仍是 0.1.2-alpha 线，已实测在随包的 0.1.5-rc.2 上能正常激活（host 行 state=2、
+  // client 进名册、无错误）——它只真正 import @deepseek-ai/dsh-llm，宿主服务面没有踩到
+  // 那批变化。随包的是它 0.1.0 的构建产物。
+  {
+    packageName: 'dsh-quote',
+    version: '0.1.0',
+    vendorTarball: 'vendor/dsh-quote/dsh-quote-0.1.0.tgz',
+  },
 ]
 
 /** 离线 store 只放社区插件。 */

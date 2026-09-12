@@ -2,6 +2,30 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.5.0
+
+Version bump to 0.5.0. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1 — that
+is still npm's `latest` tag for `@deepseek-ai/dsh` (matching the call made for 0.2.1,
+0.3.0 and 0.4.0).
+
+- **`dsh-quote` is bundled** as the sixth preinstalled plugin: select a block of text
+  in the conversation and "add to conversation" — it rides as one-shot injected context
+  on your next real user message without entering the message text. Source:
+  <https://github.com/luoxunhao/dsh-quote>.
+  - Like `dsh-codex-project`, it ships as a **prebuilt, checksummed artifact** under
+    `vendor/dsh-quote/`, because the version that fits this runtime (0.1.0) is **not
+    published** — npm only has 0.0.1.
+  - Its own peer declarations still name the `0.1.2-alpha` line rather than
+    `^0.1.5-rc.1`. That turned out to be harmless **here**, and the reason is worth
+    recording: it really only imports `@deepseek-ai/dsh-llm` at runtime, so it does not
+    touch the host service surface that changed. Verified the same way as any bundled
+    plugin — installed into a scratch profile, booted against DSH 0.1.5-rc.2, and
+    asserted the host row reaches state 2 with the client bundle in the roster and no
+    fibre error. If it is ever rebuilt against a newer surface, re-run that check rather
+    than trusting the peer range.
+  - Unlike `dsh-codex-project` its patch layer is a plain single `insert` — it does not
+    disable or replace any core row, so nothing about the fs provider changes.
+
 ## 0.4.0
 
 Version bump to 0.4.0. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1 — that

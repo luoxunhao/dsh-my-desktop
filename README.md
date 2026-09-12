@@ -24,14 +24,15 @@ DSH My Desktop is a **launcher and desktop shell**. It does not implement the
 chat / workbench UI itself. What you see inside the window is the DSH core
 (`@deepseek-ai/dsh`) plus any plugins you install into the active profile.
 
-This version (0.4.0):
+This version (0.5.0):
 
-- bundles **five plugins** offline (`BUNDLED_PLUGINS`): the community plugins
+- bundles **six plugins** offline (`BUNDLED_PLUGINS`): the community plugins
   `dshmarket`, `dsh-better-sidebar`, `dsh-vision-router` and `dsh-context`, plus
-  `dsh-codex-project` (Codex-style shared workspace subdirectories). All are staged
-  into `store.tgz` at build time and seeded into the profile on first launch without
-  any network access. `dsh-codex-project` ships as a **prebuilt, checksummed artifact**
-  under `vendor/` rather than as source — see the CHANGELOG for why;
+  `dsh-codex-project` (Codex-style shared workspace subdirectories) and `dsh-quote`
+  (quote a selection into context). All are staged into `store.tgz` at build time and
+  seeded into the profile on first launch without any network access.
+  `dsh-codex-project` and `dsh-quote` ship as **prebuilt, checksummed artifacts** under
+  `vendor/` rather than as source — see the CHANGELOG for why;
 - ships a **built-in desktop settings page** (the `dsh-my-desktop-setting`
   plugin, source in `plugins/dsh-my-desktop-settings/`), injected at launch — see below;
 - manages **multiple profiles**: list, create, delete and switch, with the

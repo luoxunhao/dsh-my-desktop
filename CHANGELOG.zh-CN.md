@@ -2,6 +2,24 @@
 
 [English](CHANGELOG.md)
 
+## 0.5.0
+
+版本升至 0.5.0。随包 DSH 运行时**不变**，仍为 0.1.5-rc.1 —— 它仍是
+`@deepseek-ai/dsh` 在 npm 上的 `latest` 标签（与 0.2.1、0.3.0、0.4.0 的判断一致）。
+
+- **随包预装 `dsh-quote`**（第六个）：在会话里选中一段文字 → 「添加到对话」，
+  它以一次性注入上下文搭在下一条真实用户消息上，不进入消息正文。
+  源码在 <https://github.com/luoxunhao/dsh-quote>。
+  - 与 `dsh-codex-project` 一样，以**已构建并校验过的产物**随包（在
+    `vendor/dsh-quote/` 下）：适配本运行时的 0.1.0 **没有发布**，npm 上只有 0.0.1。
+  - 它自身的 peer 声明仍写着 `0.1.2-alpha` 线而非 `^0.1.5-rc.1`。实测在**此处**
+    无影响，原因值得记下来：它运行时只真正 import `@deepseek-ai/dsh-llm`，没有碰到
+    那批变更的宿主服务面。验证方式与其它随包插件一致——装进临时 profile，对着
+    DSH 0.1.5-rc.2 启动，断言 host 行到达 state 2、client bundle 进名册、无 fiber 错误。
+    若将来它针对更新的服务面重建，请重跑这项检查，不要凭 peer 范围下结论。
+  - 与 `dsh-codex-project` 不同，它的 patch 层只是简单的一条 `insert`：不 disable、
+    不替换任何核心行，因此不改变 fs provider 相关的任何行为。
+
 ## 0.4.0
 
 版本升至 0.4.0。随包 DSH 运行时**不变**，仍为 0.1.5-rc.1 —— 它仍是
