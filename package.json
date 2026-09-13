@@ -194,6 +194,10 @@
         "to": "desktop-bridge/plugin-toolchain.js"
       },
       {
+        "from": "dist/bridge-flat/market-preference.js",
+        "to": "desktop-bridge/market-preference.js"
+      },
+      {
         "from": "dist/bridge-flat/profile-updates.js",
         "to": "desktop-bridge/profile-updates.js"
       },

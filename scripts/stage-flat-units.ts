@@ -38,6 +38,7 @@ const BRIDGE_LAYERS: Readonly<Record<string, string>> = {
   'plugin-toolchain.js': 'runtime',
   'runtime-prebuilt.js': 'runtime',
   'plugin-seed.js': 'profiles',
+  'market-preference.js': 'profiles',
   'profile-updates.js': 'profiles',
   'profiles.js': 'profiles',
   'recovery-mode.js': 'recovery',

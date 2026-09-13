@@ -360,6 +360,7 @@ export const DESKTOP_BRIDGE_FILES = [
   'dsh-process.js',
   'plugin-seed.js',
   'plugin-toolchain.js',
+  'market-preference.js',
   'profile-updates.js',
   'profiles.js',
   'recovery-mode.js',
