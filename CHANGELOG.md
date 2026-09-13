@@ -2,6 +2,44 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.6.0
+
+Feature release. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1.
+
+- **The "Desktop appearance and behavior" window material now takes effect.** The
+  material saved by the settings page used to be a dangling preference: the plugin
+  wrote it into its own state file and the launcher never read it, so choosing Mica
+  and choosing "No Window Material" made no difference to the window. The launcher
+  now reads that preference before creating the first window and applies it to the
+  `BrowserWindow` (Mica / acrylic), with the title bar turning into translucent
+  glass. Notes:
+  - `off` (the default) produces **no** window options — a profile that has never
+    opened this setting yields window options byte-identical to before, so existing
+    users see no change.
+  - A material is a **creation-time property** of the window, so a change lands on
+    the next start. The DSH content area is the official client's own document and
+    stays opaque, so the material reads as a glass title bar rather than a fully
+    immersive window treatment.
+  - On non-Windows platforms (and older Windows without the system material API) it
+    is not applied at all: the preference is kept, the window is unchanged.
+- **Saving an appearance preference now honestly offers a restart.** `appearance/update`
+  used to answer a bare `{accepted:true}` — nothing happened after saving, while the
+  copy had always promised to ask whether to restart now. The endpoint now returns
+  `DesktopRestartAcceptance` (`restartRequired` is true only when the value changed
+  and a native host can apply it), the page shows a "takes effect after restart"
+  banner, and the host actions (restart / terminal / DevTools) are no longer frozen
+  by that banner, so the page's only restart affordance stays clickable.
+- **"Browser and local network" is removed.** It never existed as a feature: the page
+  never rendered it and the launcher contains no LAN/HTTPS code at all — what remained
+  was 21 pairs of dead copy, an unconsumed capability token (`host.web-and-material`,
+  whose manifest entry was self-contradictory: `supported` true while still reporting
+  an `unsupportedCode`) and CSS that was never rendered. Removed wholesale, with the
+  three verbatim-duplicated token exclusion lists collapsed into a single contract
+  alias, `SettingsEmptyActionToken`.
+- The `dsh-my-desktop-setting` plugin is bumped to 0.6.0 in lockstep (the versioned
+  overlay picks the highest SemVer, so an older installed copy cannot shadow the new
+  logic).
+
 ## 0.5.1
 
 Patch release. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1.
