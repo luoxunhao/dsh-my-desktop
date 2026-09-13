@@ -18,17 +18,17 @@ decline rather than fake success.
 ### src/contract.ts — shared wire contract (host + client source of truth)
 - `API_BASE_PATH = '/api/dsh-my-settings'` (contract.ts:19). Distinct from the Desktop shell
   bridge's `/api/desktop/*` so routes can't collide (contract.ts:7-9).
-- Types (contract.ts:21-200): `SettingsMarketProvider` (`'disabled'|'community-market'|'dsh-market'`),
-  `SettingsCapabilityToken` (11 tokens, contract.ts:29-51: `profile.discover`, `market.preference`,
-  `aa.preference`, `notifications.preference`, `appearance.preference`, `host.profile-switch`,
-  `host.restart`, `host.open-terminal`, `host.devtools`, `host.diagnostics-export`, `host.web-and-material`),
+- Types (contract.ts:21-232): `SettingsMarketProvider` (`'disabled'|'dsh-market'`),
+  `SettingsCapabilityToken` (10 tokens, contract.ts:35-53: `profile.discover`, `market.preference`,
+  `notifications.preference`, `appearance.preference`, `host.profile-switch`,
+  `host.restart`, `host.open-terminal`, `host.devtools`, `host.diagnostics-export`),
   `SettingsProfileView`, `SettingsNotificationsView`, `SettingsAppearanceView` (material
   `off|mica|acrylic|transparent`, mode `compatibility|extended|advanced`), `SettingsCapabilityView`,
   `SettingsHostIdentityView`, `DesktopSettingsView` (the read projection),
   `DesktopRestartAcceptance`, `SettingsErrorResponse`, plus per-write request bodies.
-- `settingsPaths` frozen map (contract.ts:179-200): `state`, `marketSelect`, `aaSelect`,
-  `notificationsUpdate`, `appearanceUpdate`, `profileSwitch`, `restart`, `terminalOpen`,
-  `devtoolsToggle`, `diagnosticsExport` under the base.
+- `settingsPaths` frozen map (contract.ts:202-224): `state`, `marketSelect`,
+  `notificationsUpdate`, `appearanceUpdate`, `profileCreate`, `profileSwitch`, `profileDelete`,
+  `restart`, `terminalOpen`, `devtoolsToggle`, `diagnosticsExport` under the base.
 
 ### src/host-capability.ts — capability detection/projection (pure)
 - `HostServiceAccess` (host-capability.ts:35-48): the duck-typed probe result:
@@ -307,7 +307,7 @@ client-modules registry as `/plugins/dsh-my-desktop-setting/client.js`.
 - **What DSH_DESKTOP_HOST=1 enables in the plugin** (host-capability.ts probe + index.ts:83-98):
   `desktopEnv=true`; bridge states derive from ctx services (`desktopProfiles`/`desktopPnpm` present
   + `connected:true` → `'ready'`); `desktopRuntime` stays null here → `runtimePresent=false` →
-  `host.web-and-material` unsupported and all Host-专属 actions unsupported/501 unless a ctx action
+  all Host-专属 actions unsupported/501 unless a ctx action
   port exists (none from dsh-my-desktop). So in THIS launcher every Host-专属 row degrades to read-only.
 
 ---
@@ -360,11 +360,12 @@ Configs:
    host-controller.ts:230-282). Alternatively an IPC path from the web profile to Electron.
 2. **Profile switch is hardcoded unsupported** even though capability/token plumbing exists
    (`host.profile-switch`, UI note + switch-capability logic, DesktopSettingsSection.tsx:343-346).
-3. **Rendering is HTTP-driven, fully generic; appearance/mode/LAN UI is stub-ish.** The appearance
-   group persists only material+mode; `host.web-and-material` (LAN/browser + material) is surfaced only
-   as a capability, not as a usable LAN-status/URL/fingerprint UI — yet the stylesheet already contains
-   `.dshDesktopSettingsLanStatus/Urls/Fingerprint/Dialog/NativeActions` CSS (styles 163-362) that no
-   component renders. Feature/UI parity gaps are precisely these unimplemented native rows.
+3. **Rendering is HTTP-driven, fully generic.** The appearance group persists only material+mode.
+   Browser/LAN has been REMOVED by decision: its locale keys, the `host.web-and-material` token and the
+   never-rendered `.dshDesktopSettingsLanStatus/Urls/Fingerprint/Dialog` styles are gone. The
+   `.dshDesktopNativeActions*` styles remain unreferenced (no `DesktopNativeActions` component exists,
+   see §6.2 of the plugin's PLAN.md). Remaining parity gaps: `mode` has a single layout, and the
+   `transparent` material is deliberately unimplemented.
 4. **Two distinct injection layers** must both be updated when reworking: (a) the browser client's
    Cordis `inject=['slots','locale','settingsScope']` + `ctx.slots` register; (b) the **package manifest
    `dsh.client.inject`** (module-table externals) in both the plugin `package.json` and the launcher's

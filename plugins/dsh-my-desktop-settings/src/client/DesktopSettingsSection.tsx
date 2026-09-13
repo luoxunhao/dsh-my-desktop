@@ -14,6 +14,7 @@ import type {
   DesktopSettingsView,
   SettingsCapabilityToken,
   SettingsCapabilityView,
+  SettingsEmptyActionToken,
   SettingsMarketProvider,
   SettingsNotificationsUpdateRequest,
 } from './desktop-settings-api.ts'
@@ -55,7 +56,7 @@ type RestartState = 'none' | 'restarting' | 'required'
 
 /** Host-专属 side-effect tokens rendered as action buttons. */
 const HOST_ACTION_TOKENS: readonly {
-  token: Exclude<SettingsCapabilityToken, 'profile.discover' | 'market.preference' | 'notifications.preference' | 'appearance.preference' | 'host.profile-switch' | 'host.web-and-material'>
+  token: SettingsEmptyActionToken
   label: DesktopSettingsLocaleKey
   busyLabel: DesktopSettingsLocaleKey
 }[] = [

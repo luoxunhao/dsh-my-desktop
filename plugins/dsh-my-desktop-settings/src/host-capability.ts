@@ -262,12 +262,6 @@ export function capabilityManifest(
     launcher.diagnostics ? null : cap.desktopHost ? 'host.unsupported' : 'host.offline',
     launcher.diagnostics ? null : declineReason('诊断导出'),
   )
-  push(
-    'host.web-and-material',
-    cap.runtimePresent,
-    cap.runtimePresent ? 'host.unsupported' : 'host.offline',
-    cap.runtimePresent ? null : '运行环境不承载原生窗口（材质/LAN 只读）。',
-  )
   return Object.freeze(list)
 }
 

@@ -17,12 +17,12 @@
 |---|---|---|
 | Profile | 列/选/建/删 web profile | host 自洽：读写 profile 目录/清单，选中态持久化 |
 | 插件市场 | disabled / community-market / dsh-market | host 自洽：持久化市场选择 provider 状态 |
-| AA | Agents-Anywhere 开关 | host 自洽：持久化开关；宿主未装对应 bundle 时提示 |
+| AA | Agents-Anywhere 开关 | 已随 a04efe0 移除，非本插件范围 |
 | 外观/材质 | compatibility/extended/advanced + 窗口材质 | **宿主专属**：仅通过设置命名空间回写，缺失时只读 |
-| 浏览器/LAN | openBrowser / LAN / URLs | **宿主专属**：能力探测，缺失时降级隐藏 |
+| 浏览器/LAN | openBrowser / LAN / URLs | **已决定不做**（意义不大）：文案、能力 token 与样式残留均已删除 |
 | 通知 | enabled + 4 事件开关 | host 自洽：写 `dsh-desktop-notifications` 命名空间偏好 |
 
-原则：**client 半边完整复刻 UI 与交互**；**host 半边对纯文件/纯偏好操作自洽实现**，对只有 Electron 宿主才有的能力（重启、终端、DevTools、诊断导出、窗口材质、LAN HTTPS、原生通知）通过能力探测降级——缺失时该区块显示为"当前宿主未提供/只读"，不假装可用。
+原则：**client 半边完整复刻 UI 与交互**；**host 半边对纯文件/纯偏好操作自洽实现**，对只有 Electron 宿主才有的能力（重启、终端、DevTools、诊断导出、窗口材质、原生通知）通过能力探测降级——缺失时该区块显示为"当前宿主未提供/只读"，不假装可用。
 
 ## 二、运行面与构建
 
@@ -102,7 +102,7 @@ dsh-my-desktop/
 | `POST /api/dsh-my-settings/devtools/toggle` | 宿主 | `{accepted:true}` | 501 + `capability:false` |
 | `POST /api/dsh-my-settings/diagnostics/export` | 宿主 | `{accepted:true}` | 501 + `capability:false` |
 
-> 能力清单里：`profile.discover`、`market.preference`、`aa.preference`、`notifications.preference`、`appearance.preference` = 自洽；`host.profile-switch/restart/open-terminal/devtools/diagnostics-export/web-and-material` = 宿主专属，`supported` 精确反映是否有可转发服务。
+> 能力清单里：`profile.discover`、`market.preference`、`notifications.preference`、`appearance.preference` = 自洽；`host.profile-switch/restart/open-terminal/devtools/diagnostics-export` = 宿主专属，`supported` 精确反映是否有可转发服务。
 
 ### 5.4 关键降级点与理由
 
@@ -111,7 +111,7 @@ dsh-my-desktop/
 3. **profile 切换**：dsh-my-desktop 的 `desktopProfiles.select` 是单 profile 的 no-op（launcher 决定 profile）。本插件一律返回 501，client 该行应显示「当前宿主不支持切换」而非假按钮成功。
 4. **持久化用插件自有 JSON 状态文件而非 `ctx.settings` 命名空间**：避免引入未声明的 `@deepseek-ai/dsh-settings`+`@deepseek-ai/schemastery` 运行时依赖；路径显式解析（`DSH_PROFILE_DIR/.dsh-my-settings/state.json` 优先，回退 `$DSH_HOME/profiles/<name>/.dsh-my-settings/state.json`），无法解析到显式目录时读写按「不可用」降级（读默认值、写 501），**绝不写 `process.cwd()`**。若日后把 `@deepseek-ai/dsh-settings` 升为 peer 依赖，可改挂命名空间（本设计已把持久化抽象在 `state-store`，替换点单一）。
 5. **market/aa「effective」**：读侧 `effective`=持久化 `requested`（本插件不改写组合 bundle 真值），`legacyDefaulted` 仅在从未持久化且为默认 `disabled` 时 `true`；真正更换 provider 需宿主用 `desktopPnpm` 重装——本插件只持久化偏好并在 `capabilities` 如实上报是否可应用，不越权安装。
-6. **外观/材质/LAN**：偏好可自洽持久化；`appearance.nativeCapable` 仅在 native host（`desktopRuntime` 存在）为 `true`，否则只读降级——不做任何 Electron 调用。
+6. **外观/材质**：偏好可自洽持久化；`appearance.nativeCapable` 仅在 native host（`desktopRuntime` 存在）为 `true`，否则只读降级——不做任何 Electron 调用。浏览器/LAN 已决定不做（文案、`host.web-and-material` token 与 LAN 样式均已删除）。
 7. **HTTP 守卫用同源（Origin/referer + `sec-fetch-site`）而非强制 loopback**：client 由同一 DSH web server 服务，profile 可能运行于 LAN，故不硬编码 127.0.0.1 socket 校验（`http-handlers.isSameOrigin`）。
 
 ### 5.5 给 client agent 的对齐要求

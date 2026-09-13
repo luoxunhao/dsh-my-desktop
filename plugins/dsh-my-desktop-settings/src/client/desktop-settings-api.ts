@@ -17,6 +17,7 @@ import {
   type SettingsAppearanceUpdateRequest,
   type SettingsCapabilityToken,
   type SettingsCapabilityView,
+  type SettingsEmptyActionToken,
   type SettingsHostIdentityView,
   type SettingsMarketProvider,
   type SettingsNotificationsUpdateRequest,
@@ -34,6 +35,7 @@ export type {
   SettingsAppearanceUpdateRequest,
   SettingsCapabilityToken,
   SettingsCapabilityView,
+  SettingsEmptyActionToken,
   SettingsMarketProvider,
   SettingsNotificationsUpdateRequest,
   SettingsNotificationsView,
@@ -53,7 +55,6 @@ const CAPABILITY_TOKENS = new Set<SettingsCapabilityToken>([
   'host.open-terminal',
   'host.devtools',
   'host.diagnostics-export',
-  'host.web-and-material',
 ])
 const UNSUPPORTED_CODES = new Set(['host.unsupported', 'host.offline'])
 type DesktopBridgeName = 'desktopProfiles' | 'desktopPnpm' | 'desktopRuntime'
@@ -97,7 +98,7 @@ export interface DesktopSettingsApi {
    */
   updateAppearance(request: SettingsAppearanceUpdateRequest): Promise<DesktopRestartAcceptance>
   /** POST a Host-专属 side effect (restart, terminal, …). */
-  performHostAction(token: Exclude<SettingsCapabilityToken, 'profile.discover' | 'market.preference' | 'notifications.preference' | 'appearance.preference' | 'host.profile-switch' | 'host.web-and-material'>): Promise<void>
+  performHostAction(token: SettingsEmptyActionToken): Promise<void>
   /** POST create a new Web profile through the launcher bridge. */
   createProfile(name: string): Promise<void>
   /** POST switch the active profile through the launcher bridge. */
@@ -439,7 +440,7 @@ export function createDesktopSettingsApi(fetcher: FetchLike = globalThis.fetch.b
   })
 }
 
-function hostActionPath(token: Exclude<SettingsCapabilityToken, 'profile.discover' | 'market.preference' | 'notifications.preference' | 'appearance.preference' | 'host.profile-switch' | 'host.web-and-material'>): string {
+function hostActionPath(token: SettingsEmptyActionToken): string {
   switch (token) {
     case 'host.restart': return settingsPaths.restart
     case 'host.open-terminal': return settingsPaths.terminalOpen

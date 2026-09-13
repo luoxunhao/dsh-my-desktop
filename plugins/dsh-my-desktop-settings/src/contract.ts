@@ -51,8 +51,20 @@ export type SettingsCapabilityToken =
   | 'host.devtools'
   /** Export a local diagnostics archive via a launcher-owned bridge. */
   | 'host.diagnostics-export'
-  /** Report LAN/browser access and material capabilities of the running host. */
-  | 'host.web-and-material'
+
+/**
+ * Capability tokens that are plain side effects: no request payload and no
+ * acceptance in the response. `performHostAction` is typed to exactly these, so a
+ * token that carries a body (profile switch) or is a read (discover) cannot reach
+ * it. Keeping this list in the contract means the browser client mirrors it instead
+ * of restating its own `Exclude<…>` and drifting.
+ */
+export type SettingsEmptyActionToken = Exclude<SettingsCapabilityToken,
+  'profile.discover'
+  | 'market.preference'
+  | 'notifications.preference'
+  | 'appearance.preference'
+  | 'host.profile-switch'>
 
 /** One profile/workspace the plugin can recognize as readable identity. */
 export interface SettingsProfileView {
