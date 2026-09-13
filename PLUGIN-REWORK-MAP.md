@@ -64,7 +64,8 @@ decline rather than fake success.
   each true iff a matching port fn exists; **profileSwitch is hardcoded false** (89).
 - Writes: `selectMarket` (170-182, flags `restartRequired = changed && marketChangeSupported`),
   `selectAa` (185-191, restartRequired when changed), `updateNotifications` (194-210, no restart),
-  `updateAppearance` (213-224, no restart, nativeCapable=false).
+  `updateAppearance` (272-289, flags `restartRequired = changed && nativeAppearanceSupported`,
+  since the launcher reads the material at startup).
 - `performHostAction` (230-282): switch dispatch; when no port → `{ok:false, code:
   'host.unsupported'|'host.offline'}` (never throws/fakes). `host.profile-switch` deliberately
   returns unsupported (274-278).

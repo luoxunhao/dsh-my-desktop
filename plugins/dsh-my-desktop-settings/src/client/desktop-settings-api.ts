@@ -88,8 +88,14 @@ export interface DesktopSettingsApi {
   selectMarket(provider: SettingsMarketProvider): Promise<DesktopRestartAcceptance>
   /** POST persist the notifications preference. */
   updateNotifications(request: SettingsNotificationsUpdateRequest): Promise<void>
-  /** POST persist an appearance preference. */
-  updateAppearance(request: SettingsAppearanceUpdateRequest): Promise<void>
+  /**
+   * POST persist an appearance preference.
+   *
+   * Resolves with a restart acceptance, not `void`: the launcher reads the material
+   * while starting up, so a change only lands on the next generation and the page
+   * has to be able to say so.
+   */
+  updateAppearance(request: SettingsAppearanceUpdateRequest): Promise<DesktopRestartAcceptance>
   /** POST a Host-专属 side effect (restart, terminal, …). */
   performHostAction(token: Exclude<SettingsCapabilityToken, 'profile.discover' | 'market.preference' | 'notifications.preference' | 'appearance.preference' | 'host.profile-switch' | 'host.web-and-material'>): Promise<void>
   /** POST create a new Web profile through the launcher bridge. */
@@ -413,7 +419,9 @@ export function createDesktopSettingsApi(fetcher: FetchLike = globalThis.fetch.b
       parseDesktopActionAcceptance(await readJsonResponse(await post(fetcher, settingsPaths.notificationsUpdate, request)))
     },
     async updateAppearance(request: SettingsAppearanceUpdateRequest) {
-      parseDesktopActionAcceptance(await readJsonResponse(await post(fetcher, settingsPaths.appearanceUpdate, request)))
+      // NOT `parseDesktopActionAcceptance`: that parser requires the body to have
+      // exactly one key, so it would reject the `restartRequired` we now expect.
+      return parseDesktopRestartAcceptance(await readJsonResponse(await post(fetcher, settingsPaths.appearanceUpdate, request)))
     },
     async performHostAction(token: Parameters<DesktopSettingsApi['performHostAction']>[0]) {
       const path = hostActionPath(token)

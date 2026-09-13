@@ -250,18 +250,42 @@ export class DesktopSettingsController {
     return Object.freeze({ accepted: true })
   }
 
-  /** Persist an appearance preference (may require a native host to apply). */
-  async updateAppearance(request: SettingsAppearanceUpdateRequest): Promise<{ readonly accepted: true }> {
+  /**
+   * Persist an appearance preference, reporting whether a restart is needed.
+   *
+   * WHY THIS IS NOT A BARE ACKNOWLEDGEMENT
+   * --------------------------------------
+   * The launcher reads the material while starting up (a window material is a
+   * creation-time property of `BrowserWindow`), so saving the preference cannot
+   * change anything on screen by itself — the next generation has to read it. The
+   * settings page has always told the user that a material change offers a restart;
+   * this return value is what makes that promise performable rather than decorative.
+   *
+   * `restartRequired` is false in two cases, both deliberate:
+   *
+   *  - nothing changed — re-selecting the current value is not a reason to restart;
+   *  - no native host exists to apply it — restarting a plain web profile would
+   *    change nothing, so asking for a restart would be a fresh falsehood in place
+   *    of the old one. `nativeAppearanceSupported` is the same condition the read
+   *    projection already reports as `appearance.nativeCapable`.
+   */
+  async updateAppearance(request: SettingsAppearanceUpdateRequest): Promise<DesktopRestartAcceptance> {
     const current = this.state.snapshot().appearance
+    const material = request.material ?? current.material
+    const mode = request.mode ?? current.mode
     const next = this.nextState({
       appearance: {
-        material: request.material ?? current.material,
-        mode: request.mode ?? current.mode,
+        material,
+        mode,
         nativeCapable: false,
       },
     })
     await this.state.mutate(next)
-    return Object.freeze({ accepted: true })
+    const changed = material !== current.material || mode !== current.mode
+    return Object.freeze({
+      accepted: true,
+      restartRequired: changed && nativeAppearanceSupported(this.capability),
+    })
   }
 
   /**

@@ -194,7 +194,13 @@ export const settingsPaths = Object.freeze({
   marketSelect: `${API_BASE_PATH}/market/select`,
   /** POST — persist the notifications preference. */
   notificationsUpdate: `${API_BASE_PATH}/notifications/update`,
-  /** POST — persist an appearance preference. */
+  /**
+   * POST — persist an appearance preference; returns {@link DesktopRestartAcceptance}.
+   *
+   * A restart acceptance rather than a bare `{accepted:true}`, because the preference
+   * is consumed by the LAUNCHER at startup: a window material is a creation-time
+   * property, so nothing can change on screen until the next generation.
+   */
   appearanceUpdate: `${API_BASE_PATH}/appearance/update`,
   /** POST — Host-专属: create a new Web profile (scaffold + seed, no select). */
   profileCreate: `${API_BASE_PATH}/profile/create`,

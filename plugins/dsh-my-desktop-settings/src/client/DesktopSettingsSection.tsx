@@ -212,7 +212,25 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
     return () => { clearTimeout(timer) }
   }, [restart])
 
+  /**
+   * Announce a restart for a write that the LAUNCHER performs on our behalf.
+   *
+   * Used by profile switch and market select, where the launcher relaunches the app
+   * itself, so the copy that says the desktop "is restarting" is accurate.
+   */
   const requestRestart = (): void => { setRestart('restarting') }
+
+  /**
+   * Announce that a saved change lands on the NEXT START, without claiming one is
+   * already under way.
+   *
+   * Used by the appearance write, and deliberately NOT `requestRestart()`. A window
+   * material is read by the launcher during startup and nothing relaunches the app
+   * (automatic reloads were removed in 82a64da — reload happens only when the user
+   * asks for it). Borrowing the "is restarting" copy here would replace the false
+   * promise this change removes with a different false promise.
+   */
+  const markRestartRequired = (): void => { setRestart('required') }
 
   const run = useCallback(async (operation: BusyOperation, invoke: () => Promise<void>) => {
     setBusy(operation)
@@ -287,7 +305,13 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
   }
 
   const updateAppearance = (update: { material?: DesktopSettingsView['appearance']['material']; mode?: DesktopSettingsView['appearance']['mode'] }): void => {
-    void run('appearance', () => persistAndRefresh(() => api.updateAppearance(update)))
+    void run('appearance', () => persistAndRefresh(async () => {
+      const acceptance = await api.updateAppearance(update)
+      // The launcher reads the material at startup, so a changed value only lands
+      // on the next generation. Without this the page silently did nothing after
+      // a change, while its own copy promised to offer a restart.
+      if (acceptance.restartRequired) markRestartRequired()
+    }))
   }
 
   const performHostAction = (token: (typeof HOST_ACTION_TOKENS)[number]['token']): void => {
@@ -296,6 +320,17 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
   }
 
   const disabled = busy !== undefined || restart !== 'none'
+  /**
+   * Host actions stay available while a restart banner is up.
+   *
+   * Everything else is frozen once a restart is pending, which would otherwise
+   * strand the user: the ONLY restart affordance on this page is the 重启 button
+   * below, so freezing it too would make a saved material change impossible to
+   * apply from here — the exact opposite of telling the user a restart is needed.
+   * The launcher's restart service already collapses concurrent requests, so an
+   * extra click during a relaunch is harmless.
+   */
+  const hostActionDisabled = busy !== undefined
   const marketCapability = view ? capabilityOf(view, 'market.preference') : undefined
   const notificationsCapability = view ? capabilityOf(view, 'notifications.preference') : undefined
   const appearanceCapability = view ? capabilityOf(view, 'appearance.preference') : undefined
@@ -546,7 +581,7 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
                 <button
                   type="button"
                   className="dshDesktopSettingsButton"
-                  disabled={!supported || disabled}
+                  disabled={!supported || hostActionDisabled}
                   onClick={() => { performHostAction(token) }}
                 >
                   {running ? t(busyLabel) : t(label)}

@@ -95,7 +95,7 @@ dsh-my-desktop/
 | `POST /api/dsh-my-settings/market/select` | 自洽（持久化偏好） | `DesktopRestartAcceptance` | 无显式状态目录 → 501 `persist.unavailable` |
 | `POST /api/dsh-my-settings/aa/select` | 自洽（持久化偏好） | `DesktopRestartAcceptance` | 同上 |
 | `POST /api/dsh-my-settings/notifications/update` | 自洽（持久化偏好） | `{accepted:true}` | 同上 |
-| `POST /api/dsh-my-settings/appearance/update` | 自洽（持久化偏好）；是否生效=宿主 | `{accepted:true}`；`nativeCapable=false` 除非 native host | 持久化不可用 → 501；native 由 `capabilities` 报告 |
+| `POST /api/dsh-my-settings/appearance/update` | 自洽（持久化偏好）；是否生效=宿主 | `DesktopRestartAcceptance`（`restartRequired = 值有变更 && native host`） | 持久化不可用 → 501；native 由 `capabilities` 报告 |
 | `POST /api/dsh-my-settings/profile/switch` | 宿主 | — | 501 `host.unsupported/offline`，`capability:false` |
 | `POST /api/dsh-my-settings/restart` | 宿主 | `{accepted:true}`（仅当可转发） | 501 + `capability:false` |
 | `POST /api/dsh-my-settings/terminal/open` | 宿主 | `{accepted:true}` | 501 + `capability:false` |
@@ -133,7 +133,7 @@ dsh-my-desktop/
   - `POST …/market/select` → `DesktopRestartAcceptance`
   - `POST …/aa/select` → `DesktopRestartAcceptance`
   - `POST …/notifications/update` → `{ accepted: true }`
-  - `POST …/appearance/update` → `{ accepted: true }`
+  - `POST …/appearance/update` → `DesktopRestartAcceptance`（启动器在下次启动读取材质，故带重启受理）
   - `POST …/restart | /terminal/open | /devtools/toggle | /diagnostics/export` → `{ accepted: true }`；不可用即 `501` + `SettingsErrorResponse{error,code,capability}`
 - client 读体在进入 React state 前经 `parseDesktopSettingsView` 全量重校验（子解析器 `parseHostIdentity/parseProfile/parseCapability/parseNotifications/parseAppearance/parseMarket/parseAa/parseCurrent`），复用 contract 类型保证字段逐字节一致。
 - `DesktopSettingsView` 形状：`{ current: string|null, host{desktopHost,bridges,profiles}, market{requested,effective,legacyDefaulted}, aa{requested,effective}, notifications{enabled,events{sessionEnd,errors,updates,progress}}, appearance{material,mode,nativeCapable}, capabilities[] }`。
