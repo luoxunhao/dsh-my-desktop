@@ -2,6 +2,35 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.5.1
+
+Patch release. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1.
+
+- **Fixed the flat-publish build failure.** Adding
+  `src/profiles/market-preference.ts` in 0.5.0 made `plugin-seed.ts` import it, but
+  the three bridge manifests that must stay in lockstep were never updated, so
+  `stage-flat-units` hard-failed mid-build with
+  `扁平发布单元 dist/bridge-flat 缺少依赖：plugin-seed.js 引用了 ./market-preference.js`.
+  The three lists are:
+  1. `scripts/stage-flat-units.ts` → `BRIDGE_LAYERS` (what gets flattened)
+  2. `src/bridge/desktop-host.ts` → `DESKTOP_BRIDGE_FILES` (what gets copied into the installer)
+  3. `package.json` → `build.extraResources` (electron-builder publishes each entry
+     individually, **not** via a glob)
+
+  All three now list 16 files. The guard in `stage-flat-units` is deliberate — it
+  surfaces "imports that would only explode at run time" at build time instead.
+
+- **Plugin market selection now takes effect, and Agents-Anywhere is gone** (this
+  work landed in 0.5.0's tree but had not been released on its own). The market
+  toggle is a real load/unload now rather than a dangling preference: with the market
+  disabled, `dshmarket` is removed from the profile's `dependencies` and
+  `dsh.profile.bundles` instead of being silently re-seeded into every profile. The
+  launcher reads the plugin's state file directly, defaulting to `disabled` whenever
+  the file is missing, unreadable, corrupt, or names an unknown provider.
+
+- **Installing a plugin no longer restarts the desktop** — reload is only triggered
+  explicitly by the user.
+
 ## 0.5.0
 
 Version bump to 0.5.0. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1 — that

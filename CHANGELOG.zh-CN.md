@@ -2,6 +2,30 @@
 
 [English](CHANGELOG.md)
 
+## 0.5.1
+
+补丁版本。随包 DSH 运行时**不变**，仍为 0.1.5-rc.1。
+
+- **修复扁平发布单元的构建失败。** 0.5.0 新增 `src/profiles/market-preference.ts`
+  后，`plugin-seed.ts` 引用了它，但三份必须逐字对齐的桥接清单一份都没同步，导致
+  `stage-flat-units` 在构建中途硬失败：
+  `扁平发布单元 dist/bridge-flat 缺少依赖：plugin-seed.js 引用了 ./market-preference.js`。
+  这三份清单是：
+  1. `scripts/stage-flat-units.ts` → `BRIDGE_LAYERS`（决定扁平化谁）
+  2. `src/bridge/desktop-host.ts` → `DESKTOP_BRIDGE_FILES`（决定拷进安装包谁）
+  3. `package.json` → `build.extraResources`（electron-builder 逐条发布，**非通配符**）
+
+  三份现已一致，均为 16 个文件。`stage-flat-units` 里的守卫是**有意为之**——它把
+  「只在运行时才会炸的 import」提前到构建期暴露。
+
+- **插件市场选择真正生效，并删除 Agents-Anywhere**（这部分工作随 0.5.0 的树一起
+  落地，但此前未单独发布过）。市场开关现在是**真实的装载/卸载**，不再是悬空的意向：
+  未启用市场时，`dshmarket` 会被从 profile 的 `dependencies` 与
+  `dsh.profile.bundles` 中摘除，而不是被静默补种进每个 profile。启动器直接读插件
+  的状态文件，文件缺失、不可读、损坏或 provider 不识别时**一律回退 `disabled`**。
+
+- **安装插件不再自动重启桌面**——重载只由用户显式触发。
+
 ## 0.5.0
 
 版本升至 0.5.0。随包 DSH 运行时**不变**，仍为 0.1.5-rc.1 —— 它仍是

@@ -144,8 +144,18 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
 - `test` = `build:all && node --test dist/test/*.test.js`
   （**必须走 `build:all`**：测试会断言 `dist/bridge-flat/` 与 `dist/extract-flat/` 里的暂存产物，
   而 `dist/` 是 gitignore 的。用 `build` 会让这些断言在干净 clone / CI 上失败。）
-- `build:flat` = 扁平化两个「扁平发布单元」（bridge 15 个 + extract 3 个）到
+- `build:flat` = 扁平化两个「扁平发布单元」（bridge 16 个 + extract 3 个）到
   `dist/bridge-flat/`、`dist/extract-flat/`；`build:all` 已包含这一步
+
+> ⚠️ **在桥接单元里增删文件，必须同步改三份清单**，漏一处会让构建硬失败：
+> 1. `scripts/stage-flat-units.ts` 的 `BRIDGE_LAYERS`（决定扁平化谁）
+> 2. `src/bridge/desktop-host.ts` 的 `DESKTOP_BRIDGE_FILES`（决定拷进安装包谁）
+> 3. `package.json` 的 `build.extraResources`（electron-builder **逐条**发布，非通配符）
+>
+> `stage-flat-units` 的守卫会故意在构建期抛错，而不是让坏 import 留到运行期。
+> `test/prepare-runtime.test.ts` 有一条断言强制 `extraResources` 与
+> `DESKTOP_BRIDGE_FILES` 全等——**别改那条断言**，它是防漂移的护栏。
+> 上面括号里的数字会随之变化，改动时一并更新。
 - `dist:local` / `pack:local` = `build:all` + `--stage-plugin` + 打包（**日常出包走这个**；
   发版必须用 `dist:local`，见上文「Git 工作流」）
 
