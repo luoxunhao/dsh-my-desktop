@@ -21,8 +21,22 @@
       initial load — a live theme change arrives over IPC, not over the URL.
     -->
     <script>
-      document.documentElement.dataset.colorScheme =
-        new URLSearchParams(location.search).get('theme') === 'light' ? 'light' : 'dark'
+      (function () {
+        const params = new URLSearchParams(location.search)
+        document.documentElement.dataset.colorScheme =
+          params.get('theme') === 'light' ? 'light' : 'dark'
+        // Window material. Set ONLY for a glass material the main process actually
+        // painted; `bar.css` keys its transparency rules off this attribute.
+        //
+        // The launcher sends the EFFECTIVE material, not the stored preference, and
+        // downgrades it to 'off' on platforms that cannot paint one. Guarding again
+        // here means a future caller cannot make the page transparent over an
+        // unpainted window, which would expose whatever is behind the page.
+        const material = params.get('material')
+        if (material === 'mica' || material === 'acrylic') {
+          document.documentElement.dataset.windowMaterial = material
+        }
+      })()
     </script>
     <!--
       CSP for the title bar.

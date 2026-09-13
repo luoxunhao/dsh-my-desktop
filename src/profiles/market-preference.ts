@@ -35,8 +35,14 @@ export const SETTINGS_STATE_DIR_NAME = '.dsh-my-settings'
 /** The plugin's state file name inside that directory. */
 export const SETTINGS_STATE_FILE_NAME = 'state.json'
 
-/** Schema version the reader understands; anything else is not trusted. */
-const SUPPORTED_STATE_VERSION = 1
+/**
+ * Schema version the reader understands; anything else is not trusted.
+ *
+ * Exported because this module is also the single authority for the state
+ * document's LOCATION (`settingsStatePath`); `appearance-preference.ts` reads the
+ * same document and must agree on the version it accepts.
+ */
+export const SUPPORTED_STATE_VERSION = 1
 
 /** The only provider value that loads a market. */
 export const MARKET_PROVIDER_DSH = 'dsh-market' as const

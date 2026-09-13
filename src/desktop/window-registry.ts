@@ -26,10 +26,12 @@ import { BrowserWindow, WebContentsView, shell } from 'electron'
 
 import { SHELL_BAR_HEIGHT } from './shell-contract.js'
 import { DESKTOP_THEME_PALETTES } from './desktop-theme.js'
+import { resolveWindowMaterial } from './window-material.js'
 import { DESKTOP_APP_NAME } from '../app/app-identity.js'
 import { shouldHideInsteadOfClose } from '../app/app-lifecycle.js'
 import { applyInitialWindowState } from './window-state.js'
 import { isExternalOpenUrl, isSameOrigin } from '../infra/navigation.js'
+import type { AppearanceMaterial } from '../profiles/appearance-preference.js'
 import type { DesktopState } from './desktop-state.js'
 
 /** Everything `createWindow` needs from the rest of the app. */
@@ -42,6 +44,15 @@ export interface WindowRegistryDeps {
   resolveShellAsset: (name: 'shell.html' | 'shortcuts.html' | 'about.html' | 'settings.html') => string
   /** Window icon, or undefined when none is available. */
   resolveWindowIconImage: () => Electron.NativeImage | undefined
+  /**
+   * The window material the user chose for this profile.
+   *
+   * Called at every window creation rather than read once, because the store that
+   * holds the answer is populated at different points on the normal and recovery
+   * launch paths. A material is a CREATION-TIME property of a window, so a changed
+   * choice lands on the next start — which is what the settings copy promises.
+   */
+  resolveMaterial: () => AppearanceMaterial
   /** Navigation coordinator guarding in-app history moves. */
   isNavigating: () => boolean
   /** Attach the top-bar keyboard shortcut handler to a web contents. */
@@ -103,6 +114,9 @@ export function createWindowRegistry(deps: WindowRegistryDeps) {
   function createWindow(): BrowserWindow {
     const windowIcon = deps.resolveWindowIconImage()
     const palette = DESKTOP_THEME_PALETTES[state.shell.colorScheme]
+    // Resolved once per creation: `effective` is what the renderer must match, and
+    // it is `off` whenever nothing is actually painted. See window-material.ts.
+    const material = resolveWindowMaterial(deps.resolveMaterial(), process.platform)
     const window = new BrowserWindow({
       width: 1360,
       height: 900,
@@ -115,6 +129,10 @@ export function createWindowRegistry(deps: WindowRegistryDeps) {
       // aligned with the title-bar wash instead of leaving a white seam above
       // the CSS gradient.
       backgroundColor: palette.titleBarBackground,
+      // A glass material is painted BEHIND the renderer, so it is covered by the
+      // opaque pre-paint colour above. These options therefore have to be spread
+      // AFTER it, where they can drop that colour in favour of the material.
+      ...material.options,
       // No `titleBarOverlay`: the caption buttons are DRAWN BY THE RENDERER
       // (frontend/shell/WindowControls.tsx). The native overlay can only paint a
       // SOLID color, so it could never follow the bar's vertical gradient — the
@@ -152,7 +170,12 @@ export function createWindowRegistry(deps: WindowRegistryDeps) {
     window.on('resize', () => { layoutDshView(window); layoutRecoveryView(window) })
     window.on('maximize', () => { layoutDshView(window); layoutRecoveryView(window) })
     window.on('unmaximize', () => { layoutDshView(window); layoutRecoveryView(window) })
-    deps.runTask(window.loadFile(deps.resolveShellAsset('shell.html'), { query: { theme: state.shell.colorScheme } }))
+    deps.runTask(window.loadFile(deps.resolveShellAsset('shell.html'), {
+      // `material` is the EFFECTIVE material, not the stored preference: the page
+      // only makes its surfaces transparent for a material that was really
+      // painted. `bar.css` reads it as `:root[data-window-material=…]`.
+      query: { theme: state.shell.colorScheme, material: material.effective },
+    }))
 
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (isExternalOpenUrl(url, state.shell.allowedOrigin)) deps.runTask(shell.openExternal(url))
