@@ -63,8 +63,13 @@ try {
   # 命中本地 electron-builder 缓存后不会再联网；只在缓存缺失时才去镜像拉一次。
   if (-not $env:ELECTRON_MIRROR) { $env:ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/' }
   if (-not $env:ELECTRON_BUILDER_BINARIES_MIRROR) { $env:ELECTRON_BUILDER_BINARIES_MIRROR = 'https://npmmirror.com/mirrors/electron-builder-binaries/' }
+  # 随包插件仓库（runtime-plugins/store）由 pnpm 从 npm registry 装配。官方源在国内实测只有
+  # 18~34 KiB/s，一次冷装配要 7~9 分钟；指到 npmmirror 后同一批包几十秒拉完。tarball 内容
+  # 与官方一致，且随时可用 DSH_BUILD_REGISTRY 显式覆盖。
+  if (-not $env:DSH_BUILD_REGISTRY) { $env:DSH_BUILD_REGISTRY = 'https://registry.npmmirror.com/' }
   Write-Host "electron mirror: $env:ELECTRON_MIRROR"
   Write-Host "electron-builder binaries mirror: $env:ELECTRON_BUILDER_BINARIES_MIRROR"
+  Write-Host "bundled plugin registry: $env:DSH_BUILD_REGISTRY"
   # 自动定位 pnpm：优先当前用户的 npm 全局安装目录，再回退到 PATH 上的 pnpm。
   # （不要写死某个用户路径，例如 C:\Users\<用户>\AppData\Roaming\npm\pnpm.cmd。）
   $pnpm = $null

@@ -6,7 +6,7 @@ import { join, relative } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { copyWorkspacePackages, officialRuntimeGlobalNodeModulesRoot, officialRuntimeNpmDependencies, officialRuntimeNpmInstallArgs, pruneStoreForPackaging, removePreparedPath, resolveBundledNodeSha256, stageDesktopSettingsPlugin, validateOfficialRuntimeLayout, writePnpmShims } from '../scripts/prepare-runtime.js'
+import { copyWorkspacePackages, officialRuntimeGlobalNodeModulesRoot, officialRuntimeNpmDependencies, officialRuntimeNpmInstallArgs, pruneStoreForPackaging, removePreparedPath, resolveBundledNodeSha256, stageDesktopSettingsPlugin, validateOfficialRuntimeLayout, wipePreparedDirectoryKeepingCache, writePnpmShims } from '../scripts/prepare-runtime.js'
 import { DESKTOP_BRIDGE_FILES } from '../src/bridge/desktop-host.js'
 
 test('按目标平台选择随包 Node 的 SHA256', () => {
@@ -102,6 +102,27 @@ test('内置插件装配限制下载并发并保留网络重试', async () => {
   assert.match(source, /'--network-concurrency=1'/)
   assert.match(source, /'--fetch-retries=5'/)
   assert.match(source, /'--fetch-retry-mintimeout=10000'/)
+})
+
+test('装配前清理保留 pnpm 仓库缓存，只删派生产物', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-wipe-keep-cache-'))
+  try {
+    await mkdir(join(root, 'store', 'v11', 'files'), { recursive: true })
+    await mkdir(join(root, 'store', 'cache'), { recursive: true })
+    await mkdir(join(root, 'store', 'vendor-tarballs'), { recursive: true })
+    await mkdir(join(root, 'staging'), { recursive: true })
+    await writeFile(join(root, 'store.tgz'), 'x', 'utf8')
+    await wipePreparedDirectoryKeepingCache(root)
+    // pnpm 的仓库与元数据缓存必须留下，否则每次出包都要重下整套依赖。
+    assert.equal(existsSync(join(root, 'store', 'v11', 'files')), true)
+    assert.equal(existsSync(join(root, 'store', 'cache')), true)
+    // 派生产物照旧清掉：store.tgz 每次从全新 install 重新打包。
+    assert.equal(existsSync(join(root, 'store', 'vendor-tarballs')), false)
+    assert.equal(existsSync(join(root, 'staging')), false)
+    assert.equal(existsSync(join(root, 'store.tgz')), false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('Windows 根目录图标不会进入 macOS 应用包', async () => {

@@ -31,6 +31,42 @@ function isRetryableRemoveError(error: unknown): boolean {
   return code === 'ENOTEMPTY' || code === 'EBUSY' || code === 'EPERM' || code === 'EACCES'
 }
 
+/**
+ * 装配目录里**必须跨构建保留**的子目录名。
+ *
+ * WHY THESE SURVIVE THE WIPE
+ * -------------------------
+ * pnpm 把 tarball 内容放在内容寻址仓库 `store/v11`，把解析元数据放在 `store/cache`。
+ * 这两个目录只是缓存：`store.tgz` 仍然是每次出包从一次全新 install 重新打包出来的，
+ * 「随包插件清单变了、store 就必须重建」这条硬约束没有松动。但如果连缓存也一起删掉，
+ * 那次 install 就必然回到网络重下整套依赖（实测 310 个包、7~9 分钟，官方源
+ * 18~34 KiB/s），而拿回来的字节与上次逐字节相同——纯粹的浪费。保留缓存后，重建走
+ * 本地硬链接，几秒完成。
+ */
+export const PNPM_CACHE_DIR_NAMES = ['v11', 'cache'] as const
+
+/**
+ * 清空一个已装配目录，但保留 pnpm 的仓库缓存目录（含嵌套的 `store/` 一层）。
+ *
+ * 与 `removePreparedPath` 的分工：那个负责「删干净」，这个负责「删掉派生产物、留下可复用
+ * 的缓存」。用于 `runtime-plugins/`——它的 `store/` 下面就是 pnpm 的仓库。
+ */
+export async function wipePreparedDirectoryKeepingCache(
+  target: string,
+  keep: readonly string[] = PNPM_CACHE_DIR_NAMES,
+): Promise<void> {
+  if (!existsSync(target)) return
+  for (const entry of await readdir(target)) {
+    if (keep.includes(entry)) continue
+    // 递归一层：`runtime-plugins/store/{v11,cache}` 才是缓存真正所在的位置。
+    if (entry === 'store') {
+      await wipePreparedDirectoryKeepingCache(join(target, 'store'), keep)
+      continue
+    }
+    await removePreparedPath(join(target, entry))
+  }
+}
+
 export function resolveBundledNodeSha256(checksums: unknown, platform = process.platform, architecture = process.arch): string {
   if (typeof checksums !== 'object' || checksums === null || Array.isArray(checksums)) {
     throw new Error('package.json 缺少随包 Node SHA256 配置。')
@@ -60,12 +96,18 @@ async function main(): Promise<void> {
     && existsSync(officialArchive)
     && officialRuntimeIsCurrent(officialRuntimeRoot)
 
-  // Node / pnpm 装配是本地拷贝（廉价），始终执行；但不清运行时目录以免误删可复用缓存。
-  const targetsToWipe = [nodeRoot, pluginRoot, ...(runtimeCurrent ? [] : [officialRuntimeRoot, officialArchive])]
+  // Node 装配是本地拷贝（廉价），始终执行；但不清运行时目录以免误删可复用缓存。
+  const targetsToWipe = [nodeRoot, ...(runtimeCurrent ? [] : [officialRuntimeRoot, officialArchive])]
   for (const target of targetsToWipe) {
     if (!target.startsWith(projectRoot + sep)) throw new Error(`拒绝清理项目外路径：${target}`)
     await removePreparedPath(target)
   }
+  // 插件仓库目录不能整棵删：pnpm 的内容寻址仓库与元数据缓存就在它下面（见
+  // `wipePreparedDirectoryKeepingCache`）。整棵删掉会让每次出包都重下整套插件依赖。
+  // `DSH_FORCE_RUNTIME_REBUILD=1` 是「从头重装」的总开关，那种情况下缓存也一起清掉
+  // （缓存损坏、或换 registry 后必须重新解析时用得上）。
+  if (forceRuntime) await removePreparedPath(pluginRoot)
+  else await wipePreparedDirectoryKeepingCache(pluginRoot)
 
   const nodeExecutable = process.execPath
   const nodeSha256 = createHash('sha256').update(await readFile(nodeExecutable)).digest('hex').toUpperCase()
@@ -97,6 +139,10 @@ async function main(): Promise<void> {
  * 与官方运行时装配解耦：官方运行时可以复用本地产物（缓存优先），但插件仓库必须
  * **每次出包都重装**——随包插件清单变了而 store 没重建，安装包里就还是上一次的
  * 插件集合，而且是静默的。`--stage-plugin` 快速路径也走这里。
+ *
+ * 「每次重装」指的是每次真的跑一次 install 并重新打包 `store.tgz`，不包括把 pnpm 的
+ * 缓存也删掉：缓存由 `wipePreparedDirectoryKeepingCache` 保留，否则每次出包都要重下
+ * 整套插件依赖。
  */
 export async function stagePluginStore(): Promise<void> {
   if (STORE_PACKAGES.length === 0) return
@@ -236,6 +282,9 @@ export async function stageBundledPlugins(destinationRoot: string, nodeRoot: str
   await writeFile(join(stagingDir, 'pnpm-workspace.yaml'), pnpmWorkspaceYaml(false), 'utf8')
   runStagedPnpm(nodeRoot, [
     'install',
+    // 缓存命中就不联网：本仓库保留了 pnpm 的仓库与元数据缓存（见
+    // `wipePreparedDirectoryKeepingCache`），加上这一条才能真正免掉重复下载。
+    '--prefer-offline',
     '--dir', stagingDir,
     '--store-dir', storeDir,
     '--cache-dir', join(storeDir, 'cache'),
