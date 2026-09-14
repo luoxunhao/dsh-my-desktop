@@ -70,6 +70,20 @@ test('DSH 健康检查失败时会先结束子进程再报错', async () => {
   await assertFixtureStoppedAfterFailure('unhealthy', /未通过健康检查/)
 })
 
+test('健康检查失败时把探测结果与子进程输出带进错误', async () => {
+  const error = await startFixture('unhealthy').then(
+    () => { throw new Error('unhealthy fixture 本应启动失败') },
+    (reason: Error) => reason,
+  )
+  // 第一行保持不变：窗口只显示第一行，已有文案不能被诊断细节挤掉。
+  assert.match(error.message, /^DSH 启动失败：本机 HTTP 服务未通过健康检查。/)
+  assert.match(error.message, /就绪地址：http:\/\/127\.0\.0\.1:1/)
+  // 没有这一行，日志里就看不出是连不上还是服务器答了 401/500。
+  assert.match(error.message, /最后一次探测：\S/)
+  // 子进程输出必须落进错误里，否则又得靠手工复现。
+  assert.match(error.message, /—— DSH 输出（尾部）——/)
+})
+
 test('重复关闭同一 DSH 子进程是安全的', async () => {
   const server = await startFixture('healthy')
   await Promise.all([server.stop(), server.stop()])

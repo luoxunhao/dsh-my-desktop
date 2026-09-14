@@ -275,6 +275,19 @@ async function prepareLaunchOptions(profileDir: string, activeProfileName: strin
   state.launch.lastStartOptions = startOptions
 }
 
+/**
+ * 安装后首次启动所用的健康检查窗口。
+ *
+ * WHY 180s：那一次启动跑在「运行时和插件仓库刚解包完」的状态上，DSH 子进程还在装配自己的
+ * 插件图——实测要 21 秒才打印就绪行（温启动约 3 秒），此后服务器仍慢到每次探测都超时。
+ * macOS 冒烟脚本出于同样理由早就用了 180_000（`scripts/smoke-macos-package.mjs`）。
+ * 其余启动一律沿用 `dsh-process.ts` 的默认窗口。
+ *
+ * 常量放在这里而不是从 `dsh-process.ts` 导入：那个模块在打包态是经 URL 动态导入的扁平
+ * 发布单元副本，值导入会再打一份进主 bundle。
+ */
+const FIRST_INITIALIZATION_STARTUP_TIMEOUT_MS = 180_000
+
 async function startApplication(): Promise<void> {
   await app.whenReady()
   // Load preferences BEFORE creating the store and registering IPC: the shell
@@ -580,8 +593,12 @@ async function startApplication(): Promise<void> {
     })
     const extractedStoreDir = app.isPackaged ? join(dirname(desktopRuntimeDir), 'plugins', 'store') : undefined
     const nodeExecutable = resolveNodeExecutable(runtimeOptions)
+    // 首次初始化（刚解包运行时与插件仓库）之后的那次启动，服务器要边装配边服务，冷启动
+    // 明显更慢：实测温启动 3 秒就绪，而安装后的首次启动要 21 秒才打印就绪行。给它一个更宽
+    // 的窗口，否则「还没忙完」会被判成「HTTP 服务未通过健康检查」。
+    let firstInitialization = false
     if (app.isPackaged) {
-      const firstInitialization = packagedRuntimesNeedExtraction(process.resourcesPath, desktopRuntimeDir, extractedStoreDir!)
+      firstInitialization = packagedRuntimesNeedExtraction(process.resourcesPath, desktopRuntimeDir, extractedStoreDir!)
       if (firstInitialization) {
         await updateStartupMessage(firstInitializationMessage())
         const controller = new AbortController()
@@ -660,6 +677,9 @@ async function startApplication(): Promise<void> {
       ...(pathPrefix === undefined ? {} : { pathPrefix }),
       runtime,
       nodeExecutable,
+      // 只在首次初始化后的这次启动放宽窗口；其余情况沿用 dsh-process 的默认值，免得把
+      // 真正的启动故障也拖成三分钟才报错。
+      ...(firstInitialization ? { startupTimeoutMs: FIRST_INITIALIZATION_STARTUP_TIMEOUT_MS } : {}),
       environment: {
         DSH_HOME: resolve(profileDir, '..', '..'),
         DSH_PROFILE_DIR: profileDir,
