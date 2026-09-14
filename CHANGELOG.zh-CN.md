@@ -2,6 +2,38 @@
 
 [English](CHANGELOG.md)
 
+## 0.7.0
+
+功能版本。随包 DSH 运行时**不变**，仍为 0.1.5-rc.1。
+
+- **移除「桌面外观与行为」整块。** 该区块四个控件里有三个是假开关：模式三选一
+  （兼容 / 扩展 / 增强）在启动器侧**零消费者**——`appearance-preference.ts` 自述
+  PRESENTATION MODE IS DELIBERATELY NOT READ，全 `src/` 只有那条注释提到 mode；
+  「透明材质」在 `resolveWindowMaterial` 里明写 not implemented，返回空选项；
+  「不使用窗口材质」是默认值。唯一真正生效的 Mica 只影响顶部 40px 控制栏
+  （`SHELL_BAR_HEIGHT`），且必须重启、需 Windows 11 22H2 起。0.6.0 把它接通之后，
+  暴露出来的正是这个形状：一个区块里三格点下去必然没反应，用户无法分辨「设置没
+  生效」和「我选错了」。按裁决整块移除，而不是继续补三种布局 / 补 transparent——
+  那等于给一个假开关再加两个真开关。删除范围：契约（`SettingsAppearanceView` /
+  `SettingsAppearanceUpdateRequest` / `appearance.preference` token /
+  `appearanceUpdate` 端点）、插件 host 与 client 实现、启动器侧材质链路
+  （`window-material.ts` / `appearance-preference.ts` / `bar.css` 的
+  `data-window-material` 规则 / `shell.html` 的 material bootstrap）与相关测试。
+  `state.json` 去掉 `appearance` 字段但 `STATE_VERSION` 仍为 1——旧文件里的该键按
+  未知键忽略，已有 profile 不会失效。
+- **出包不再重下整套插件依赖（7~9 分钟 → 96 秒）。** 根因不在 pnpm：
+  `prepare-runtime` 的 `main()` 把 `runtime-plugins/` 整棵删掉，而 pnpm 的内容寻址
+  仓库（`store/v11`，404MB）与元数据缓存（`store/cache`）就在它下面；缓存被删 ⇒
+  每次 install 都重下 310 个包，叠加官方源在国内实测 18~34 KiB/s，于是有了
+  4m17 / 9m40 / 7m36 这几个数字（日志证据：`reused 0, downloaded 310`）。现在清
+  `runtime-plugins/` 时保留这两个缓存、只删派生产物，`store.tgz` 仍每次从一次全新
+  install 重新打包（「插件清单变了 store 必须重建」的硬约束不变）；install 加
+  `--prefer-offline`；`DSH_FORCE_RUNTIME_REBUILD=1` 时连缓存一起清。
+  `build.ps1` 未显式设置时把 `DSH_BUILD_REGISTRY` 默认指向 npmmirror。实测
+  `pnpm run prepare-runtime`（含 `build:all`）96 秒，日志 `reused 310 / downloaded 0`。
+- 插件 `dsh-my-desktop-setting` 同步升至 0.7.0（版本化 overlay 按 SemVer 取最高，
+  已安装的旧副本不会压住新逻辑）。
+
 ## 0.6.0
 
 功能版本。随包 DSH 运行时**不变**，仍为 0.1.5-rc.1。

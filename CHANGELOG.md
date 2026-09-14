@@ -2,6 +2,46 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.7.0
+
+Feature release. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1.
+
+- **"Desktop appearance and behavior" is removed entirely.** Three of the four controls in
+  that panel were switches that did nothing: the compatibility / extended / enhanced mode
+  radios have **zero consumers** on the launcher side (`appearance-preference.ts` states
+  PRESENTATION MODE IS DELIBERATELY NOT READ, and a search of `src/` finds `mode` only in
+  that comment); "Transparent" is explicitly not implemented in `resolveWindowMaterial`,
+  which returns no options at all; "No Window Material" is the default. The only option
+  that really worked, Mica, affects just the top 40px control bar (`SHELL_BAR_HEIGHT`),
+  needs a restart, and requires Windows 11 22H2 or later. Wiring Mica up in 0.6.0 is
+  exactly what exposed the shape of the problem: three of four clicks must do nothing, and
+  the user cannot tell "the setting did not apply" from "I picked the wrong one". Removed
+  wholesale by decision, rather than adding the three layouts / implementing `transparent`
+  — which would have added two working switches to one dead one. The removal covers the
+  contract (`SettingsAppearanceView` / `SettingsAppearanceUpdateRequest` / the
+  `appearance.preference` token / the `appearanceUpdate` endpoint), the plugin's host and
+  client implementations, the launcher-side material chain (`window-material.ts` /
+  `appearance-preference.ts` / `bar.css`'s `data-window-material` rules / `shell.html`'s
+  material bootstrap) and the related tests. `state.json` drops the `appearance` field
+  while `STATE_VERSION` stays 1 — the legacy key is ignored as unknown, so an existing
+  profile file stays valid.
+- **Packaging no longer re-downloads the whole bundled-plugin dependency set
+  (7-9 min → 96 s).** The cause was not pnpm: `main()` in `prepare-runtime` deleted the
+  entire `runtime-plugins/` tree, and pnpm's content-addressable store (`store/v11`,
+  404MB) plus metadata cache (`store/cache`) live underneath it — deleting them forces a
+  310-package re-download on every install, on top of an official registry measured at
+  18-34 KiB/s from here (hence the 4m17 / 9m40 / 7m36 runs; the log evidence being
+  `reused 0, downloaded 310`). Wiping `runtime-plugins/` now keeps those two caches and
+  removes only derived artifacts, while `store.tgz` is still repacked from a fresh
+  install every run (the "a changed plugin list must rebuild the store" guarantee is
+  unchanged); the install gains `--prefer-offline`; `DSH_FORCE_RUNTIME_REBUILD=1` wipes the
+  caches too. `build.ps1` now defaults `DSH_BUILD_REGISTRY` to npmmirror when unset.
+  Measured: `pnpm run prepare-runtime` (including `build:all`) in 96 s, logging
+  `reused 310 / downloaded 0`.
+- The `dsh-my-desktop-setting` plugin is bumped to 0.7.0 in step (the versioned overlay
+  takes the highest SemVer, so an already-installed older copy cannot shadow the new
+  logic).
+
 ## 0.6.0
 
 Feature release. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1.
