@@ -39,8 +39,6 @@ export type SettingsCapabilityToken =
   | 'market.preference'
   /** Persist the notifications preference. */
   | 'notifications.preference'
-  /** Persist an appearance preference (material, native frame). */
-  | 'appearance.preference'
   /** Switch the active profile via a launcher-owned bridge. */
   | 'host.profile-switch'
   /** Queue an orderly relaunch of the application via a launcher-owned bridge. */
@@ -63,7 +61,6 @@ export type SettingsEmptyActionToken = Exclude<SettingsCapabilityToken,
   'profile.discover'
   | 'market.preference'
   | 'notifications.preference'
-  | 'appearance.preference'
   | 'host.profile-switch'>
 
 /** One profile/workspace the plugin can recognize as readable identity. */
@@ -101,16 +98,6 @@ export interface SettingsNotificationsView {
   }
 }
 
-/** Appearance preference that only a native shell can make live. */
-export interface SettingsAppearanceView {
-  /** Preferred native material; `'off'` means "no custom backdrop". */
-  readonly material: 'off' | 'mica' | 'acrylic' | 'transparent'
-  /** Preferred native presentation mode. */
-  readonly mode: 'compatibility' | 'extended' | 'advanced'
-  /** Whether the running host can apply material/mode live or at all. */
-  readonly nativeCapable: boolean
-}
-
 /** One capability slot with a human-usable reason when unsupported. */
 export interface SettingsCapabilityView {
   readonly token: SettingsCapabilityToken
@@ -135,7 +122,7 @@ export interface SettingsHostIdentityView {
 /**
  * Complete renderer-safe projection returned by the read endpoint.
  * Mirrors the DesktopSettingsView responsibilities the browser client needs
- * (profile/market/notifications/appearance + a capability manifest).
+ * (profile/market/notifications + a capability manifest).
  */
 export interface DesktopSettingsView {
   /** Name of the currently recognized profile, when one exists. */
@@ -148,7 +135,6 @@ export interface DesktopSettingsView {
     readonly legacyDefaulted: boolean
   }
   readonly notifications: SettingsNotificationsView
-  readonly appearance: SettingsAppearanceView
   /** Per-operation capability, so the client can degrade without guessing. */
   readonly capabilities: readonly SettingsCapabilityView[]
 }
@@ -184,12 +170,6 @@ export interface SettingsNotificationsUpdateRequest {
   }
 }
 
-/** Body accepted by the appearance write. */
-export interface SettingsAppearanceUpdateRequest {
-  readonly material?: 'off' | 'mica' | 'acrylic' | 'transparent'
-  readonly mode?: 'compatibility' | 'extended' | 'advanced'
-}
-
 /** Empty body accepted by a Host-专属 side effect (restart, terminal, …). */
 export type SettingsEmptyActionRequest = Readonly<Record<string, never>>
 
@@ -206,14 +186,6 @@ export const settingsPaths = Object.freeze({
   marketSelect: `${API_BASE_PATH}/market/select`,
   /** POST — persist the notifications preference. */
   notificationsUpdate: `${API_BASE_PATH}/notifications/update`,
-  /**
-   * POST — persist an appearance preference; returns {@link DesktopRestartAcceptance}.
-   *
-   * A restart acceptance rather than a bare `{accepted:true}`, because the preference
-   * is consumed by the LAUNCHER at startup: a window material is a creation-time
-   * property, so nothing can change on screen until the next generation.
-   */
-  appearanceUpdate: `${API_BASE_PATH}/appearance/update`,
   /** POST — Host-专属: create a new Web profile (scaffold + seed, no select). */
   profileCreate: `${API_BASE_PATH}/profile/create`,
   /** POST — Host-专属: switch the active profile through a launcher bridge. */

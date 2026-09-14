@@ -14,7 +14,6 @@ import {
   settingsPaths,
   type DesktopRestartAcceptance,
   type DesktopSettingsView,
-  type SettingsAppearanceUpdateRequest,
   type SettingsCapabilityToken,
   type SettingsCapabilityView,
   type SettingsEmptyActionToken,
@@ -32,7 +31,6 @@ export const desktopSettingsPaths = settingsPaths
 export type {
   DesktopRestartAcceptance,
   DesktopSettingsView,
-  SettingsAppearanceUpdateRequest,
   SettingsCapabilityToken,
   SettingsCapabilityView,
   SettingsEmptyActionToken,
@@ -49,7 +47,6 @@ const CAPABILITY_TOKENS = new Set<SettingsCapabilityToken>([
   'profile.discover',
   'market.preference',
   'notifications.preference',
-  'appearance.preference',
   'host.profile-switch',
   'host.restart',
   'host.open-terminal',
@@ -59,8 +56,6 @@ const CAPABILITY_TOKENS = new Set<SettingsCapabilityToken>([
 const UNSUPPORTED_CODES = new Set(['host.unsupported', 'host.offline'])
 type DesktopBridgeName = 'desktopProfiles' | 'desktopPnpm' | 'desktopRuntime'
 const BRIDGES: ReadonlySet<string> = new Set(['desktopProfiles', 'desktopPnpm', 'desktopRuntime'])
-const MATERIALS = new Set(['off', 'mica', 'acrylic', 'transparent'])
-const MODES = new Set(['compatibility', 'extended', 'advanced'])
 const MAX_PROFILES = 256
 const MAX_PROFILE_NAME_LENGTH = 255
 const MAX_CAPABILITIES = 64
@@ -89,14 +84,6 @@ export interface DesktopSettingsApi {
   selectMarket(provider: SettingsMarketProvider): Promise<DesktopRestartAcceptance>
   /** POST persist the notifications preference. */
   updateNotifications(request: SettingsNotificationsUpdateRequest): Promise<void>
-  /**
-   * POST persist an appearance preference.
-   *
-   * Resolves with a restart acceptance, not `void`: the launcher reads the material
-   * while starting up, so a change only lands on the next generation and the page
-   * has to be able to say so.
-   */
-  updateAppearance(request: SettingsAppearanceUpdateRequest): Promise<DesktopRestartAcceptance>
   /** POST a Host-专属 side effect (restart, terminal, …). */
   performHostAction(token: SettingsEmptyActionToken): Promise<void>
   /** POST create a new Web profile through the launcher bridge. */
@@ -119,14 +106,6 @@ function isMarketProvider(value: unknown): value is SettingsMarketProvider {
 
 function isCapabilityToken(value: unknown): value is SettingsCapabilityToken {
   return typeof value === 'string' && CAPABILITY_TOKENS.has(value as SettingsCapabilityToken)
-}
-
-function isMaterial(value: unknown): value is 'off' | 'mica' | 'acrylic' | 'transparent' {
-  return typeof value === 'string' && MATERIALS.has(value as 'off' | 'mica' | 'acrylic' | 'transparent')
-}
-
-function isMode(value: unknown): value is 'compatibility' | 'extended' | 'advanced' {
-  return typeof value === 'string' && MODES.has(value as 'compatibility' | 'extended' | 'advanced')
 }
 
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
@@ -246,20 +225,6 @@ function parseNotifications(value: unknown): SettingsNotificationsView {
   return Object.freeze({ enabled: value.enabled, events: parseNotificationsEvents(value.events) })
 }
 
-function parseAppearance(value: unknown): DesktopSettingsView['appearance'] {
-  if (!isObject(value)
-    || !isMaterial(value.material)
-    || !isMode(value.mode)
-    || typeof value.nativeCapable !== 'boolean') {
-    fail('invalid appearance in settings response')
-  }
-  return Object.freeze({
-    material: value.material as DesktopSettingsView['appearance']['material'],
-    mode: value.mode as DesktopSettingsView['appearance']['mode'],
-    nativeCapable: value.nativeCapable,
-  })
-}
-
 function parseMarket(value: unknown): DesktopSettingsView['market'] {
   if (!isObject(value)
     || !isMarketProvider(value.requested)
@@ -293,7 +258,6 @@ export function parseDesktopSettingsView(value: unknown): DesktopSettingsView {
   const current = parseCurrent(value.current)
   const market = parseMarket(value.market)
   const notifications = parseNotifications(value.notifications)
-  const appearance = parseAppearance(value.appearance)
   const capabilities = value.capabilities.map(parseCapability)
   if (new Set(capabilities.map(capability => capability.token)).size !== capabilities.length) {
     fail('duplicate capability in settings response')
@@ -303,7 +267,6 @@ export function parseDesktopSettingsView(value: unknown): DesktopSettingsView {
     host,
     market,
     notifications,
-    appearance,
     capabilities: Object.freeze(capabilities),
   })
   if (current !== null && !host.profiles.some(profile => profile.name === current)) {
@@ -418,11 +381,6 @@ export function createDesktopSettingsApi(fetcher: FetchLike = globalThis.fetch.b
     },
     async updateNotifications(request: SettingsNotificationsUpdateRequest) {
       parseDesktopActionAcceptance(await readJsonResponse(await post(fetcher, settingsPaths.notificationsUpdate, request)))
-    },
-    async updateAppearance(request: SettingsAppearanceUpdateRequest) {
-      // NOT `parseDesktopActionAcceptance`: that parser requires the body to have
-      // exactly one key, so it would reject the `restartRequired` we now expect.
-      return parseDesktopRestartAcceptance(await readJsonResponse(await post(fetcher, settingsPaths.appearanceUpdate, request)))
     },
     async performHostAction(token: Parameters<DesktopSettingsApi['performHostAction']>[0]) {
       const path = hostActionPath(token)

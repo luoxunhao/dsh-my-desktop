@@ -28,7 +28,6 @@ import {
   writeActiveProfile,
 } from './profiles/profiles.js'
 import { parseUnresolvedBundleError, removeProfileBundle, startAfterPluginUpdates } from './profiles/profile-repair.js'
-import { DEFAULT_APPEARANCE_MATERIAL, readAppearanceMaterial, type AppearanceMaterial } from './profiles/appearance-preference.js'
 import { confirmRecoveryStartup, enterRecoveryMode, getRecoveryStatus, isRecoveryModeActive, leaveRecoveryMode, restoreRecoveryPlugin, tryAutoLeaveRecoveryMode, uninstallRecoveryPlugin } from './recovery/recovery-mode.js'
 import { findRecoveryCandidates, trimStartupLogForRecovery } from './recovery/recovery-diagnostics.js'
 import { advanceStartupDiagnostic, beginStartupDiagnostic, completeStartupDiagnostic, failStartupDiagnostic, parseRendererBootReport, readStartupDiagnostic, type StartupDiagnosticStage } from './recovery/startup-diagnostics.js'
@@ -282,15 +281,6 @@ async function startApplication(): Promise<void> {
   // handlers read these values at call time and would otherwise see defaults.
   const notificationPreferences = await loadNotificationPreferences(notificationPreferencesPath())
   const updatePreferences = await loadUpdatePreferences(updatePreferencesPath())
-  // The window material is read HERE, with the other preferences, and not lazily
-  // when the window is created. The main window is born on the splash path further
-  // down, which runs before the launch path resolves the active profile, so a lazy
-  // read would always see the default. A material is a creation-time property of
-  // `BrowserWindow` anyway, so there is nothing earlier to gain.
-  const windowMaterialRoots = resolveLauncherProfileRoots(app.getPath('userData'))
-  windowMaterial = readAppearanceMaterial(
-    profileDirFor(windowMaterialRoots.home, readActiveProfile(windowMaterialRoots)),
-  )
   state = createDesktopState({
     notificationPreferences,
     updatePreferences,
@@ -303,7 +293,6 @@ async function startApplication(): Promise<void> {
     resolvePreload,
     resolveShellAsset,
     resolveWindowIconImage,
-    resolveMaterial: resolveWindowMaterial,
     isNavigating: () => windowNavigation.isNavigating(),
     installShortcutHandler,
     runTask: runMainTask,
@@ -1198,26 +1187,6 @@ function resolvePreload(name: 'shell-preload.cjs' | 'dsh-view-preload.cjs' | 're
 // keep the existing call sites readable and bind the registry to the app's
 // real collaborators once, at startup.
 let windowRegistry: WindowRegistry | undefined
-
-/**
- * The window material in force for this process.
- *
- * ASSIGNED ONCE DURING STARTUP, BEFORE THE FIRST WINDOW EXISTS. A material is a
- * creation-time property of `BrowserWindow`, and the main window is created on the
- * "starting" splash path — which runs BEFORE the launch path resolves which
- * profile it is booting. A lazy lookup at creation time would therefore always see
- * the default and silently apply nothing. Reading the active profile up here is
- * safe: it is a registry read with no dependency on the launch sequence.
- *
- * The consequence is intended: a changed material lands on the NEXT start, which
- * is what the settings copy promises ("修改后会询问是否立即重启").
- */
-let windowMaterial: AppearanceMaterial = DEFAULT_APPEARANCE_MATERIAL
-
-/** The material the window registry applies to any window it creates. */
-function resolveWindowMaterial(): AppearanceMaterial {
-  return windowMaterial
-}
 
 function requireWindowRegistry(): WindowRegistry {
   if (windowRegistry === undefined) throw new Error('窗口注册表尚未初始化。')

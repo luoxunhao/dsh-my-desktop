@@ -2,8 +2,8 @@
  * Own JSON state persistence for dsh-my-desktop-setting.
  *
  * The plugin persists self-consistent preferences (market provider, the
- * notifications toggles, appearance preference) in its own versioned JSON state
- * file under an explicit, environment-resolved directory. It deliberately does
+ * notifications toggles) in its own versioned JSON state file under an explicit,
+ * environment-resolved directory. It deliberately does
  * NOT depend on `process.cwd()`, and it does not require a registered
  * `ctx.settings` namespace (which would pull in undeclared `@deepseek-ai/dsh-settings`
  * + `@deepseek-ai/schemastery` runtime imports). All runtime imports here are
@@ -22,7 +22,6 @@ import {
 } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import type {
-  SettingsAppearanceView,
   SettingsMarketProvider,
   SettingsNotificationsView,
 } from './contract.js'
@@ -40,7 +39,6 @@ export interface SettingsStateV1 {
   readonly version: 1
   readonly market: { readonly provider: SettingsMarketProvider }
   readonly notifications: SettingsNotificationsView
-  readonly appearance: SettingsAppearanceView
 }
 
 /** Environment facts used to resolve the state directory. */
@@ -89,8 +87,6 @@ export function resolveStateFilePaths(env: StatePathEnvironment = process.env): 
 }
 
 const MARKET_PROVIDERS: readonly string[] = ['disabled', 'dsh-market']
-const MATERIALS: readonly string[] = ['off', 'mica', 'acrylic', 'transparent']
-const MODES: readonly string[] = ['compatibility', 'extended', 'advanced']
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -100,20 +96,8 @@ function isMarketProvider(value: unknown): value is SettingsMarketProvider {
   return typeof value === 'string' && (MARKET_PROVIDERS as readonly string[]).includes(value)
 }
 
-function isMaterial(value: unknown): value is 'off' | 'mica' | 'acrylic' | 'transparent' {
-  return typeof value === 'string' && (MATERIALS as readonly string[]).includes(value)
-}
-
-function isMode(value: unknown): value is 'compatibility' | 'extended' | 'advanced' {
-  return typeof value === 'string' && (MODES as readonly string[]).includes(value)
-}
-
 function isBool(value: unknown): value is boolean {
   return typeof value === 'boolean'
-}
-
-function defaultAppearance(): SettingsAppearanceView {
-  return Object.freeze({ material: 'off', mode: 'compatibility', nativeCapable: false })
 }
 
 function defaultNotifications(): SettingsNotificationsView {
@@ -129,16 +113,16 @@ export function defaultState(): SettingsState {
     version: STATE_VERSION,
     market: { provider: 'disabled' },
     notifications: defaultNotifications(),
-    appearance: defaultAppearance(),
   }
 }
 
 /**
  * Validate a parsed document or throw.
  *
- * A document written by an older build may still carry an `aa` field; unknown
- * keys are simply ignored rather than rejected, so removing that preference does
- * not invalidate an existing state file.
+ * A document written by an older build may still carry preferences this build no
+ * longer has (`aa`, and the removed `appearance` block); unknown keys are simply
+ * ignored rather than rejected, so dropping a preference does not invalidate an
+ * existing state file — the dead key is dropped on the next write.
  */
 function parseState(value: unknown): SettingsState {
   if (!isRecord(value) || value.version !== STATE_VERSION) {
@@ -146,7 +130,6 @@ function parseState(value: unknown): SettingsState {
   }
   const market = value.market
   const notifications = value.notifications
-  const appearance = value.appearance
   if (!isRecord(market) || !isMarketProvider(market.provider)) {
     throw new Error('dsh-my-desktop-setting: invalid market state')
   }
@@ -157,9 +140,6 @@ function parseState(value: unknown): SettingsState {
     || !isBool(notifications.events.updates)
     || !isBool(notifications.events.progress)) {
     throw new Error('dsh-my-desktop-setting: invalid notifications state')
-  }
-  if (!isRecord(appearance) || !isMaterial(appearance.material) || !isMode(appearance.mode)) {
-    throw new Error('dsh-my-desktop-setting: invalid appearance state')
   }
   return {
     version: STATE_VERSION,
@@ -172,11 +152,6 @@ function parseState(value: unknown): SettingsState {
         updates: notifications.events.updates,
         progress: notifications.events.progress,
       },
-    },
-    appearance: {
-      material: appearance.material,
-      mode: appearance.mode,
-      nativeCapable: false,
     },
   }
 }

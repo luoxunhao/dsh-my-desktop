@@ -125,8 +125,8 @@ which writes the usual pending-update record).
 
 - A desktop window that loads the local DSH web UI.
 - Profile management (create / delete / switch) from the desktop settings page.
-- A bundled desktop settings page covering profile, market, AA, appearance,
-  notifications and host actions (restart, terminal, developer tools).
+- A bundled desktop settings page covering profile, market, notifications and
+  host actions (restart, terminal, developer tools).
 - Tray icon with a reload action (restarts the local DSH service).
 - Desktop notifications, theme handling, zoom, and window-state handling.
 - A settings window and an update checker (checks for a new release after

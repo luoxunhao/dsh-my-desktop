@@ -20,12 +20,6 @@ import type {
 } from './desktop-settings-api.ts'
 import type { DesktopSettingsLocaleKey } from './desktop-settings-locales.ts'
 
-/** Browser view of the Host `dsh-desktop` settings namespace (registry surface). */
-export interface DesktopShellSettings {
-  readonly mode: 'compatibility' | 'extended' | 'advanced'
-  readonly material: 'off' | 'mica' | 'acrylic' | 'transparent'
-}
-
 /** Browser view of the Host `dsh-desktop-notifications` settings namespace (registry surface). */
 export interface DesktopNotificationSettings {
   readonly enabled: boolean
@@ -38,8 +32,6 @@ export interface DesktopNotificationSettings {
 /** Registration-side business face for the Desktop settings section. */
 export interface DesktopSettingsSectionInjected {
   readonly api: DesktopSettingsApi
-  /** `dsh-desktop` namespace binding (registry surface; the renderer uses `api`). */
-  readonly desktopSettings?: SettingsScope<DesktopShellSettings>
   /** `dsh-desktop-notifications` namespace binding (registry surface). */
   readonly notificationSettings?: SettingsScope<DesktopNotificationSettings>
 }
@@ -51,7 +43,7 @@ export type DesktopSettingsSectionProps =
   & InjectFace<DesktopSettingsSectionInjected>
 
 type Translate = DesktopSettingsSectionProps['t']
-type BusyOperation = 'load' | 'market' | 'notifications' | 'appearance' | 'host-action' | 'create-profile' | 'select-profile' | 'delete-profile'
+type BusyOperation = 'load' | 'market' | 'notifications' | 'host-action' | 'create-profile' | 'select-profile' | 'delete-profile'
 type RestartState = 'none' | 'restarting' | 'required'
 
 /** Host-专属 side-effect tokens rendered as action buttons. */
@@ -73,18 +65,6 @@ const MARKET_OPTIONS: readonly {
 }[] = [
   { id: 'disabled', title: 'marketDisabled', body: 'marketDisabledBody' },
   { id: 'dsh-market', title: 'dshMarket', body: 'dshMarketBody' },
-]
-
-const MATERIALS: readonly { value: DesktopSettingsView['appearance']['material']; label: DesktopSettingsLocaleKey }[] = [
-  { value: 'off', label: 'windowMaterialOff' },
-  { value: 'transparent', label: 'windowMaterialTransparent' },
-  { value: 'mica', label: 'windowMaterialMica' },
-]
-
-const MODES: readonly { value: DesktopSettingsView['appearance']['mode']; label: DesktopSettingsLocaleKey; body: DesktopSettingsLocaleKey }[] = [
-  { value: 'compatibility', label: 'compatibilityMode', body: 'compatibilityModeBody' },
-  { value: 'extended', label: 'extendedMode', body: 'extendedModeBody' },
-  { value: 'advanced', label: 'advancedMode', body: 'advancedModeBody' },
 ]
 
 function capabilityOf(view: DesktopSettingsView, token: SettingsCapabilityToken): SettingsCapabilityView | undefined {
@@ -221,18 +201,6 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
    */
   const requestRestart = (): void => { setRestart('restarting') }
 
-  /**
-   * Announce that a saved change lands on the NEXT START, without claiming one is
-   * already under way.
-   *
-   * Used by the appearance write, and deliberately NOT `requestRestart()`. A window
-   * material is read by the launcher during startup and nothing relaunches the app
-   * (automatic reloads were removed in 82a64da — reload happens only when the user
-   * asks for it). Borrowing the "is restarting" copy here would replace the false
-   * promise this change removes with a different false promise.
-   */
-  const markRestartRequired = (): void => { setRestart('required') }
-
   const run = useCallback(async (operation: BusyOperation, invoke: () => Promise<void>) => {
     setBusy(operation)
     setOperationError(null)
@@ -305,16 +273,6 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
     void run('notifications', () => persistAndRefresh(() => api.updateNotifications(request)))
   }
 
-  const updateAppearance = (update: { material?: DesktopSettingsView['appearance']['material']; mode?: DesktopSettingsView['appearance']['mode'] }): void => {
-    void run('appearance', () => persistAndRefresh(async () => {
-      const acceptance = await api.updateAppearance(update)
-      // The launcher reads the material at startup, so a changed value only lands
-      // on the next generation. Without this the page silently did nothing after
-      // a change, while its own copy promised to offer a restart.
-      if (acceptance.restartRequired) markRestartRequired()
-    }))
-  }
-
   const performHostAction = (token: (typeof HOST_ACTION_TOKENS)[number]['token']): void => {
     setActiveHostToken(token)
     void run('host-action', () => api.performHostAction(token)).then(() => { setActiveHostToken(undefined) })
@@ -326,15 +284,14 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
    *
    * Everything else is frozen once a restart is pending, which would otherwise
    * strand the user: the ONLY restart affordance on this page is the 重启 button
-   * below, so freezing it too would make a saved material change impossible to
-   * apply from here — the exact opposite of telling the user a restart is needed.
+   * below, so freezing it too would make a saved change impossible to apply from
+   * here — the exact opposite of telling the user a restart is needed.
    * The launcher's restart service already collapses concurrent requests, so an
    * extra click during a relaunch is harmless.
    */
   const hostActionDisabled = busy !== undefined
   const marketCapability = view ? capabilityOf(view, 'market.preference') : undefined
   const notificationsCapability = view ? capabilityOf(view, 'notifications.preference') : undefined
-  const appearanceCapability = view ? capabilityOf(view, 'appearance.preference') : undefined
   const switchCapability = view ? capabilityOf(view, 'host.profile-switch') : undefined
 
   const hostActionCapability = (token: SettingsCapabilityToken): SettingsCapabilityView | undefined => (
@@ -342,7 +299,6 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
   )
 
   const marketEnabled = marketCapability?.supported !== false
-  const appearanceEnabled = appearanceCapability?.supported !== false
   const notificationsEnabled = notificationsCapability?.supported !== false
   const profileManagementEnabled = switchCapability?.supported === true
 
@@ -479,46 +435,6 @@ export function DesktopSettingsSection({ t, api }: DesktopSettingsSectionProps) 
               />
             ))}
           </div>
-        )}
-      </section>
-
-      <section className="dshDesktopSettingsGroup" aria-labelledby="dsh-desktop-presentation-title">
-        <div>
-          <h3 id="dsh-desktop-presentation-title">{t('presentationTitle')}</h3>
-          <p className="dshDesktopSettingsGroupIntro">{t('presentationIntro')}</p>
-        </div>
-        {view !== undefined && (
-          <>
-            <div className="dshDesktopSettingsList" role="radiogroup" aria-labelledby="dsh-desktop-presentation-title">
-              {MODES.map(mode => (
-                <Choice
-                  key={mode.value}
-                  title={t(mode.label)}
-                  body={t(mode.body)}
-                  selected={view.appearance.mode === mode.value}
-                  disabled={!appearanceEnabled || disabled}
-                  action={() => { updateAppearance({ mode: mode.value }) }}
-                  status={view.appearance.mode === mode.value ? t('selected') : undefined}
-                />
-              ))}
-            </div>
-            <label className="dshDesktopSettingsMaterialField">
-              <span className="dshDesktopSettingsMaterialCopy">
-                <span className="dshDesktopSettingsChoiceTitle">{t('windowMaterial')}</span>
-                <span className="dshDesktopSettingsChoiceBody">{t('windowMaterialBody')}</span>
-              </span>
-              <select
-                className="dshDesktopSettingsSelect"
-                value={view.appearance.material}
-                disabled={!appearanceEnabled || disabled}
-                onChange={event => { updateAppearance({ material: event.currentTarget.value as DesktopSettingsView['appearance']['material'] }) }}
-              >
-                {MATERIALS.map(material => (
-                  <option key={material.value} value={material.value}>{t(material.label)}</option>
-                ))}
-              </select>
-            </label>
-          </>
         )}
       </section>
 

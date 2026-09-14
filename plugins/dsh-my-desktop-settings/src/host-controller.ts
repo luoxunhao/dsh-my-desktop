@@ -10,8 +10,6 @@
 import type {
   DesktopRestartAcceptance,
   DesktopSettingsView,
-  SettingsAppearanceUpdateRequest,
-  SettingsAppearanceView,
   SettingsCapabilityToken,
   SettingsCapabilityView,
   SettingsMarketSelectRequest,
@@ -24,8 +22,6 @@ import {
   defaultMarketProvider,
   detectHostCapability,
   marketChangeSupported,
-  nativeAppearanceSupported,
-  resolveAppearance,
   type HostCapability,
   type HostServiceAccess,
   type LauncherActionSupport,
@@ -153,10 +149,6 @@ export class DesktopSettingsController {
 
   private loadedView(): SettingsLoadedView {
     const snapshot = this.state.snapshot()
-    const appearance = resolveAppearance(
-      snapshot.appearance,
-      nativeAppearanceSupported(this.capability),
-    )
     return {
       current: this.capability.profiles.find(profile => profile.current)?.name ?? null,
       market: {
@@ -166,7 +158,6 @@ export class DesktopSettingsController {
           && snapshot.market.provider === defaultMarketProvider(),
       },
       notifications: snapshot.notifications,
-      appearance,
     }
   }
 
@@ -198,11 +189,6 @@ export class DesktopSettingsController {
           updates: loaded.notifications.events.updates,
           progress: loaded.notifications.events.progress,
         }),
-      }),
-      appearance: Object.freeze({
-        material: loaded.appearance.material,
-        mode: loaded.appearance.mode,
-        nativeCapable: loaded.appearance.nativeCapable,
       }),
       capabilities,
     })
@@ -248,44 +234,6 @@ export class DesktopSettingsController {
     })
     await this.state.mutate(next)
     return Object.freeze({ accepted: true })
-  }
-
-  /**
-   * Persist an appearance preference, reporting whether a restart is needed.
-   *
-   * WHY THIS IS NOT A BARE ACKNOWLEDGEMENT
-   * --------------------------------------
-   * The launcher reads the material while starting up (a window material is a
-   * creation-time property of `BrowserWindow`), so saving the preference cannot
-   * change anything on screen by itself — the next generation has to read it. The
-   * settings page has always told the user that a material change offers a restart;
-   * this return value is what makes that promise performable rather than decorative.
-   *
-   * `restartRequired` is false in two cases, both deliberate:
-   *
-   *  - nothing changed — re-selecting the current value is not a reason to restart;
-   *  - no native host exists to apply it — restarting a plain web profile would
-   *    change nothing, so asking for a restart would be a fresh falsehood in place
-   *    of the old one. `nativeAppearanceSupported` is the same condition the read
-   *    projection already reports as `appearance.nativeCapable`.
-   */
-  async updateAppearance(request: SettingsAppearanceUpdateRequest): Promise<DesktopRestartAcceptance> {
-    const current = this.state.snapshot().appearance
-    const material = request.material ?? current.material
-    const mode = request.mode ?? current.mode
-    const next = this.nextState({
-      appearance: {
-        material,
-        mode,
-        nativeCapable: false,
-      },
-    })
-    await this.state.mutate(next)
-    const changed = material !== current.material || mode !== current.mode
-    return Object.freeze({
-      accepted: true,
-      restartRequired: changed && nativeAppearanceSupported(this.capability),
-    })
   }
 
   /**
@@ -345,7 +293,7 @@ export class DesktopSettingsController {
     }
   }
 
-  private nextState(patch: Partial<Pick<SettingsState, 'market' | 'notifications' | 'appearance'>>): SettingsState {
+  private nextState(patch: Partial<Pick<SettingsState, 'market' | 'notifications'>>): SettingsState {
     const snapshot = this.state.snapshot()
     return {
       version: 1,
@@ -353,7 +301,6 @@ export class DesktopSettingsController {
         provider: patch.market?.provider ?? snapshot.market.provider,
       },
       notifications: patch.notifications ?? snapshot.notifications,
-      appearance: (patch.appearance ?? snapshot.appearance) as SettingsAppearanceView,
     }
   }
 }
@@ -398,22 +345,6 @@ export function parseNotificationsUpdate(value: unknown): SettingsNotificationsU
   return Object.keys(eventsPatch).length > 0
     ? { enabled: record.enabled, events: eventsPatch }
     : { enabled: record.enabled }
-}
-
-/** Validate an appearance update body, returning null when malformed. */
-export function parseAppearanceUpdate(value: unknown): SettingsAppearanceUpdateRequest | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
-  const record = value as Record<string, unknown>
-  const material = record.material
-  const mode = record.mode
-  const materialOk = material === undefined || ['off', 'mica', 'acrylic', 'transparent'].includes(material as string)
-  const modeOk = mode === undefined || ['compatibility', 'extended', 'advanced'].includes(mode as string)
-  if (!materialOk || !modeOk) return null
-  if (material === undefined && mode === undefined) return null
-  return {
-    ...(material === undefined ? {} : { material: material as SettingsAppearanceView['material'] }),
-    ...(mode === undefined ? {} : { mode: mode as SettingsAppearanceView['mode'] }),
-  }
 }
 
 /** Re-export the default state shape for tests. */

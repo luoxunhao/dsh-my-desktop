@@ -3,9 +3,9 @@
  *
  * Registers the shared `desktop.settings` locale dictionaries and the
  * `settings.section` page (DesktopSettingsSection). The section is driven by
- * the shared HTTP contract (`/api/dsh-my-settings`), and the `dsh-desktop` /
- * `dsh-desktop-notifications` settings namespaces are bound through the client
- * settings service so the page's own shell can discover/reflect them.
+ * the shared HTTP contract (`/api/dsh-my-settings`), and the
+ * `dsh-desktop-notifications` settings namespace is bound through the client
+ * settings service so the page's own shell can discover/reflect it.
  *
  * @module dsh-my-desktop-setting/client
  */
@@ -19,7 +19,6 @@ import {
   DesktopSettingsSection,
   type DesktopNotificationSettings,
   type DesktopSettingsSectionInjected,
-  type DesktopShellSettings,
 } from './DesktopSettingsSection.tsx'
 import { createDesktopSettingsApi } from './desktop-settings-api.ts'
 import { en, zh, type DesktopSettingsLocaleKey } from './desktop-settings-locales.ts'
@@ -28,8 +27,7 @@ import { installDesktopSettingsStyles } from './desktop-settings-styles.ts'
 /** Locale namespace owned by the Desktop settings page. */
 export const DESKTOP_SETTINGS_LOCALE_NAMESPACE = 'desktop.settings'
 
-/** Host settings namespaces bound through the standard client settings service. */
-export const DESKTOP_SHELL_SETTINGS_NAMESPACE = 'dsh-desktop'
+/** Host settings namespace bound through the standard client settings service. */
 export const DESKTOP_NOTIFICATIONS_SETTINGS_NAMESPACE = 'dsh-desktop-notifications'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -44,9 +42,6 @@ export const inject = ['slots', 'locale', 'settingsScope']
 
 /** Register the Desktop settings page in the official Settings shell. @param ctx - browser Cordis context. */
 export function apply(ctx: ClientContext): void {
-  const desktopSettings = ctx.settingsScope.bind<DesktopShellSettings>({
-    namespace: DESKTOP_SHELL_SETTINGS_NAMESPACE,
-  })
   const notificationSettings = ctx.settingsScope.bind<DesktopNotificationSettings>({
     namespace: DESKTOP_NOTIFICATIONS_SETTINGS_NAMESPACE,
   })
@@ -69,7 +64,6 @@ export function apply(ctx: ClientContext): void {
     locale: DESKTOP_SETTINGS_LOCALE_NAMESPACE,
     inject: (): DesktopSettingsSectionInjected => ({
       api,
-      desktopSettings,
       notificationSettings,
     }),
   }, DesktopSettingsSection))

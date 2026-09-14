@@ -1,4 +1,4 @@
-/** Desktop settings section styles, installed independently of presentation mode. */
+/** Desktop settings section styles. */
 
 const STYLE_ID = 'dsh-desktop-settings-styles'
 
@@ -224,30 +224,6 @@ const CSS = `
   font-size: 11px;
   line-height: 1.4;
 }
-.dshDesktopSettingsMaterialField {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-1);
-}
-.dshDesktopSettingsMaterialCopy { min-width: 0; }
-.dshDesktopSettingsSelect {
-  flex: 0 0 auto;
-  min-width: 150px;
-  min-height: 32px;
-  padding: 4px 28px 4px 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  font: inherit;
-  font-size: 12px;
-}
-.dshDesktopSettingsSelect:disabled { opacity: .55; }
 .dshDesktopSettingsNotice,
 .dshDesktopSettingsError,
 .dshDesktopSettingsSuccess {

@@ -10,7 +10,7 @@
  * Honesty contract with the launcher: this plugin is NOT the Electron launcher.
  * Preference rows that a plain DSH profile can persist are implemented here;
  * Host-专属 rows (restart, profile switch, open terminal, Developer Tools,
- * diagnostics export, native window material / LAN) are capability-gated and
+ * diagnostics export) are capability-gated and
  * answered with HTTP 501 + a stable `capability` code when the running profile
  * exposes no launcher service for them — never faked.
  *
@@ -25,7 +25,6 @@ import type { HostServiceAccess, ProfileBridgeItem } from './host-capability.js'
 import { DesktopSettingsController } from './host-controller.js'
 import type { HostActionPorts } from './host-controller.js'
 import {
-  handleAppearanceUpdate,
   handleHostAction,
   handleMarketSelect,
   handleNotificationsUpdate,
@@ -250,7 +249,6 @@ export function apply(ctx: Context, config: Config = {}): void {
     [settingsPaths.state, handleState(handlerCtx)],
     [settingsPaths.marketSelect, handleMarketSelect(handlerCtx)],
     [settingsPaths.notificationsUpdate, handleNotificationsUpdate(handlerCtx)],
-    [settingsPaths.appearanceUpdate, handleAppearanceUpdate(handlerCtx)],
     // Profile management (create/select/delete) is a real launcher operation.
     [settingsPaths.profileCreate, handleProfileCreate(handlerCtx)],
     [settingsPaths.profileSwitch, handleProfileSwitch(handlerCtx)],

@@ -17,7 +17,6 @@
  */
 
 import type {
-  SettingsAppearanceView,
   SettingsCapabilityToken,
   SettingsCapabilityView,
   SettingsMarketProvider,
@@ -80,8 +79,6 @@ export interface HostCapability {
   readonly runtimePresent: boolean
   /** Recognized profile(s); directory values are never serialized. */
   readonly profiles: readonly SettingsProfileView[]
-  /** The native-shell-only preference the running host can apply. */
-  readonly appearance: SettingsAppearanceView
 }
 
 /** Testable projection of the active profile discovery. */
@@ -93,7 +90,6 @@ export interface SettingsLoadedView {
     readonly legacyDefaulted: boolean
   }
   readonly notifications: SettingsNotificationsView
-  readonly appearance: SettingsAppearanceView
 }
 
 const MARKET_DEFAULT = 'disabled' as const
@@ -163,41 +159,12 @@ export function detectHostCapability(access: HostServiceAccess): HostCapability 
   return Object.freeze({
     ...base,
     profiles: Object.freeze(profiles),
-    appearance: effectiveAppearance(),
-  })
-}
-
-/**
- * Native appearance is only livable in a Desktop host. In a plain web profile
- * the preference can still be *stored*, but the view reports it cannot take
- * effect here.
- */
-function effectiveAppearance(): SettingsAppearanceView {
-  // Host will overwrite `nativeCapable` from the true capability result; the
-  // pure projection is assembled in `resolveAppearanceCapability`.
-  return Object.freeze({
-    material: 'off',
-    mode: 'compatibility',
-    nativeCapable: false,
   })
 }
 
 /** Whether the pnpm bridge is usable enough to persist-and-apply a market change. */
 export function marketChangeSupported(cap: HostCapability): boolean {
   return cap.pnpmBridgeState === 'ready'
-}
-
-/** Whether the running host can apply native appearance (material / mode). */
-export function nativeAppearanceSupported(cap: HostCapability): boolean {
-  return cap.runtimePresent
-}
-
-/** Resolve the appearance view with the true capability flag. */
-export function resolveAppearance(
-  stored: SettingsAppearanceView,
-  nativeSupported: boolean,
-): SettingsAppearanceView {
-  return Object.freeze({ ...stored, nativeCapable: nativeSupported })
 }
 
 /**
@@ -225,7 +192,6 @@ export function capabilityManifest(
   push('profile.discover', cap.profiles.length > 0, null, null)
   push('market.preference', true, null, null)
   push('notifications.preference', true, null, null)
-  push('appearance.preference', true, null, null)
 
   const declineReason = (action: string): string =>
     cap.desktopHost

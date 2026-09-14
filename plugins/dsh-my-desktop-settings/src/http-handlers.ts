@@ -21,7 +21,6 @@ import type {
 } from './contract.js'
 import { findCapability } from './host-capability.js'
 import {
-  parseAppearanceUpdate,
   parseMarketSelect,
   parseNotificationsUpdate,
   type DesktopSettingsController,
@@ -241,28 +240,6 @@ export function handleNotificationsUpdate(ctx: HandlerContext): Handler {
     } catch (cause) {
       ctx.reportError('update notifications', cause)
       finishJson(res, 500, error('notifications could not be saved', 'internal'))
-    }
-  }
-}
-
-/** POST persist an appearance preference. */
-export function handleAppearanceUpdate(ctx: HandlerContext): Handler {
-  return async (req, res) => {
-    if (!guard(req, res, 'POST')) return
-    const value = await parsePostBody(req, res)
-    if (value === INVALID_BODY) return
-    const request = parseAppearanceUpdate(value)
-    if (request === null) {
-      return finishJson(res, 400, error('invalid appearance update', 'bad.appearance'))
-    }
-    try {
-      if (!ctx.controller.persistenceAvailable) {
-        return finishJson(res, 501, error('settings persistence is unavailable in this environment', 'persist.unavailable'))
-      }
-      finishJson(res, 200, await ctx.controller.updateAppearance(request))
-    } catch (cause) {
-      ctx.reportError('update appearance', cause)
-      finishJson(res, 500, error('appearance could not be saved', 'internal'))
     }
   }
 }

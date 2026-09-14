@@ -39,8 +39,8 @@ export const SETTINGS_STATE_FILE_NAME = 'state.json'
  * Schema version the reader understands; anything else is not trusted.
  *
  * Exported because this module is also the single authority for the state
- * document's LOCATION (`settingsStatePath`); `appearance-preference.ts` reads the
- * same document and must agree on the version it accepts.
+ * document's LOCATION (`settingsStatePath`); any future launcher-side reader of
+ * the same document must agree on the version it accepts.
  */
 export const SUPPORTED_STATE_VERSION = 1
 
