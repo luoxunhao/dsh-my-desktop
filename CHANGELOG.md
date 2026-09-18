@@ -2,6 +2,23 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.8.0
+
+Release. The bundled DSH runtime moves to 0.1.6-alpha.2 (from 0.1.5-rc.2).
+
+- **Bundled DSH runtime → 0.1.6-alpha.2.** The official family stays locked to one exact
+  version: `OFFICIAL_DSH_VERSION` and `@deepseek-ai/dsh-scope` / `dsh-timeout` /
+  `dsh-invariants` all move 0.1.5-rc.2 → 0.1.6-alpha.2, with `config.bundledDshVersion`
+  following. Why this target rather than npm `latest`: every package in the family still
+  points `latest` (and `next`) at 0.1.5-rc.2, and only the `alpha` dist-tag carries
+  0.1.6-alpha.2 — so this is a deliberate move onto the alpha line, taken as one family,
+  not a "follow latest" bump. `@deepseek-ai/cordis-plugin-group` stays pinned at its own
+  1.0.2 (it has no alpha line and is not part of the family lock).
+  The `dsh-my-desktop-setting` plugin's four client-type tarballs (locale / ui-renderer /
+  ui-settings / ui-slots) are re-vendored under `vendor/0.1.6-alpha.2/` and `pnpm-lock.yaml`
+  updated; the alpha client contract remained compatible with the rc line in practice —
+  plugin `check:plugin` and launcher `check:all` both exit 0 with no plugin source changes.
+
 ## 0.7.0
 
 Feature release. The bundled DSH runtime moves to 0.1.5-rc.2 (from 0.1.5-rc.1).

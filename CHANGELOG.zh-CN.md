@@ -2,6 +2,21 @@
 
 [English](CHANGELOG.md)
 
+## 0.8.0
+
+发布版本。随包 DSH 运行时升至 0.1.6-alpha.2（原 0.1.5-rc.2）。
+
+- **随包 DSH 运行时 → 0.1.6-alpha.2。** 官方家族仍锁在同一精确版本：`OFFICIAL_DSH_VERSION`
+  与 `@deepseek-ai/dsh-scope` / `dsh-timeout` / `dsh-invariants` 一起从 0.1.5-rc.2 升到
+  0.1.6-alpha.2，`config.bundledDshVersion` 同步。之所以是这个目标而不是 npm `latest`：
+  家族里所有包的 `latest`（以及 `next`）都还停在 0.1.5-rc.2，只有 `alpha` 这个 dist-tag
+  指向 0.1.6-alpha.2——所以这是一次**有意**整体切到 alpha 线，而不是「跟随 latest」的
+  常规升级。`@deepseek-ai/cordis-plugin-group` 仍单独钉在 1.0.2（它没有 alpha 线，也不在
+  家族锁的范围内）。插件 `dsh-my-desktop-setting` 的 4 个 client 类型 tarball
+  （locale / ui-renderer / ui-settings / ui-slots）重新入库到 `vendor/0.1.6-alpha.2/`
+  并更新 `pnpm-lock.yaml`；实测 alpha 的 client 契约与 rc 线兼容，插件 `check:plugin`
+  与启动器 `check:all` 均 exit 0，无需改插件源码。
+
 ## 0.7.0
 
 功能版本。随包 DSH 运行时升至 0.1.5-rc.2（原 0.1.5-rc.1）。

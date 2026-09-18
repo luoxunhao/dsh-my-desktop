@@ -52,7 +52,7 @@ DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工�
 | --- | --- |
 | Electron 桌面壳 | ✅ 是 |
 | Node.js 运行时 + pnpm | ✅ 是 |
-| DSH 官方核心运行时（`@deepseek-ai/dsh` 系列，0.1.5-rc.2） | ✅ 是 |
+| DSH 官方核心运行时（`@deepseek-ai/dsh` 系列，0.1.6-alpha.2） | ✅ 是 |
 | 桌面设置插件（`dsh-my-desktop-setting`） | ✅ 是——由本仓库构建 |
 | 社区插件（`dshmarket`、`dsh-better-sidebar`、`dsh-vision-router`、`dsh-context`） | ✅ 是——从随包离线 store 补种 |
 

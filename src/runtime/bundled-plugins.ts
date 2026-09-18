@@ -22,7 +22,7 @@ export interface BundledPlugin {
 }
 
 /** 官方 DSH 家族统一锁死的版本。打包和在线升级都按这一个号对齐。 */
-export const OFFICIAL_DSH_VERSION = '0.1.5-rc.2'
+export const OFFICIAL_DSH_VERSION = '0.1.6-alpha.2'
 
 /** 官方 DSH 运行时。从 npm 安装，不依赖本地 deepseek-harness 源码。 */
 export const OFFICIAL_RUNTIME: BundledPlugin = {
