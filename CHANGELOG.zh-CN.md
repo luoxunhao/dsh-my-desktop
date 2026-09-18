@@ -4,7 +4,16 @@
 
 ## 0.7.0
 
-功能版本。随包 DSH 运行时**不变**，仍为 0.1.5-rc.1。
+功能版本。随包 DSH 运行时升至 0.1.5-rc.2（原 0.1.5-rc.1）。
+
+- **随包 DSH 运行时 → 0.1.5-rc.2。** 官方家族仍锁在同一精确版本：`OFFICIAL_DSH_VERSION`
+  与 `@deepseek-ai/dsh-scope` / `dsh-timeout` / `dsh-invariants` 一起从 0.1.5-rc.1 升到
+  0.1.5-rc.2，`config.bundledDshVersion` 同步。之所以跟 rc.2 而不是三个 peer 包的
+  npm `latest`：那三个包的 `latest` 停在古老的 0.0.1-rc.1，只有 `next` 是 0.1.5-rc.2，
+  按各自 `latest` 装会把 peer 降级、破坏家族锁版本。插件 `dsh-my-desktop-setting` 的
+  4 个 client 类型 tarball（locale / ui-renderer / ui-settings / ui-slots）重新入库到
+  `vendor/0.1.5-rc.2/` 并更新 `pnpm-lock.yaml`；实测 rc.2 的 client 契约与 rc.1 兼容，
+  插件 `check:plugin` 与启动器 `check:all` 均 exit 0，无需改插件源码。
 
 - **移除「桌面外观与行为」整块。** 该区块四个控件里有三个是假开关：模式三选一
   （兼容 / 扩展 / 增强）在启动器侧**零消费者**——`appearance-preference.ts` 自述

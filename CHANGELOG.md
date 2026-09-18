@@ -4,7 +4,18 @@
 
 ## 0.7.0
 
-Feature release. The bundled DSH runtime is **unchanged** at 0.1.5-rc.1.
+Feature release. The bundled DSH runtime moves to 0.1.5-rc.2 (from 0.1.5-rc.1).
+
+- **Bundled DSH runtime → 0.1.5-rc.2.** The official family stays locked to one exact
+  version: `OFFICIAL_DSH_VERSION` and `@deepseek-ai/dsh-scope` / `dsh-timeout` /
+  `dsh-invariants` all move 0.1.5-rc.1 → 0.1.5-rc.2, with `config.bundledDshVersion`
+  following. Why rc.2 and not each peer's npm `latest`: those three packages have
+  `latest` stuck at the ancient 0.0.1-rc.1, with only `next` at 0.1.5-rc.2 — installing
+  each at its own `latest` would downgrade the peers and break the family version lock.
+  The `dsh-my-desktop-setting` plugin's four client-type tarballs (locale / ui-renderer /
+  ui-settings / ui-slots) are re-vendored under `vendor/0.1.5-rc.2/` and `pnpm-lock.yaml`
+  updated; the rc.2 client contract proved compatible with rc.1 in practice — plugin
+  `check:plugin` and launcher `check:all` both exit 0 with no plugin source changes.
 
 - **"Desktop appearance and behavior" is removed entirely.** Three of the four controls in
   that panel were switches that did nothing: the compatibility / extended / enhanced mode

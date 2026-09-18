@@ -57,7 +57,7 @@ Only Windows x64 has actually been packaged and run here.
 | --- | --- |
 | Electron desktop shell | Yes |
 | Node.js runtime + pnpm | Yes |
-| DSH official core runtime (`@deepseek-ai/dsh` family, 0.1.5-rc.1) | Yes |
+| DSH official core runtime (`@deepseek-ai/dsh` family, 0.1.5-rc.2) | Yes |
 | Desktop settings plugin (`dsh-my-desktop-setting`) | Yes — built from this repo |
 | Community plugins (`dshmarket`, `dsh-better-sidebar`, `dsh-vision-router`, `dsh-context`) | Yes — seeded offline from the packaged store |
 
