@@ -41,7 +41,7 @@ const TOOLS: readonly {
   readonly en: string
 }[] = [
   { id: 'terminal', icon: 'shell-icons/terminal.svg', popup: false, zh: '打开终端', en: 'Open terminal' },
-  { id: 'reload', icon: 'shell-icons/rotate.svg', popup: true, zh: '重启选项', en: 'Reload options' },
+  { id: 'reload', icon: 'shell-icons/rotate.svg', popup: true, zh: '重载 / 重启选项', en: 'Reload / restart options' },
   { id: 'developer', icon: 'shell-icons/wrench.svg', popup: true, zh: '开发者选项', en: 'Developer options' },
 ]
 

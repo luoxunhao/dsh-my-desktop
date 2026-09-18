@@ -35,7 +35,9 @@ export interface TrayDeps {
   locale: () => string
   /** Restore and focus the main window (`show` item, tray click). */
   showMainWindow: () => void
-  /** Recycle DSH after plugin changes (`reload` item). */
+  /** Reload only the DSH renderer (`reload-window` item) — cheap, does not touch the child. */
+  reloadDshView: () => void
+  /** Recycle DSH after plugin changes (`reload` item) — respawns the child so new plugins load. */
   reloadDsh: () => Promise<void>
   /** Quit the desktop app (`quit` item). */
   requestQuit: () => Promise<void>
@@ -101,6 +103,10 @@ export function createTrayService(deps: TrayDeps) {
   async function handleTrayUpdateAction(id: string): Promise<void> {
     if (id === 'show') {
       deps.showMainWindow()
+      return
+    }
+    if (id === 'reload-window') {
+      deps.reloadDshView()
       return
     }
     if (id === 'reload') {

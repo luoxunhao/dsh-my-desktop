@@ -11,7 +11,12 @@ test('桌面壳动作注册表没有重复命令且四个菜单均有内容', ()
 test('桌面壳菜单和动作随 DSH 语言本地化', () => {
   assert.deepEqual(localizedShellMenus('zh-CN').map(menu => menu.label), ['文件', '编辑', '视图', '帮助'])
   assert.deepEqual(localizedShellMenus('en-US').map(menu => menu.label), ['File', 'Edit', 'View', 'Help'])
-  assert.equal(localizedShellActions('zh-CN', 'win32').find(action => action.id === 'reload')?.label, '重新加载')
+  // Two separate actions: the cheap renderer reload and the plugin reload that
+  // respawns the DSH child. Their accelerators must stay distinct.
+  assert.equal(localizedShellActions('zh-CN', 'win32').find(action => action.id === 'reload')?.label, '重新加载插件')
+  assert.equal(localizedShellActions('zh-CN', 'win32').find(action => action.id === 'reload-window')?.label, '重新加载界面')
+  assert.equal(localizedShellActions('zh-CN', 'win32').find(action => action.id === 'reload-window')?.acceleratorLabel, 'Ctrl+R')
+  assert.equal(localizedShellActions('zh-CN', 'win32').find(action => action.id === 'reload')?.acceleratorLabel, 'Ctrl+Shift+R')
   assert.equal(localizedShellActions('zh-CN', 'win32').find(action => action.id === 'quit')?.label, '退出')
   assert.equal(localizedShellActions('zh-CN', 'win32').find(action => action.id === 'desktop-settings')?.label, '桌面端设置')
   assert.equal(localizedShellActions('zh-CN', 'win32').find(action => action.id === 'desktop-settings')?.acceleratorLabel, undefined)

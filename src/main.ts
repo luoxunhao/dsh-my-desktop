@@ -12,7 +12,7 @@ import { OFFICIAL_DSH_VERSION } from './runtime/bundled-plugins.js'
 import { resolveAppIconPath, resolveCompactIconCrop, resolveNotificationIconPath, resolveRasterIconPath, resolveTaskBadgeIconPath, TRAY_ICON_SIZE } from './app/app-icon.js'
 import { WINDOW_ICON_PIXEL_SIZES, isLoopbackFaviconRequest } from './app/window-icon.js'
 import { quitDesktopApp, shouldHideInsteadOfClose } from './app/app-lifecycle.js'
-import type { DshServer, StartDshOptions } from './bridge/dsh-process.js'
+import { isLaunchTimingEnabled, type DshServer, type StartDshOptions } from './bridge/dsh-process.js'
 import { isExternalOpenUrl, isSameOrigin } from './infra/navigation.js'
 import { resolveWebProfileDir } from './profiles/plugin-seed.js'
 import { applyPendingProfileUpdates, resolvePnpmStoreDir, seedBundledPlugins } from './profiles/plugin-seed.js'
@@ -346,6 +346,7 @@ async function startApplication(): Promise<void> {
     notifications: state.notifications,
     locale: desktopLocale,
     showMainWindow,
+    reloadDshView,
     reloadDsh: recycleDshForPluginUpdate,
     requestQuit,
     checkForUpdates: async () => { await checkDesktopUpdate() },
@@ -1133,7 +1134,13 @@ async function recycleDshForPluginUpdate(): Promise<void> {
     await current?.stop()
     const started = await startAfterPluginUpdates({
       applyUpdates: async () => {
+        // 重载路径独有的一步，也是 pnpm 退避重试可能叠加几十秒的地方。单独计时，
+        // 才能把它和子进程冷启的基线区分开。
+        const updateStartedAt = Date.now()
         const updated = await applyPendingProfileUpdates(seedOptions)
+        if (isLaunchTimingEnabled()) {
+          console.log(`[DEBUG-launch-timing] apply-pending-updates total=${Date.now() - updateStartedAt}ms applied=${updated.length}`)
+        }
         if (updated.length > 0) console.log('已热更新插件：' + updated.join('、'))
       },
       onUpdateError: async error => {
@@ -1637,6 +1644,7 @@ async function executeShellAction(id: ShellActionId): Promise<void> {
   else if (id === 'zoom-reset') contents.setZoomFactor(1)
   else if (id === 'toggle-fullscreen') state.windows.mainWindow?.setFullScreen(!(state.windows.mainWindow?.isFullScreen() ?? false))
   else if (id === 'show-shortcuts') showShortcutsWindow()
+  else if (id === 'reload-window') reloadDshView()
   else if (id === 'reload') await recycleDshForPluginUpdate()
   else if (id === 'check-updates') await checkDesktopUpdate()
   else if (id === 'whats-new') await shell.openExternal('https://github.com/deepseek-ai/deepseek-harness/releases')
@@ -1687,6 +1695,32 @@ function toggleDeveloperTools(): void {
   requireProfileActions().toggleDeveloperTools()
 }
 
+/**
+ * Reload only the DSH renderer, without touching the DSH child process.
+ *
+ * WHY THIS IS SEPARATE FROM `reload`
+ * ----------------------------------
+ * `reload` (Cmd/Ctrl+Shift+R) respawns the DSH child so newly installed plugins
+ * take effect — measured at ~3s warm, up to ~17s cold, because DSH must
+ * re-assemble every profile bundle from scratch. That cost is unavoidable: DSH
+ * exposes no way to hot-mount an installed plugin. Its HMR plugin
+ * (`@deepseek-ai/cordis-plugin-hmr`) explicitly skips `node_modules` when tracing
+ * the module graph — that is the documented design, not a config — while profile
+ * plugins always resolve from `<profile>/node_modules`. `dsh plugin` is only a
+ * pnpm forwarder that edits `dsh.profile.bundles`, and `loader.exit()` is a no-op
+ * stub.
+ *
+ * This is the cheap counterpart, matching the reference implementation's reload
+ * (`webContents.reloadIgnoringCache()`), which is what a user pressing the plain
+ * "Reload" shortcut almost always wants: pick up a UI change, clear a stuck page.
+ * It does NOT activate new plugins — that is `reload`'s job, and the labels say so.
+ */
+function reloadDshView(): void {
+  const contents = state.windows.dshView?.webContents
+  if (contents === undefined || contents.isDestroyed()) return
+  contents.reloadIgnoringCache()
+}
+
 /** Invoke a non-popup title-bar tool. */
 function runShellTool(tool: ShellToolId): Promise<void> | undefined {
   if (tool === 'terminal') {
@@ -1706,7 +1740,8 @@ async function popupShellTool(tool: ShellToolPopupId, x: number, y: number): Pro
     items.push({ label, enabled, click: () => runMainTask(Promise.resolve(action())) })
   }
   if (tool === 'reload') {
-    push(zh ? '重载' : 'Reload', isActionEnabled('reload'), () => executeShellAction('reload'))
+    push(zh ? '重新加载界面' : 'Reload Interface', true, () => executeShellAction('reload-window'))
+    push(zh ? '重新加载插件' : 'Reload Plugins', isActionEnabled('reload'), () => executeShellAction('reload'))
     push(zh ? '重启' : 'Restart', !state.runtime.isQuitting, () => restartDesktop())
     push(zh ? '重启到恢复模式' : 'Restart in Recovery Mode', !state.runtime.isQuitting && state.launch.lastSeedOptions !== undefined, () => restartIntoRecoveryFromShell())
   } else {

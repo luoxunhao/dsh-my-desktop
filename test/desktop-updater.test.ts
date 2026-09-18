@@ -33,11 +33,15 @@ test('开发态和空闲态都提供手动检查，不自动下载', () => {
   assert.equal(idle.some(item => item.id === 'check' && item.enabled), true)
   assert.equal(idle.some(item => item.id === 'check' && item.label === '检查更新…'), true)
   assert.equal(idle.some(item => item.id === 'download'), false)
-  assert.equal(idle.some(item => item.id === 'reload' && item.label === '重新加载'), true)
+  // Two distinct entries: the cheap renderer-only reload and the plugin reload
+  // that respawns the DSH child. Collapsing them was the bug this pins.
+  assert.equal(idle.some(item => item.id === 'reload-window' && item.label === '重新加载界面'), true)
+  assert.equal(idle.some(item => item.id === 'reload' && item.label === '重新加载插件'), true)
   const dev = buildDesktopTrayItems({ status: { kind: 'idle' }, currentVersion: '0.1.4', packaged: false })
   assert.equal(dev.some(item => item.id === 'check' && item.enabled), true)
   assert.equal(dev.some(item => item.id === 'check' && item.label === '检查更新…'), true)
   assert.equal(dev.some(item => item.id === 'reload' && item.enabled), true)
+  assert.equal(dev.some(item => item.id === 'reload-window' && item.enabled), true)
 })
 
 test('发现新版本后托盘只出现下载安装，不出现自动安装文案', () => {

@@ -43,6 +43,9 @@ test('桌面壳与 DSH 内容分层并复用托盘重载实现', async () => {
   assert.match(registry, /window\.contentView\.addChildView\(view\)/)
   assert.match(trayService, /deps\.reloadDsh\(\)/)
   assert.match(trayService, /if \(id === 'reload'\) \{\s+await deps\.reloadDsh\(\)/)
+  // The tray also exposes the renderer-only reload, which must NOT go through
+  // reloadDsh (that would respawn the child for a cheap UI refresh).
+  assert.match(trayService, /if \(id === 'reload-window'\) \{\s+deps\.reloadDshView\(\)/)
   assert.match(registry, /title: DESKTOP_APP_NAME/)
 })
 
@@ -272,10 +275,12 @@ test('安装插件后不会自动重载 DSH，重载只由用户触发', async (
   assert.doesNotMatch(main, /waitForDshMarketBatchToSettle\(/)
   //   2. the child→main update-applied IPC, which main used to act on.
   assert.doesNotMatch(main, /isApplyPluginUpdatesIpc/)
-  // `recycleDshForPluginUpdate` still exists — it is the shared MANUAL reload
-  // behind the title-bar tool, Cmd/Ctrl+R and the tray item.
+  // `recycleDshForPluginUpdate` still exists — it is the shared PLUGIN reload
+  // behind the title-bar menu, Cmd/Ctrl+Shift+R and the tray item. The plain
+  // `reload-window` action is deliberately NOT routed here: it must stay cheap.
   assert.match(main, /async function recycleDshForPluginUpdate\(\): Promise<void> \{/)
   assert.match(main, /else if \(id === 'reload'\) await recycleDshForPluginUpdate\(\)/)
+  assert.match(main, /else if \(id === 'reload-window'\) reloadDshView\(\)/)
 
   // The child process must not emit the notification in the first place.
   const host = await readFile(new URL('../../src/bridge/desktop-host.ts', import.meta.url), 'utf8')

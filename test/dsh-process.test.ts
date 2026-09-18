@@ -89,6 +89,58 @@ test('重复关闭同一 DSH 子进程是安全的', async () => {
   await Promise.all([server.stop(), server.stop()])
 })
 
+test('启动分段计时打印各段耗时', async () => {
+  const lines: string[] = []
+  const original = console.log
+  console.log = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+  try {
+    const server = await startFixture('healthy')
+    await server.stop()
+  } finally {
+    console.log = original
+  }
+  const report = lines.find(line => line.startsWith('[DEBUG-launch-timing]'))
+  assert.ok(report !== undefined, '应打印一行 [DEBUG-launch-timing] 汇总')
+  // 三段必须都在：没有分布，17 秒就只能靠猜。
+  assert.match(report, /total=\d+ms/)
+  assert.match(report, /to-ready-line=\d+ms/)
+  assert.match(report, /health-check=\d+ms/)
+})
+
+test('DSH_LAUNCH_TIMING=0 时关闭启动计时', async () => {
+  const lines: string[] = []
+  const original = console.log
+  console.log = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+  const previous = process.env.DSH_LAUNCH_TIMING
+  process.env.DSH_LAUNCH_TIMING = '0'
+  try {
+    const server = await startFixture('healthy')
+    await server.stop()
+  } finally {
+    console.log = original
+    if (previous === undefined) delete process.env.DSH_LAUNCH_TIMING
+    else process.env.DSH_LAUNCH_TIMING = previous
+  }
+  assert.equal(lines.some(line => line.includes('[DEBUG-launch-timing]')), false)
+})
+
+test('DSH_LAUNCH_TIMING=1 时开启启动计时（显式开启，不依赖默认值）', async () => {
+  const lines: string[] = []
+  const original = console.log
+  console.log = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+  const previous = process.env.DSH_LAUNCH_TIMING
+  process.env.DSH_LAUNCH_TIMING = '1'
+  try {
+    const server = await startFixture('healthy')
+    await server.stop()
+  } finally {
+    console.log = original
+    if (previous === undefined) delete process.env.DSH_LAUNCH_TIMING
+    else process.env.DSH_LAUNCH_TIMING = previous
+  }
+  assert.equal(lines.some(line => line.includes('[DEBUG-launch-timing]')), true)
+})
+
 const fixtureStartupTimeoutMs = 3_000
 
 function startFixture(mode: 'authenticated' | 'chunked' | 'exit' | 'healthy' | 'silent' | 'unhealthy', startupTimeoutMs = fixtureStartupTimeoutMs, environment: NodeJS.ProcessEnv = {}): Promise<DshServer> {

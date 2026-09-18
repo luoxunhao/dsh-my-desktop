@@ -133,7 +133,8 @@ export function buildDesktopTrayItems(input: {
   const zh = (input.locale ?? 'zh').toLowerCase().startsWith('zh')
   const items: DesktopTrayItem[] = [
     { id: 'show', label: zh ? '显示窗口' : 'Show Window', enabled: true, type: 'normal' },
-    { id: 'reload', label: zh ? '重新加载' : 'Reload', enabled: true, type: 'normal' },
+    { id: 'reload-window', label: zh ? '重新加载界面' : 'Reload Interface', enabled: true, type: 'normal' },
+    { id: 'reload', label: zh ? '重新加载插件' : 'Reload Plugins', enabled: true, type: 'normal' },
     { id: 'sep-1', label: '', enabled: false, type: 'separator' },
     { id: 'version', label: zh ? `当前版本 ${input.currentVersion}` : `Current version ${input.currentVersion}`, enabled: false, type: 'normal' },
   ]

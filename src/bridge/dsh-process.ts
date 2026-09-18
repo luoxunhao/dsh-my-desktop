@@ -61,6 +61,55 @@ export function resolveDesktopWebPort(value: string | undefined): string {
   return Number.isSafeInteger(port) && port >= 1 && port <= 65_535 ? String(port) : '0'
 }
 
+/**
+ * 启动分段计时。
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * 「重载」和「重启」都收敛到 `startDsh`，实测子进程就绪要 17 秒以上，但只有一个
+ * 总数——不知道是 Node 解析模块、装配插件、还是 HTTP 监听吃掉了它。没有分布，
+ * 任何优化都只能靠猜。这里按 spawn / 就绪行 / 健康检查三段打点，前缀统一为
+ * `[DEBUG-launch-timing]`，一次重载即可看出瓶颈在哪一段。
+ *
+ * 计时只在启动路径上，不影响请求热路径。
+ */
+interface LaunchTimingPhase {
+  readonly name: string
+  /** 该段的持续时间（毫秒）。 */
+  readonly durationMs: number
+}
+
+/**
+ * 计时开关在「报告时」读取，而不是模块加载时。
+ *
+ * 加载时快照会让这个开关不可测（测试无法在同一个进程里翻转它），也会让
+ * 「启动后再设环境变量」静默失效。读一次的代价可以忽略，因为它只在启动路径上。
+ */
+export function isLaunchTimingEnabled(): boolean {
+  return process.env.DSH_LAUNCH_TIMING !== '0'
+}
+
+function createLaunchTimer(label: string) {
+  const startedAt = Date.now()
+  const phases: LaunchTimingPhase[] = []
+  let last = startedAt
+  return {
+    /** 记录一段耗时，并把它加进最终报告。 */
+    mark(name: string): void {
+      const now = Date.now()
+      phases.push({ name, durationMs: now - last })
+      last = now
+    },
+    /** 打印一行汇总：总耗时 + 每段耗时。 */
+    report(outcome: string): void {
+      if (!isLaunchTimingEnabled()) return
+      const total = Date.now() - startedAt
+      const detail = phases.map(phase => `${phase.name}=${phase.durationMs}ms`).join(' ')
+      console.log(`[DEBUG-launch-timing] ${label} ${outcome} total=${total}ms ${detail}`)
+    },
+  }
+}
+
 /** 启动 DSH Web，并在收到本机就绪地址后返回。 */
 export function startDsh(options: StartDshOptions): Promise<DshServer> {
   const patches = options.patches ?? []
@@ -71,6 +120,7 @@ export function startDsh(options: StartDshOptions): Promise<DshServer> {
   // Profile selection MUST come before `--patch` and the web app's own flags.
   const profileName = options.profileName ?? DEFAULT_PROFILE_NAME
   const launchArgs = ['--profile', profileName, ...patchArgs, ...webAppArgs()]
+  const timer = createLaunchTimer(`profile=${profileName}`)
   const child = spawn(options.nodeExecutable, [options.bootstrapPath, options.runtime.entry, ...launchArgs], {
     cwd: options.workingDirectory ?? options.runtime.workingDirectory ?? options.runtime.root,
     env: {
@@ -85,11 +135,11 @@ export function startDsh(options: StartDshOptions): Promise<DshServer> {
     windowsHide: true,
   })
 
-  return waitForReady(child, options.startupTimeoutMs ?? startupTimeoutMs)
+  return waitForReady(child, options.startupTimeoutMs ?? startupTimeoutMs, timer)
     .then(url => createServer(child, url, options.onUnexpectedExit, options.onIpcMessage))
 }
 
-function waitForReady(child: ChildProcess, timeoutMs: number): Promise<string> {
+function waitForReady(child: ChildProcess, timeoutMs: number, timer?: ReturnType<typeof createLaunchTimer>): Promise<string> {
   return new Promise((resolve, reject) => {
     let capturedOutput = ''
     let checkingHealth = false
@@ -105,16 +155,24 @@ function waitForReady(child: ChildProcess, timeoutMs: number): Promise<string> {
       if (settled) return
       settled = true
       clearTimeout(timeout)
+      timer?.report('failed')
       void stopChild(child).then(() => reject(error), () => reject(error))
     }
     const capture = (chunk: Buffer): void => {
+      const before = capturedOutput.length === 0
       capturedOutput = (capturedOutput + chunk.toString('utf8')).slice(-maxCapturedOutputLength)
       const url = parseReadyUrl(capturedOutput)
       if (url === undefined || checkingHealth) return
+      if (before) timer?.mark('to-first-output')
       checkingHealth = true
+      timer?.mark('to-ready-line')
       clearTimeout(timeout)
       void waitForHttpHealth(url, timeoutMs)
-        .then(() => finish(() => resolve(url)))
+        .then(() => {
+          timer?.mark('health-check')
+          timer?.report('ready')
+          finish(() => resolve(url))
+        })
         .catch(reason => fail(new Error(formatHealthCheckFailure(url, reason, capturedOutput))))
     }
     timeout = setTimeout(() => {

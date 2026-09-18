@@ -33,7 +33,7 @@
  * self-repair helper may retry), so the old placement could record the diagnostic
  * begin twice. It is now called once per launch here, matching the other two sites.
  */
-import type { DshServer, StartDshOptions } from '../bridge/dsh-process.js'
+import { isLaunchTimingEnabled, type DshServer, type StartDshOptions } from '../bridge/dsh-process.js'
 import { startWithProfileSelfRepair } from '../profiles/profile-repair.js'
 import type { RetainedStartOptions } from './desktop-state.js'
 
@@ -77,11 +77,20 @@ export async function launchDsh(
   deps: DshLauncherDeps,
   profileDir: string,
 ): Promise<DshLaunchResult> {
+  const startedAt = Date.now()
+  const marks: string[] = []
+  let last = startedAt
+  const mark = (name: string): void => {
+    const now = Date.now()
+    marks.push(`${name}=${now - last}ms`)
+    last = now
+  }
   const startOptions = deps.startOptions()
   if (startOptions === undefined) throw new Error('启动参数尚未准备完成，无法启动 DSH。')
   const desktopRuntimeDir = deps.desktopRuntimeDir()
 
   await deps.beginDiagnostic(profileDir)
+  mark('begin-diagnostic')
   const started = await startWithProfileSelfRepair({
     profileDir,
     extraDirs: desktopRuntimeDir === undefined ? [] : [desktopRuntimeDir],
@@ -91,7 +100,14 @@ export async function launchDsh(
       onIpcMessage: deps.onIpcMessage,
     }),
   })
+  mark('repair-and-child-start')
   deps.setServer(started.result)
   await deps.advanceDiagnostic(profileDir, 'server-starting')
+  mark('advance-diagnostic')
+  if (isLaunchTimingEnabled()) {
+    // 子进程内部还有自己的分段计时（见 dsh-process.ts 的 [DEBUG-launch-timing]）；
+    // 这一行只覆盖启动器侧的准备与等待，两者相加才是用户感知的完整耗时。
+    console.log(`[DEBUG-launch-timing] launcher total=${Date.now() - startedAt}ms ${marks.join(' ')}`)
+  }
   return { server: started.result, repaired: started.repaired }
 }
