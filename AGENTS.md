@@ -47,6 +47,11 @@ See `agents/domain.md`.
    安装包不含该修复。发版必须跑 `dist-local`（或 `dist`），并确认
    `release\dsh-my-desktop-<version>-win-x64.exe` 的时间戳是本次构建。
 
+   ⚠️ **若本次同时升了随包 DSH 运行时，必须先单独跑一次 `prepare-runtime`**：
+   `dist-local` 不会重装官方运行时，直接出包会得到"版本号是新的、运行时是旧的"的包。
+   详见「升级随包 DSH 运行时」一节。
+   出包后务必按「出包后必须校验」一节从包内解出运行时版本核对。
+
 提交信息用 `chore(release): ...` 前缀（对齐 `e6ce763`）。
 
 > 历史提醒：`0.3.0` 发布过但当时漏打 tag，事后按 `e6ce763` 补齐；`0.2.0` 的 tag
@@ -101,6 +106,121 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
 
 产物输出到 `release\`（见 `package.json` `build.directories.output`）：`release\dsh-my-desktop-<version>-win-x64.exe`（NSIS）+ `.zip`（便携）。
 
+## 构建耗时：慢在哪、怎么变快（实测数据）
+
+**先记住这个反直觉的结论：源码编译只占几秒，"慢"几乎永远出在装配/打包阶段。**
+以下为本机实测（0.8.0 那轮，热缓存）：
+
+| 阶段 | 耗时 | 说明 |
+| --- | --- | --- |
+| `build:all` 全量（插件 + tsc + 两个前端 + 扁平化） | **~5.6s** | `build:plugin` 2.2s / `build` 0.7s / `recovery-ui` 0.8s / `shell-ui` 1.6s / `build:flat` 0.3s |
+| `prepare-runtime --stage-plugin`（热） | **~11s** | 只装配插件 store + 设置插件 |
+| 同上（冷，store 缓存被清/缺失） | **~290s** | 同一命令、同一机器，**20× 差距** |
+| `electron-builder --dir`（win-unpacked） | **~17s** | 写出 766 MB |
+| 单次 `pnpm run` 自身开销 | **0.3s** | 与 `node` 直跑（0.1s）几乎无差，不是瓶颈 |
+
+所以遇到"奇慢"，按这个顺序排查：
+
+1. **是不是冷装配**（最常见的 290s 来源）。`runtime-plugins/store/{v11,cache}` 是 pnpm 的
+   内容寻址仓库与元数据缓存，合计约 **410 MB**；这两个目录在就 `~11s`，被删掉就回到
+   "重下整套插件依赖"的几百秒。`prepare-runtime` 的 `wipePreparedDirectoryKeepingCache`
+   就是为保住它们而存在的——**不要手工删 `runtime-plugins/`**。
+   注意 `store.tgz` 仍每次出包都从一次 install 重新打包（"插件清单变了 store 必须重建"
+   这条硬约束没有松动），保住的只是缓存。
+2. **`release/` 无限累积**。实测 `release/` 到 **7.1 GB / 640 个文件**（十几个历史版本的
+   exe+zip+blockmap 叠在一起）。`electron-builder` 每次要重写 `release\win-unpacked`（766 MB），
+   目录越大、杀软扫描与文件枚举越慢。**发布完成后按需清理历史版本产物**（保留当前版本即可）。
+3. **`runtime-dsh` 走完整重装**。只有升官方 DSH 版本或运行时配置变更才需要，见下节；
+   日常出包用 `dist-local`/`pack-local` 不该触发它。
+4. **冷 `node_modules`**。`pnpm install` 在 lockfile 与 manifest 不一致时会重建整棵树
+   （实测 376 包、热缓存 2.5s；冷则数分钟，且见过挂死，见下节）。
+
+## 升级随包 DSH 运行时（升版本必读，有一个静默陷阱）
+
+> ⚠️ **`dist:local` / `pack:local` 不会重装官方运行时。**
+> 它们走 `prepare-runtime.js --stage-plugin` 快路径，而该分支只调
+> `stageDesktopSettingsPlugin()` + `stagePluginStore()`，**从不调用 `main()`**
+> （见 `scripts/prepare-runtime.ts` 末尾）。推论：**`DSH_FORCE_RUNTIME_REBUILD=1`
+> 在这条路径上完全无效**——它只在 `main()` 里被读。
+> 照这样直接出包，会得到一个**版本号是新的、里面却还是旧运行时**的安装包，而且
+> 构建全绿、毫无报错。0.8.0 那轮踩到过一次，已在出包后校验时发现并重做。
+
+正确的升级顺序（把"重装运行时"与"出包"分成两次调用）：
+
+```powershell
+# 1) 先单独重建官方运行时（走 main()，会联网；只有这一步需要 FORCE）
+$env:CI='true'                       # 让 pnpm 不因无 TTY 而拒绝清理 modules 目录
+$env:DSH_FORCE_RUNTIME_REBUILD='1'
+pwsh -File scripts\build.ps1 -Target prepare-runtime
+
+# 2) 确认运行时真的换掉了（不要跳过）
+Get-Content runtime-dsh\node_modules\@deepseek-ai\dsh\package.json | Select-String version
+
+# 3) 再出包（此时官方运行时已是最新，dist-local 正确复用）
+Remove-Item Env:\DSH_FORCE_RUNTIME_REBUILD
+pwsh -File scripts\build.ps1 -Target dist-local
+```
+
+升运行时还要同步下面这些（漏一处要么构建期报错、要么静默漂移）：
+
+- `src/runtime/bundled-plugins.ts` 的 `OFFICIAL_DSH_VERSION`（`OFFICIAL_RUNTIME` 与三个
+  launch peer 都由它派生，**只改这一处**）；`package.json` 的 `config.bundledDshVersion`。
+- 插件 4 个 client 类型 tarball 重新入库到 `plugins/dsh-my-desktop-settings/vendor/<version>/`，
+  并同步该插件 `package.json` 里 4 条 `file:` devDependencies。
+- `pnpm-lock.yaml`：这 4 条 `file:` 的 specifier / resolution / snapshot 键与 `integrity`
+  都要跟着改（`integrity` 是 `sha512-` + base64(sha512(tarball 字节))，可实测重算核对）。
+- 精确版本字面量的测试断言：`test/bundled-plugins.test.ts`、`test/prepare-runtime.test.ts`。
+
+**选版本的依据**：官方家族按"同一个精确版本"锁死，所以要挑一个**全家族都发布过**的号。
+查 dist-tag 别用 `npm view`（本机 npm 缓存目录在沙箱外，会报 `EPERM`），直接取 registry：
+
+```powershell
+.\.build-node\node.exe -e "fetch('https://registry.npmjs.org/-/package/@deepseek-ai/dsh/dist-tags').then(r=>r.json()).then(console.log)"
+```
+
+坑在于 `latest` 未必是你要的：0.8.0 时家族所有包的 `latest`/`next` 都停在 `0.1.5-rc.2`，
+**只有 `alpha` 指向 `0.1.6-alpha.2`**。另外三个 launch peer 的 `latest` 长期停在古老的
+`0.0.1-rc.1`——按各自 `latest` 装会把 peer 降级、破坏家族锁版本，**必须统一跟同一个号**。
+例外：`@deepseek-ai/cordis-plugin-group` 单独钉在 `1.0.2`，不随家族走。
+
+## 出包后必须校验（版本号/运行时都可能静默不对）
+
+构建退出码 0 不等于包是对的。至少做这两项：
+
+```powershell
+# 1) 安装包确实是本次构建（时间戳 + 文件名版本）
+Get-ChildItem release\dsh-my-desktop-*-win-x64.exe | Select-Object Name,LastWriteTime
+
+# 2) 端到端：从**安装包内**的 dsh-runtime.tgz 解出真实运行时版本
+$tmp = ".scratch\verify"; Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+tar -xzf release\win-unpacked\resources\dsh-runtime.tgz -C $tmp "node_modules/@deepseek-ai/dsh/package.json"
+(Get-Content "$tmp\node_modules\@deepseek-ai\dsh\package.json" -Raw | ConvertFrom-Json).version
+```
+
+第 2 条是唯一能证明"运行时真的换掉了、不是复用了旧缓存"的检查；`dist-local` 的静默陷阱
+只有它会暴露。
+
+## pnpm install 会挂死（真坑，先别急着重跑）
+
+实测过一次：`pnpm install` 在 lockfile 与 manifest 不一致、需要整树重建时**挂死**——
+12 分钟里 CPU 持续满载（最终累积 2797s）却**零进展**：`.pnpm` 目录数两个采样点都是 384，
+新建的包目录全是**空壳（0 文件 / 0 MB）**，store 的 `.tmp` 里没有任何解包产物。
+即症状是"看着在忙、其实什么都没做"，不是网速慢。这会把 `node_modules` 掏空
+（顶层只剩 `.pnpm` 与几个元数据文件），必须修好 lockfile 后重装。
+
+处置与预防：
+
+- **先让 lockfile 与 manifest 一致，再 install**。顺序反了（先改 `package.json` 的依赖、
+  锁文件还旧）就会走到重建路径。只想校验 lockfile、不动 `node_modules`：
+  `pnpm install --frozen-lockfile --lockfile-only`（几秒）。
+- **务必设 `CI=true`**：否则 pnpm 会因无 TTY 直接拒绝并报
+  `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`。
+- 装在沙箱/无人值守环境时，`node_modules` 被掏空后重装依赖本地 store：实测热缓存
+  `Done in 2.5s`、`reused 370 / downloaded 4`，内容寻址仓库在 `E:\.pnpm-store\v11`。
+  **所以"重装很慢"通常不成立——慢的是缓存失效，不是 install 本身。**
+- 判断是"在下载"还是"挂了"：看 `.pnpm` 目录数是否变化、store `.tmp` 是否有产物。
+  两者都不动而 CPU 在涨 = 挂死，别干等。
+
 ## 工具链强版本锁定（构建失败的常见原因）
 
 1. **Node 必须是 v24.20.0**（项目随包 Node，`.build-node\node.exe`）。
@@ -126,8 +246,11 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
 - `npm warn Unknown env config "manage-package-manager-versions"` —— npm 的一条无害警告，可忽略。
 - `prepare-runtime` 会执行 `npm install --global` 预装整套官方 DSH 运行时（官方预发布 peer 特殊，
   用 npm 而非 pnpm），输出大量 `added N packages` 且较慢、依赖网络——**这是正常的**，别中断。
-- 每次 `dist` 都会重跑 `prepare-runtime` 重新装配随包运行时，慢是正常的；只想快速出免安装版用
-  `-Target pack`。
+- 每次 `dist` 都会重跑 `prepare-runtime` 重新装配随包运行时（走 `main()`，会联网重装官方运行时），
+  这一条确实是慢的；只想快速出免安装版用 `-Target pack-local`。
+  **但 "慢是正常的" 不能一律套用**：热缓存的 `dist-local` 全流程只需约 30s（`build:all` 5.6s +
+  `stage-plugin` 11s + `electron-builder` 17s）。若 `dist-local` 也慢到几分钟，那不是正常现象，
+  按上文「构建耗时」一节排查冷缓存 / `release` 累积 / 冷 `node_modules`。
 
 ## package.json scripts
 
@@ -309,7 +432,9 @@ Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','By
 而本仓库 **没有 `.github/`**，这些用例会因文件不存在（ENOENT）而失败——这是该副本缺 `.github`
 导致的已知缺口，不是被测代码的问题。若需要这些 CI 相关用例通过，需补 `.github/workflows/desktop-package.yml`。
 
-当前基线是 **536 项 / 531 通过 / 4 失败**（全部为上述 `.github` 缺口）。
+当前基线是 **554 项 / 549 通过 / 4 失败**（全部为上述 `.github` 缺口；0.8.0 实测）。
+这个数字会随版本变化——**判断是否回归要看"失败的 4 条是不是都是 `.github` 那 4 条"，
+而不是看总数**。
 
 > 注意 `dsh-process.test.ts` 的「重复关闭同一 DSH 子进程是安全的」在整包并发跑时**偶发**超时
 > （单独跑 3/3 通过）。看到它失败先单独复跑一次再判断，不要当成回归。
