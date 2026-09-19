@@ -361,6 +361,36 @@ node bootstrap.mjs <dsh> --profile <当前profile> --patch <bridge.patch.yml> --
 **建/删 profile 的耗时差异很大**：create 要 seed（pnpm 装依赖，可能几十秒），
 select 近乎瞬时，所以超时按操作类型分别设置，且**永不挂死 HTTP 响应**。
 
+## 随包实验性 browser use：落点和四条硬限制
+
+0.8.2 起随包 `@deepseek-ai/dsh-browser-use`（独占命名的 `browserUse` 槽位）与
+`@deepseek-ai/dsh-experimental-browser-use-playwright-mcp`（经固定版本 `@playwright/mcp`
+提供 Chromium 工具）。改这块前先读完下面四条，全部是实测踩出来的、光看代码看不出来。
+
+- **落点是 `officialRuntimeDependencies()`（`OFFICIAL_BROWSER_USE_PACKAGES`），不是
+  `BUNDLED_PLUGINS`。** 两个包都是 `@deepseek-ai/dsh-*` 官方作用域，而
+  `reconcileProfileBundles` 对官方作用域名直接 `continue` ⟹ 它们永远进不了 profile 的
+  `dsh.profile.bundles`。"没声明又在磁盘上"正是启动插件对账的清除条件：**把包装进 profile，
+  应用一启动就没了**（实测：启动后被 `pnpm remove` 掉，`package.json`/`pnpm-lock.yaml`
+  回到原样；而应用运行期间动它反而没事）。运行时目录不在那条路径上，裸包名也由运行时的解析根命中。
+  推论：新增任何官方作用域的随包能力都适用这条，不限于 browser use。
+- **随包 ≠ 启用。** 上游 provider 的设计是"仅在显式挂载后启用"。挂载由
+  `src/bridge/browser-use-overlay.ts` 负责：每次启动在 `<userData>/browser-use/` 下物化
+  `browser-use.patch.yml`，作为第三个 `--patch` 与桌面桥、设置插件的 overlay 一起传入
+  （`main.ts` 两处启动路径都要加）。这样不需要动任何 profile 自己的 `cordis.patch.yml`；
+  反过来说，**用户手写过的挂载行必须清掉**，否则同一个独占槽位会被注册两次。
+  `DSH_DISABLE_BROWSER_USE=1` 跳过挂载；运行时没装配这两个包时也不挂载（`browserUseRuntimeIsAvailable`）。
+- **`PLAYWRIGHT_BROWSERS_PATH` 是无效的。** provider 构造子进程 env 时只保留
+  `PLAYWRIGHT_MCP_*` 这些键且**全部置空**，所以任何"注入环境变量让 playwright 找随包浏览器"
+  的想法都不成立，唯一通道是配置项 `executablePath`（→ `--executable-path`）。启动器按
+  Chrome → Edge 探测系统浏览器并写入绝对路径；探不到就不写该字段，退回 playwright 自己的
+  每用户缓存发现。曾实测评估随包浏览器本体：`chromium_headless_shell` 271 MB、
+  完整 `chromium` 433 MB（均未压缩），据此放弃。launch 模式恒定带 `--isolated`。
+- **升这批包的版本要跟家族走，且别用 `latest`。** 官方 registry 上这两个包的
+  `alpha` dist-tag 才等于 `OFFICIAL_DSH_VERSION`（0.8.2 时是 `0.1.6-alpha.2`），
+  `latest` 落后一档。改依赖表后 `officialRuntimeIsCurrent()` 会因缺包判为不新鲜，
+  所以**必须走一次完整 `prepare-runtime`（经 `main()`）再出包**，见「升级随包 DSH 运行时」。
+
 ## 多 profile 模型
 
 启动器不再写死单 profile：**profile 是受管对象，可列/建/删/选**。
@@ -442,9 +472,29 @@ Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','By
 而本仓库 **没有 `.github/`**，这些用例会因文件不存在（ENOENT）而失败——这是该副本缺 `.github`
 导致的已知缺口，不是被测代码的问题。若需要这些 CI 相关用例通过，需补 `.github/workflows/desktop-package.yml`。
 
-当前基线是 **554 项 / 549 通过 / 4 失败**（全部为上述 `.github` 缺口；0.8.0 实测）。
+当前基线是 **548 项 / 543 通过 / 4 失败 / 1 跳过**（4 条失败全部为上述 `.github` 缺口；0.8.2 实测）。
 这个数字会随版本变化——**判断是否回归要看"失败的 4 条是不是都是 `.github` 那 4 条"，
 而不是看总数**。
+
+### 从 Git Bash 跑测试会多出两条假失败（tar 的锅）
+
+`runtime-archive.test.ts` 的「目录可以打成 tar.gz 再解回原结构」和 `prepare-runtime.test.ts`
+的「产物内的清单与 bundled-plugins 声明的身份/版本一致」会报
+`tar (child): Cannot connect to E: resolve failed` / `unexpected end of file`——**Git Bash 的
+MSYS GNU tar 不认 `E:\...` 这种盘符路径**，把它当成 `host:path` 去解析了。跟被测代码无关。
+
+修法是把系统目录摆到 PATH 前面，让 `tar` 命中 Windows 自带的 bsdtar：
+
+```bash
+export PATH="/c/Windows/System32:/c/Windows:$PATH"   # 之后别再用 sort/head 等 coreutils 原名，
+                                                     # 会被 Windows 版抢走（sort -u 直接报错）
+"/c/Program Files/PowerShell/7/pwsh.exe" -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Target test
+```
+
+另一类入口相关的假失败：`build.ps1` 会导出 `DSH_BUILD_REGISTRY`（镜像源），而
+`buildSeedPluginArgs` / `officialRuntimeNpmInstallArgs` 的 registry 正是从它读的——断言默认官方源
+的两条用例在 0.8.2 之前经 `build.ps1 -Target test` 必红。现已在这两条用例里显式清掉该变量，
+**测试结果不该取决于从哪个入口跑**，以后写这类断言也照这个办法钉住 env。
 
 > 注意 `dsh-process.test.ts` 的「重复关闭同一 DSH 子进程是安全的」在整包并发跑时**偶发**超时
 > （单独跑 3/3 通过）。看到它失败先单独复跑一次再判断，不要当成回归。
