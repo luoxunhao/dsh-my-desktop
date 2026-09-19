@@ -24,10 +24,10 @@ DSH My Desktop is a **launcher and desktop shell**. It does not implement the
 chat / workbench UI itself. What you see inside the window is the DSH core
 (`@deepseek-ai/dsh`) plus any plugins you install into the active profile.
 
-This version (0.5.0):
+This version (0.8.1):
 
-- bundles **six plugins** offline (`BUNDLED_PLUGINS`): the community plugins
-  `dshmarket`, `dsh-better-sidebar`, `dsh-vision-router` and `dsh-context`, plus
+- bundles **five plugins** offline (`BUNDLED_PLUGINS`): the community plugins
+  `dshmarket`, `dsh-vision-router` and `dsh-context`, plus
   `dsh-codex-project` (Codex-style shared workspace subdirectories) and `dsh-quote`
   (quote a selection into context). All are staged into `store.tgz` at build time and
   seeded into the profile on first launch without any network access.
@@ -59,7 +59,7 @@ Only Windows x64 has actually been packaged and run here.
 | Node.js runtime + pnpm | Yes |
 | DSH official core runtime (`@deepseek-ai/dsh` family, 0.1.6-alpha.2) | Yes |
 | Desktop settings plugin (`dsh-my-desktop-setting`) | Yes — built from this repo |
-| Community plugins (`dshmarket`, `dsh-better-sidebar`, `dsh-vision-router`, `dsh-context`) | Yes — seeded offline from the packaged store |
+| Community plugins (`dshmarket`, `dsh-vision-router`, `dsh-context`) | Yes — seeded offline from the packaged store |
 
 The core runtime is preinstalled separately from the profile, so plugins you
 install later do not overwrite the packaged runtime.

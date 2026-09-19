@@ -10,10 +10,10 @@ import { BUNDLED_PLUGINS, STORE_PACKAGES, OFFICIAL_DSH_VERSION, OFFICIAL_LAUNCH_
 const CODEX = '@luoxunhao/dsh-codex-project'
 const QUOTE = 'dsh-quote'
 
-test('随包社区插件清单：离线预装 6 个插件（随 store.tgz 打进安装包）', () => {
+test('随包社区插件清单：离线预装 5 个插件（随 store.tgz 打进安装包）', () => {
   // 预装走「出包时装配离线 store」而非首启联网下载：清单非空 ⇒ prepare-runtime
   // 会装配并打包 store.tgz，首启零联网即可补种。
-  assert.deepEqual(bundledPluginNames(), ['dshmarket', 'dsh-better-sidebar', 'dsh-vision-router', 'dsh-context', CODEX, QUOTE])
+  assert.deepEqual(bundledPluginNames(), ['dshmarket', 'dsh-vision-router', 'dsh-context', CODEX, QUOTE])
   assert.deepEqual(STORE_PACKAGES, BUNDLED_PLUGINS)
   assert.equal(bundledPluginNames().includes('dshmarket'), true)
 })
@@ -26,7 +26,6 @@ test('随包插件钉死精确版本', () => {
     Object.fromEntries(BUNDLED_PLUGINS.map(plugin => [plugin.packageName, plugin.version])),
     {
       dshmarket: '1.45.1',
-      'dsh-better-sidebar': '0.19.1',
       'dsh-vision-router': '2.1.6',
       'dsh-context': '0.50.0',
       [CODEX]: '0.12.0',
@@ -121,7 +120,7 @@ test('所有 DeepSeek 官方作用域包使用同一套隔离判定', () => {
 })
 
 test('补种清单 = 官方运行时 + 随包社区插件', () => {
-  assert.deepEqual(seededPackageNames(), ['@deepseek-ai/dsh', 'dshmarket', 'dsh-better-sidebar', 'dsh-vision-router', 'dsh-context', CODEX, QUOTE])
+  assert.deepEqual(seededPackageNames(), ['@deepseek-ai/dsh', 'dshmarket', 'dsh-vision-router', 'dsh-context', CODEX, QUOTE])
 })
 
 test('官方 DSH 家族锁在同一个精确版本', () => {

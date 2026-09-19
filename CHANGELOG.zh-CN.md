@@ -2,6 +2,18 @@
 
 [English](CHANGELOG.md)
 
+## 0.8.1
+
+修订版本。**取消预装 `dsh-better-sidebar`**，随包社区插件由 6 个减为 5 个。
+
+- **`dsh-better-sidebar` 不再随包。** 从 `BUNDLED_PLUGINS` 移除了
+  `dsh-better-sidebar@0.19.1`（VSCode 式右侧边栏）。此后新装应用、以及新建 / 切换 profile
+  时**不再自动补种**这个插件；它对 `store.tgz` 的体积贡献也随之消失，出包更快、安装包更小。
+- **这是「不再预装」，不是「卸载」。** 补种逻辑（`plugin-seed`）只负责「缺什么装什么」，
+  不负责卸载，因此**已经装过它的用户 profile 不受影响**——那份插件仍在各自的
+  `node_modules` 里、仍然是可用的 bundle，不会在升级后被静默摘掉。需要侧边栏的用户
+  可继续使用现有安装，或随时从插件市场自行装回。
+
 ## 0.8.0
 
 发布版本。随包 DSH 运行时升至 0.1.6-alpha.2（原 0.1.5-rc.2）。

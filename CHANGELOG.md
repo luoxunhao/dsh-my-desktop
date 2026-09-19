@@ -2,6 +2,21 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.8.1
+
+Patch release. **`dsh-better-sidebar` is no longer bundled**, taking the bundled community
+plugins from six down to five.
+
+- **`dsh-better-sidebar` drops out of the bundle.** `dsh-better-sidebar@0.19.1` (a VS
+  Code-like right sidebar) is removed from `BUNDLED_PLUGINS`. New installs — and new or
+  switched profiles — no longer seed it automatically, and its contribution to `store.tgz`
+  is gone, so builds are faster and the installer smaller.
+- **This is "no longer preinstalled", not "uninstalled".** The seed path
+  (`plugin-seed`) only installs what is missing; it never removes. Profiles that already
+  have the plugin are therefore untouched — it stays in their `node_modules` and remains a
+  working bundle rather than being silently stripped on upgrade. Users who want the
+  sidebar keep their existing install, or can reinstall it from the plugin market.
+
 ## 0.8.0
 
 Release. The bundled DSH runtime moves to 0.1.6-alpha.2 (from 0.1.5-rc.2).
