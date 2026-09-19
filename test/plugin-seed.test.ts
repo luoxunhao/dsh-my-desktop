@@ -54,19 +54,27 @@ test('只补种缺失插件，并走 profile 内的 pnpm add', () => {
     action: 'add',
     packages: [{ packageName: '@sample/plugin-b', version: '0.1.10' }],
   })
-  const args = buildSeedPluginArgs(plan.packages, 'D:\\profile\\web', { storeDir: 'D:\\plugins\\store', offline: true })
-  assert.deepEqual(args, [
-    'add',
-    '@sample/plugin-b@0.1.10',
-    '--dir=D:\\profile\\web',
-    '--store-dir=D:\\plugins\\store',
-    `--cache-dir=${join('D:\\plugins\\store', 'cache')}`,
-    '--offline',
-    '--config.node-linker=hoisted',
-    '--config.auto-install-peers=false',
-    '--config.minimumReleaseAge=0',
-    '--registry=https://registry.npmjs.org/',
-  ])
+  // 同 prepare-runtime 那条：registry 由 DSH_BUILD_REGISTRY 决定，测试要的是默认官方源。
+  const previousRegistry = process.env.DSH_BUILD_REGISTRY
+  delete process.env.DSH_BUILD_REGISTRY
+  try {
+    const args = buildSeedPluginArgs(plan.packages, 'D:\\profile\\web', { storeDir: 'D:\\plugins\\store', offline: true })
+    assert.deepEqual(args, [
+      'add',
+      '@sample/plugin-b@0.1.10',
+      '--dir=D:\\profile\\web',
+      '--store-dir=D:\\plugins\\store',
+      `--cache-dir=${join('D:\\plugins\\store', 'cache')}`,
+      '--offline',
+      '--config.node-linker=hoisted',
+      '--config.auto-install-peers=false',
+      '--config.minimumReleaseAge=0',
+      '--registry=https://registry.npmjs.org/',
+    ])
+  } finally {
+    if (previousRegistry === undefined) delete process.env.DSH_BUILD_REGISTRY
+    else process.env.DSH_BUILD_REGISTRY = previousRegistry
+  }
 })
 
 test('node_modules 已有插件但未写入 dependencies 时仍要补进 dependencies', () => {

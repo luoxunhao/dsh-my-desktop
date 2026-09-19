@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { BUNDLED_PLUGINS, STORE_PACKAGES, OFFICIAL_DSH_VERSION, OFFICIAL_LAUNCH_PEERS, OFFICIAL_RUNTIME, bundledPluginSeedSpec, compareReleaseVersions, isDeepSeekOfficialPackage, isOfficialDshPackage, officialDshVersionOverrides, officialRuntimeDependencies, officialRuntimePnpmConfig, planOfficialRuntimeTarget, pnpmAllowBuildsManifest, pnpmWorkspaceYaml, bundledPluginNames, seededPackageNames, vendorTarballDir, vendorTarballName } from '../src/runtime/bundled-plugins.js'
+import { BUNDLED_PLUGINS, STORE_PACKAGES, OFFICIAL_DSH_VERSION, OFFICIAL_LAUNCH_PEERS, OFFICIAL_BROWSER_USE_PACKAGES, OFFICIAL_RUNTIME, bundledPluginSeedSpec, compareReleaseVersions, isDeepSeekOfficialPackage, isOfficialDshPackage, officialDshVersionOverrides, officialRuntimeDependencies, officialRuntimePnpmConfig, planOfficialRuntimeTarget, pnpmAllowBuildsManifest, pnpmWorkspaceYaml, bundledPluginNames, seededPackageNames, vendorTarballDir, vendorTarballName } from '../src/runtime/bundled-plugins.js'
 
 const CODEX = '@luoxunhao/dsh-codex-project'
 const QUOTE = 'dsh-quote'
@@ -28,7 +28,7 @@ test('随包插件钉死精确版本', () => {
       dshmarket: '1.45.1',
       'dsh-vision-router': '2.1.6',
       'dsh-context': '0.50.0',
-      [CODEX]: '0.12.0',
+      [CODEX]: '0.13.0',
       [QUOTE]: '0.1.0',
     },
   )
@@ -63,7 +63,7 @@ test('产物在 store 内的落点由单一函数推导，装配侧与补种侧�
   assert.equal(vendorTarballDir(store), join(store, 'vendor-tarballs'))
   // pnpm 的命名规则：@scope/name → scope-name-version.tgz；无 scope 则原样。
   const byName = Object.fromEntries(BUNDLED_PLUGINS.map(plugin => [plugin.packageName, vendorTarballName(plugin)]))
-  assert.equal(byName[CODEX], 'luoxunhao-dsh-codex-project-0.12.0.tgz')
+  assert.equal(byName[CODEX], 'luoxunhao-dsh-codex-project-0.13.0.tgz')
   assert.equal(byName[QUOTE], 'dsh-quote-0.1.0.tgz')
   // 每个随仓产物的文件名必须与它在仓库里的实际路径结尾一致：装配侧拷进 store 用的
   // 就是这个推导名，对不上会让补种找不到文件（该缺陷已犯过一次）。
@@ -136,6 +136,22 @@ test('官方 DSH 家族锁在同一个精确版本', () => {
     '@deepseek-ai/dsh-*': OFFICIAL_DSH_VERSION,
   })
   assert.equal(officialRuntimePnpmConfig().overrides['@deepseek-ai/dsh-*'], OFFICIAL_DSH_VERSION)
+})
+
+test('随包浏览器能力包跟家族同锁版本，且绝不进 profile 补种清单', () => {
+  assert.deepEqual(OFFICIAL_BROWSER_USE_PACKAGES.map(plugin => plugin.packageName), [
+    '@deepseek-ai/dsh-browser-use',
+    '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp',
+  ])
+  for (const plugin of OFFICIAL_BROWSER_USE_PACKAGES) {
+    assert.equal(plugin.version, OFFICIAL_DSH_VERSION)
+    assert.equal(officialRuntimeDependencies()[plugin.packageName], OFFICIAL_DSH_VERSION)
+    // 这两个包是 @deepseek-ai/dsh-* 官方作用域，reconcileProfileBundles 对官方名直接跳过，
+    // 于是它们进不了 profile 的 dsh.profile.bundles；一旦躺在 profile node_modules 里就会被
+    // 启动插件对账当成未声明的多余包摘掉（实测过）。所以只能作为运行时依赖随包。
+    assert.equal(BUNDLED_PLUGINS.includes(plugin), false)
+    assert.equal(seededPackageNames().includes(plugin.packageName), false)
+  }
 })
 
 test('官方版本比较和升级目标不会把已对齐的新版本降回去', () => {

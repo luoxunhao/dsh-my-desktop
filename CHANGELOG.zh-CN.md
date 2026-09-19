@@ -2,6 +2,38 @@
 
 [English](CHANGELOG.md)
 
+## 0.8.2
+
+**实验性 browser use 随包发布，并默认挂载**：模型可以在任意 profile 里驱动真实的 Chromium
+标签页，用户不需要自己装任何东西。
+
+- **`@luoxunhao/dsh-codex-project` 随包产物升到 0.13.0**（原 0.12.0）。0.13.0 起其「项目文件夹」
+  「文件预览」改挂 DSH **原生**右侧栏；0.12.0 只有 `dsh-better-sidebar` 一条回退线，而 0.8.1
+  已经不再预装该插件，于是那份旧产物在本 profile 里什么都不注册。仍以已构建、带校验和的
+  vendor 产物随包。
+- **两个官方家族包进入随包运行时。** `@deepseek-ai/dsh-browser-use`（独占命名的 `browserUse`
+  provider 槽位）与 `@deepseek-ai/dsh-experimental-browser-use-playwright-mcp`（经固定版本的
+  `@playwright/mcp` 提供 Chromium 工具）现在都是 `officialRuntimeDependencies()` 的成员，
+  与官方家族其余包共用同一个精确版本号。
+- **它们有意不进 `BUNDLED_PLUGINS`。** 两个包都是 `@deepseek-ai/dsh-*` 官方作用域，而
+  `reconcileProfileBundles` 对官方名直接跳过 ⟹ 装进 profile 的副本永远不会被记进
+  `dsh.profile.bundles`，于是启动期的插件对账把它当作"未声明的多余包"摘掉。实测复现：
+  应用一启动包就消失，而应用运行期间动它反而没事。放进随包运行时目录完全绕开这条路径，
+  且裸包名在那里照样能解析到。
+- **由启动器的 overlay 启用，而不是让用户改配置。** 上游 provider 的设计是"仅在显式挂载后
+  启用"，所以只随包不等于有这个功能。启动器现在每次启动在 userData 下物化
+  `browser-use.patch.yml`，作为第三个 `--patch` 与桌面桥、桌面设置的 overlay 一起传入，
+  挂两行且 `mode: launch`、`headless: true`。走 overlay 通道的意思是：**不碰任何 profile
+  自己的 `cordis.patch.yml`**，切换或新建 profile 也不需要重装。用 `DSH_DISABLE_BROWSER_USE=1`
+  可以跳过挂载。
+- **浏览器二进制来自系统，不来自安装包。** provider 构造子进程环境时只保留 `PLAYWRIGHT_MCP_*`
+  这些键并全部置空，`PLAYWRIGHT_BROWSERS_PATH` 根本传不到 Playwright，唯一可用通道是
+  `executablePath`（→ `--executable-path`）。启动器按 Chrome → Edge 探测系统浏览器并写入其
+  绝对路径；两者都探不到时不写该字段，退回 Playwright 自己的每用户缓存发现。曾实测评估把
+  Chromium 打进安装包：headless shell 271 MB、完整 Chromium 433 MB（均未压缩），代价过大而放弃。
+- **运行时缺这些包时会响，不会静默。** 缓存优先路径的新鲜度判定读的就是这张依赖表，因此
+  少了这两个包的 `runtime-dsh` / `runtime-dsh.tgz` 不再被判定为"已是最新"。
+
 ## 0.8.1
 
 修订版本。**取消预装 `dsh-better-sidebar`**，随包社区插件由 6 个减为 5 个。

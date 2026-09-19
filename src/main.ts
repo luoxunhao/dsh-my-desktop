@@ -70,6 +70,7 @@ import { escapeRoute } from './infra/escape-routing.js'
 import { isDesktopActionMessage, isDesktopHostMessage, isDesktopProfileActionMessage, prepareDesktopBridge, resolveDesktopBridgeDir } from './bridge/desktop-host.js'
 import { migrateDesktopBridgeProfile } from './bridge/desktop-bridge-migration.js'
 import { prepareDesktopSettings, resolveDesktopSettingsDir } from './bridge/desktop-settings-plugin.js'
+import { prepareBrowserUseOverlay } from './bridge/browser-use-overlay.js'
 import { isChineseLocale, localizedShellActions, localizedShellMenus, normalizeShellLocale, shellActionForShortcut, SHELL_ACTIONS, type ShellActionId, type ShellMenuId } from './desktop/shell-actions.js'
 import { SHELL_BAR_HEIGHT, SHELL_IPC, type DshNavigationState, type DshShellActionId, type ShellBootstrap, type ShellMenuPopupRequest, type ShellState, type ShellToolId, type ShellToolPopupId } from './desktop/shell-contract.js'
 import { mayAccessDesktopUpdates, mayAccessNotificationPreferences, mayCloseDesktopSettings, mayGetShellBootstrap, mayInvokeShellAction, mayPopupShellMenu, mayReportDshBoot, mayReportDshLocale, mayReportDshNotification, mayReportDshState, mayReportDshTheme, mayReportDshSettingsVisibility, type ShellRendererKind } from './desktop/shell-ipc-policy.js'
@@ -234,6 +235,8 @@ async function prepareLaunchOptions(profileDir: string, activeProfileName: strin
     resolveDesktopSettingsDir({ ...runtimeOptions, pluginDevDir: process.env.DSH_DESKTOP_SETTINGS_DIR }),
     app.getVersion(),
   )
+  // 随包实验性 browser-use：运行时只带代码，启用与否由这个 overlay 决定（同一条 --patch 通道）。
+  const browserUsePatch = prepareBrowserUseOverlay(join(app.getPath('userData'), 'browser-use'), desktopRuntimeDir)
   const pluginStoreDir = resolveBundledPluginStore({
     ...runtimeOptions,
     ...(extractedStoreDir === undefined ? {} : { extractedStoreDir }),
@@ -255,9 +258,8 @@ async function prepareLaunchOptions(profileDir: string, activeProfileName: strin
     // Boot the persisted active profile explicitly (--profile <name>); the bare
     // web subcommand is hardcoded to --profile web and would ignore it.
     profileName: activeProfileName,
-    patches: desktopSettingsPatch === undefined
-      ? [desktopBridgePatch]
-      : [desktopBridgePatch, desktopSettingsPatch],
+    patches: [desktopBridgePatch, desktopSettingsPatch, browserUsePatch]
+      .filter((patch): patch is string => patch !== undefined),
     ...(pathPrefix === undefined ? {} : { pathPrefix }),
     runtime,
     nodeExecutable,
@@ -635,6 +637,8 @@ async function startApplication(): Promise<void> {
       resolveDesktopSettingsDir({ ...runtimeOptions, pluginDevDir: process.env.DSH_DESKTOP_SETTINGS_DIR }),
       app.getVersion(),
     )
+    // 与首次启动那条路径一致：随包 browser-use 由这个 overlay 挂载。
+    const browserUsePatch = prepareBrowserUseOverlay(join(app.getPath('userData'), 'browser-use'), desktopRuntimeDir)
     const pluginStoreDir = resolveBundledPluginStore({
       ...runtimeOptions,
       ...(extractedStoreDir === undefined ? {} : { extractedStoreDir }),
@@ -672,9 +676,8 @@ async function startApplication(): Promise<void> {
       // Boot the persisted active profile explicitly (`--profile <name>`); the
       // bare `web` subcommand is hardcoded to `--profile web` and would ignore it.
       profileName: activeProfileName,
-      patches: desktopSettingsPatch === undefined
-        ? [desktopBridgePatch]
-        : [desktopBridgePatch, desktopSettingsPatch],
+      patches: [desktopBridgePatch, desktopSettingsPatch, browserUsePatch]
+        .filter((patch): patch is string => patch !== undefined),
       ...(pathPrefix === undefined ? {} : { pathPrefix }),
       runtime,
       nodeExecutable,

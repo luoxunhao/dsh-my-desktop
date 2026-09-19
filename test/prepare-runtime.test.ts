@@ -321,22 +321,34 @@ test('Windows 冒烟检查使用实际产品可执行文件名', async () => {
 })
 
 test('官方运行时使用 npm 安装以兼容预发布 peer 依赖', () => {
-  assert.deepEqual(officialRuntimeNpmInstallArgs('D:\\runtime'), [
-    'install',
-    '--global',
-    '--prefix=D:\\runtime',
-    '--omit=dev',
-    '--package-lock=false',
-    '--no-audit',
-    '--no-fund',
-    '--allow-scripts=@deepseek-ai/dsh-subprocess-local,@google/genai,koffi,node-pty,protobufjs',
-    '--registry=https://registry.npmjs.org/',
-    '@deepseek-ai/dsh@0.1.6-alpha.2',
-    '@deepseek-ai/cordis-plugin-group@1.0.2',
-    '@deepseek-ai/dsh-scope@0.1.6-alpha.2',
-    '@deepseek-ai/dsh-timeout@0.1.6-alpha.2',
-    '@deepseek-ai/dsh-invariants@0.1.6-alpha.2',
-  ])
+  // 断言的是"默认走官方 registry"这条契约，而 registry 由 process.env.DSH_BUILD_REGISTRY
+  // 决定：经 scripts/build.ps1 跑测试时它会被指到镜像源，所以这里显式钉住，
+  // 不能让"从哪个入口跑"改变测试结果。
+  const previousRegistry = process.env.DSH_BUILD_REGISTRY
+  delete process.env.DSH_BUILD_REGISTRY
+  try {
+    assert.deepEqual(officialRuntimeNpmInstallArgs('D:\\runtime'), [
+      'install',
+      '--global',
+      '--prefix=D:\\runtime',
+      '--omit=dev',
+      '--package-lock=false',
+      '--no-audit',
+      '--no-fund',
+      '--allow-scripts=@deepseek-ai/dsh-subprocess-local,@google/genai,koffi,node-pty,protobufjs',
+      '--registry=https://registry.npmjs.org/',
+      '@deepseek-ai/dsh@0.1.6-alpha.2',
+      '@deepseek-ai/cordis-plugin-group@1.0.2',
+      '@deepseek-ai/dsh-scope@0.1.6-alpha.2',
+      '@deepseek-ai/dsh-timeout@0.1.6-alpha.2',
+      '@deepseek-ai/dsh-invariants@0.1.6-alpha.2',
+      '@deepseek-ai/dsh-browser-use@0.1.6-alpha.2',
+      '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp@0.1.6-alpha.2',
+    ])
+  } finally {
+    if (previousRegistry === undefined) delete process.env.DSH_BUILD_REGISTRY
+    else process.env.DSH_BUILD_REGISTRY = previousRegistry
+  }
 })
 
 test('npm 全局安装目录按平台归一化', () => {
@@ -344,13 +356,15 @@ test('npm 全局安装目录按平台归一化', () => {
   assert.equal(officialRuntimeGlobalNodeModulesRoot('runtime', 'linux'), join('runtime', 'lib', 'node_modules'))
 })
 
-test('官方运行时把 DSH 和启动 peer 一起装成 npm 顶层依赖', () => {
+test('官方运行时把 DSH、启动 peer 与随包浏览器能力包一起装成 npm 顶层依赖', () => {
   assert.deepEqual(officialRuntimeNpmDependencies(), {
     '@deepseek-ai/dsh': '0.1.6-alpha.2',
     '@deepseek-ai/cordis-plugin-group': '1.0.2',
     '@deepseek-ai/dsh-scope': '0.1.6-alpha.2',
     '@deepseek-ai/dsh-timeout': '0.1.6-alpha.2',
     '@deepseek-ai/dsh-invariants': '0.1.6-alpha.2',
+    '@deepseek-ai/dsh-browser-use': '0.1.6-alpha.2',
+    '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp': '0.1.6-alpha.2',
   })
 })
 

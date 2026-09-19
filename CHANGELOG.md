@@ -2,6 +2,45 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.8.2
+
+**Experimental browser use now ships bundled and is mounted by default**, so the model can
+drive a real Chromium tab in any profile without the user installing anything.
+
+- **`@luoxunhao/dsh-codex-project` ships as 0.13.0** (was 0.12.0). From 0.13.0 its "project
+  folder" and "file preview" tabs mount DSH's **native** right sidebar; 0.12.0 only had the
+  `dsh-better-sidebar` fallback line, and since 0.8.1 stopped preinstalling that plugin the
+  old artifact registered nothing at all. Ships as a prebuilt, checksummed vendor artifact.
+- **Two official family packages join the bundled runtime.**
+  `@deepseek-ai/dsh-browser-use` (the exclusive `browserUse` provider slot) and
+  `@deepseek-ai/dsh-experimental-browser-use-playwright-mcp` (Chromium tools via the pinned
+  `@playwright/mcp`) are now part of `officialRuntimeDependencies()`, pinned to the same
+  exact family version as the rest of the official set.
+- **They deliberately do NOT go into `BUNDLED_PLUGINS`.** Both are `@deepseek-ai/dsh-*`, and
+  `reconcileProfileBundles` skips official-scoped names, so a copy installed into a profile
+  is never recorded in `dsh.profile.bundles` — and the startup plugin reconciliation then
+  drops it as an undeclared package. Reproduced: the packages disappeared from a profile on
+  the next start, while the same files sat untouched while the app was running. Shipping
+  them inside the runtime directory avoids that path entirely, and a bare package name still
+  resolves there.
+- **Enabled by a launcher overlay rather than by user config.** The upstream provider is
+  documented as "only enabled after an explicit mount", so bundling the code alone changes
+  nothing. The launcher now materializes `browser-use.patch.yml` under userData and passes it
+  as a third `--patch` alongside the desktop bridge and settings overlays, mounting both
+  rows with `mode: launch` and `headless: true`. Because it rides the overlay channel, no
+  profile's own `cordis.patch.yml` is touched, and switching or creating a profile needs no
+  reinstall. `DSH_DISABLE_BROWSER_USE=1` skips the mount.
+- **The browser binary comes from the system, not from the installer.** The provider builds
+  its child environment by keeping only `PLAYWRIGHT_MCP_*` keys — blanked — so
+  `PLAYWRIGHT_BROWSERS_PATH` never reaches Playwright, and `executablePath` (→
+  `--executable-path`) is the only channel available. The launcher probes for an installed
+  Chrome, then Edge, and passes its path; when neither is found the field is omitted and
+  Playwright's own per-user discovery applies. Bundling Chromium was measured and rejected:
+  271 MB for the headless shell and 433 MB for full Chromium, uncompressed.
+- **Startup fails loudly rather than silently** if the assembled runtime is missing these
+  packages: the freshness check reads the same dependency map, so a stale
+  `runtime-dsh`/`runtime-dsh.tgz` no longer counts as current.
+
 ## 0.8.1
 
 Patch release. **`dsh-better-sidebar` is no longer bundled**, taking the bundled community

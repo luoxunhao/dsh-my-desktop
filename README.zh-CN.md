@@ -22,7 +22,7 @@ Web 界面承载到原生桌面窗口里。安装包自带 Node.js 与一套自�
 DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工作台 UI。窗口里看到的内容，
 来自 DSH 核心（`@deepseek-ai/dsh`）以及你安装进**当前 profile** 的插件。
 
-本版本（0.8.1）：
+本版本（0.8.2）：
 
 - 离线随包 **5 个插件**（`BUNDLED_PLUGINS`）：社区插件 `dshmarket`、
   `dsh-vision-router`、`dsh-context`，外加
@@ -30,6 +30,10 @@ DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工�
   上下文）。出包时装配进 `store.tgz` 打进安装包，首启**零联网**补种进 profile。
   其中 `dsh-codex-project` 与 `dsh-quote` 以**已构建并校验过的产物**随包
   （在 `vendor/` 下），而非源码——原因见 CHANGELOG；
+- 随包**实验性 browser use**（`@deepseek-ai/dsh-browser-use` 与其 Playwright MCP 的
+  Chromium 实现）到运行时里，并在**每次启动时通过启动器自己的 `--patch` overlay 挂载**，
+  因此任何 profile 开箱就有浏览器工具。浏览器本体用你机器上已装的 Chrome 或 Edge，
+  **不额外下载任何东西**；`DSH_DISABLE_BROWSER_USE=1` 可关掉挂载；
 - 随包一个**内置的桌面设置页**（`dsh-my-desktop-setting` 插件，源码在
   `plugins/dsh-my-desktop-settings/`），启动时注入——见下文；
 - 支持**多 profile 管理**：列出、新建、删除、切换，选中态跨重启保留；
@@ -55,6 +59,8 @@ DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工�
 | DSH 官方核心运行时（`@deepseek-ai/dsh` 系列，0.1.6-alpha.2） | ✅ 是 |
 | 桌面设置插件（`dsh-my-desktop-setting`） | ✅ 是——由本仓库构建 |
 | 社区插件（`dshmarket`、`dsh-vision-router`、`dsh-context`） | ✅ 是——从随包离线 store 补种 |
+| 实验性 browser use（`@deepseek-ai/dsh-browser-use` + Playwright MCP） | ✅ 是——官方家族依赖，由启动器 overlay 挂载 |
+| Chromium 浏览器本体 | ❌ 否——使用已安装的 Chrome / Edge，不下载 |
 
 核心运行时预装且与 profile 隔离，你之后安装的插件不会覆盖随包运行时。
 

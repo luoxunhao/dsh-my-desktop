@@ -24,7 +24,7 @@ DSH My Desktop is a **launcher and desktop shell**. It does not implement the
 chat / workbench UI itself. What you see inside the window is the DSH core
 (`@deepseek-ai/dsh`) plus any plugins you install into the active profile.
 
-This version (0.8.1):
+This version (0.8.2):
 
 - bundles **five plugins** offline (`BUNDLED_PLUGINS`): the community plugins
   `dshmarket`, `dsh-vision-router` and `dsh-context`, plus
@@ -33,6 +33,11 @@ This version (0.8.1):
   seeded into the profile on first launch without any network access.
   `dsh-codex-project` and `dsh-quote` ship as **prebuilt, checksummed artifacts** under
   `vendor/` rather than as source — see the CHANGELOG for why;
+- bundles the **experimental browser-use** provider (`@deepseek-ai/dsh-browser-use` + its
+  Playwright-MCP Chromium implementation) inside the runtime and **mounts it on every launch**
+  through a launcher-owned `--patch` overlay, so browser tools are available in any profile
+  out of the box. The browser itself is your installed Chrome or Edge — nothing is
+  downloaded; `DSH_DISABLE_BROWSER_USE=1` turns the mount off;
 - ships a **built-in desktop settings page** (the `dsh-my-desktop-setting`
   plugin, source in `plugins/dsh-my-desktop-settings/`), injected at launch — see below;
 - manages **multiple profiles**: list, create, delete and switch, with the
@@ -60,6 +65,8 @@ Only Windows x64 has actually been packaged and run here.
 | DSH official core runtime (`@deepseek-ai/dsh` family, 0.1.6-alpha.2) | Yes |
 | Desktop settings plugin (`dsh-my-desktop-setting`) | Yes — built from this repo |
 | Community plugins (`dshmarket`, `dsh-vision-router`, `dsh-context`) | Yes — seeded offline from the packaged store |
+| Experimental browser-use provider (`@deepseek-ai/dsh-browser-use` + Playwright MCP) | Yes — an official family dependency, mounted by a launcher overlay |
+| Chromium browser binary | No — the installed Chrome or Edge is used, nothing is downloaded |
 
 The core runtime is preinstalled separately from the profile, so plugins you
 install later do not overwrite the packaged runtime.

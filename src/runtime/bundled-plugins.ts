@@ -41,6 +41,26 @@ export const OFFICIAL_LAUNCH_PEERS: readonly BundledPlugin[] = [
 export const OFFICIAL_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] as const
 
 /**
+ * 随包运行时额外携带的实验性官方浏览器能力包。
+ *
+ * 它们**不**进 `BUNDLED_PLUGINS`：那两个包都是 `@deepseek-ai/dsh-*` 官方作用域，
+ * 而 `reconcileProfileBundles` 对官方作用域包直接 `continue`（见 plugin-seed.ts），
+ * 于是它们永远进不了 profile 的 `dsh.profile.bundles`。装进 profile 又不在 bundles 里
+ * = 启动插件对账眼中"没声明却躺在磁盘上"的多余包，实测会在下一次启动被摘掉。
+ * 放进随包运行时目录则完全绕开这条路径：profile 对账不管理运行时目录，且裸包名由
+ * 运行时的解析根命中。
+ *
+ * 随包 ≠ 启用：官方 provider 的设计是"仅在显式挂载后启用"，实际挂载由启动时生成的
+ * browser-use overlay 负责（见 src/bridge/browser-use-overlay.ts）。
+ */
+export const OFFICIAL_BROWSER_USE_PACKAGES: readonly BundledPlugin[] = [
+  // 独占命名的 browserUse 服务槽位。
+  { packageName: '@deepseek-ai/dsh-browser-use', version: OFFICIAL_DSH_VERSION },
+  // Chromium 提供方：内部固定依赖 @playwright/mcp。
+  { packageName: '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp', version: OFFICIAL_DSH_VERSION },
+]
+
+/**
  * 随桌面端离线仓库分发的社区插件清单。
  *
  * 这些插件在**出包时**由 `prepare-runtime` 从 npm 装配进 `store.tgz` 并打进安装包，
@@ -65,13 +85,20 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
   // workspace-write。源码在 https://github.com/luoxunhao/dsh-codex-project。
   //
   // 走 vendorTarball 而不是 registry：npm 上最新的 0.11.0 是 0.1.2-alpha 线，
-  // peer 范围 ^0.1.0-rc.6 拒绝 0.1.5-rc.x（semver 普通范围不匹配预发布版本），
-  // 且上游 README 明确该线宿主服务面已变、不再支持。适配 0.1.5 的 0.12.0 尚未发布，
-  // 所以这里直接随包它**已构建好的产物**（lib/ 四个 js + 清单），本仓库不再构建它。
+  // peer 范围 ^0.1.0-rc.6 拒绝预发布的 0.1.5-rc.x / 0.1.6-alpha.x（semver 普通范围
+  // 不匹配预发布版本），且上游 README 明确该线宿主服务面已变、不再支持。适配
+  // 0.1.6-alpha.2 的 0.13.0 尚未发布，所以这里直接随包它**已构建好的产物**
+  // （lib/ 四个 js + 清单），本仓库不再构建它。
+  //
+  // 0.13.0 起「项目文件夹」「文件预览」改挂 DSH **原生**右侧栏
+  // （ctx.sidebarRightTabs + sidebar.right.pane.tab 键控 seat，随包 0.1.6-alpha.2
+  // 默认装配），并已删除 better-sidebar 回退线（better-sidebar ≥0.19 会把 tab 转发进
+  // 同一原生面，两条都注册会出两个 tab）。0.12.0 那份只有 better-sidebar 一条线，而
+  // 本 profile 不装 better-sidebar，于是侧边栏什么都不注册。
   {
     packageName: '@luoxunhao/dsh-codex-project',
-    version: '0.12.0',
-    vendorTarball: 'vendor/dsh-codex-project/luoxunhao-dsh-codex-project-0.12.0.tgz',
+    version: '0.13.0',
+    vendorTarball: 'vendor/dsh-codex-project/luoxunhao-dsh-codex-project-0.13.0.tgz',
   },
   // 会话里选中一段文字 → 「添加到对话」：以一次性注入上下文搭在下一条真实用户消息上，
   // 不进入消息正文。源码在 https://github.com/luoxunhao/dsh-quote。
@@ -176,6 +203,8 @@ export function officialRuntimeDependencies(version = OFFICIAL_DSH_VERSION): Rec
       plugin.packageName,
       plugin.packageName.startsWith('@deepseek-ai/dsh-') ? version : plugin.version,
     ]),
+    // 浏览器能力包全部是 @deepseek-ai/dsh-* 官方作用域，一律跟家族版本号走。
+    ...OFFICIAL_BROWSER_USE_PACKAGES.map((plugin) => [plugin.packageName, version] as [string, string]),
   ])
 }
 
