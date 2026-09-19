@@ -80,8 +80,7 @@ See `agents/domain.md`.
 
 ## 构建入口（推荐）
 
-用仓库里的 `scripts/build.ps1`（用 PowerShell 7 跑，`pwsh`；Windows PowerShell 5.1 也能跑，
-但脚本里是 ASCII 输出，避免编码问题）：
+用仓库里的 `scripts/build.ps1`（**只能用 PowerShell 7 跑，即 `pwsh`**）：
 
 ```powershell
 pwsh -File scripts\build.ps1 -Target dist-local  # 【推荐】缓存优先：只 tsc + 装配插件 + electron-builder，不重下官方运行时
@@ -91,6 +90,17 @@ pwsh -File scripts\build.ps1 -Target pack     # = electron-builder --dir（重�
 pwsh -File scripts\build.ps1 -Target test     # = pnpm test
 pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行时
 ```
+
+⚠️ **不要用 Windows PowerShell 5.1（`powershell`）跑它**：脚本里有中文注释，而文件是
+**无 BOM 的 UTF-8**，5.1 会按本地代码页（GBK）解码，多字节序列被切碎后**在解析阶段就失败**
+（`字符串缺少终止符`、`Try 块缺少 Catch 或 Finally` 等一连串报错），根本没走到构建那一步。
+实测于 2026-09-19：`powershell -File scripts\build.ps1 -Target check` 全红，与源码无关，
+别把它当成被测代码的回归。PowerShell 7 默认按 UTF-8 读，所以只有 `pwsh` 能跑。
+
+在 Git Bash / 无人值守会话里 `pwsh` 常常**不在 PATH 上**（`command -v pwsh` 为空），但安装是在的：
+用完整路径 `C:\Program Files\PowerShell\7\pwsh.exe`。若只想验证源码树完整、又不想生成 `dist/`
+产物（例如刚清理完产物之后），可以直接用随包 Node 跑类型检查：
+`./.build-node/node.exe ./node_modules/typescript/bin/tsc --noEmit`。
 
 > **缓存优先（默认建议）**：日常出包用 `dist-local`/`pack-local`——只 `tsc` +
 > 装配私有插件 + `electron-builder`，**不重下官方运行时**（本地 `runtime-dsh`/`runtime-dsh.tgz`
