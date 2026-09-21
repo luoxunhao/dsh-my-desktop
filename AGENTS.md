@@ -213,12 +213,16 @@ tar -xzf release\win-unpacked\resources\dsh-runtime.tgz -C $tmp "node_modules/@d
 ## Linux / 信创适配现状（2026-09-21 WSL2 实测）
 
 结论：Linux x64 这条路**能走通**（`prepare-runtime` → `electron-builder --linux deb` → 冒烟通过，首启 3.4 秒），
-但它是一次性验证，没有构建脚本、没在真机跑过。下面几条是实测出来的前提。
+而且**glibc 2.28 那一格已用 Debian 10 chroot 补掉**。但它仍是一次性验证：没有构建脚本，也没在信创真机
+（UOS/DDE 桌面）上跑过。下面几条是实测出来的前提。
 
-- **glibc 门槛是压线过的。** 扫 ELF 的 `GLIBC_2.xx` 符号版本：Electron 44.1.1 linux-x64 主二进制最高
-  只到 `GLIBC_2.25`（`chrome-sandbox` 到 2.4），但**随包 Node v24.20.0 linux-x64 到 `GLIBC_2.28`**。
-  统信 UOS V20（Debian 10 派生、kernel 4.19）正好是 glibc 2.28 ⟹ 能过但零余量；银河麒麟 V10 是 2.31。
-  随包 Node 的 linux-x64 SHA256 与 `config.bundledNodeSha256["linux-x64"]` 已核对相等。
+- **glibc 门槛是压线过的，且已在 2.28 上真跑通。** 扫 ELF 的 `GLIBC_2.xx` 符号版本：Electron 44.1.1
+  linux-x64 主二进制最高只到 `GLIBC_2.25`（`chrome-sandbox` 到 2.4），但**随包 Node v24.20.0 linux-x64
+  到 `GLIBC_2.28`**。统信 UOS V20（Debian 10 派生、kernel 4.19）正好是 glibc 2.28 ⟹ 能过但零余量；
+  银河麒麟 V10 是 2.31。随包 Node 的 linux-x64 SHA256 与 `config.bundledNodeSha256["linux-x64"]` 已核对相等。
+  随后在 **Debian 10 buster chroot（`Debian GLIBC 2.28-10+deb10u1`）**里 `dpkg -i` 本次出的 deb 并首启成功：
+  第二次启动到 ready 4 秒（DSH 子进程 `ready total=1791ms`、健康检查 29ms），根页面返回契约内的
+  `401 dsh web authentication required`，离线补种 4 个随包插件到位。
 - **原生依赖按构建机平台装配，交叉打包必坏。** Windows 上跑 `prepare-runtime` 得到的 `runtime-dsh/`
   里是 `@img/sharp-win32-x64`、`@koromix/koffi-win32-x64`、`node-addon-require-builtin-win32-x64-msvc`、
   `libreoffice-kit-win32-x64`（后者是体积大头）；Linux 上装出来的才是 `*-linux-x64` 一族。

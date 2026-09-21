@@ -52,7 +52,7 @@ This version (0.8.2):
 | Platform | Status |
 | --- | --- |
 | Windows x64 | Built and run locally (NSIS installer + portable zip) |
-| Linux x64 | Walked end to end on 2026-09-21 in WSL2 Ubuntu: `prepare-runtime` → `electron-builder --linux deb` (282 MB) → `smoke-linux-package` passed (first boot 3.4s, offline plugin seeding verified). **Not verified on real 信创 hardware (UOS / Kylin)**, AppImage was not built, and browser use still cannot locate a system browser off win32 |
+| Linux x64 | Walked end to end on 2026-09-21 in WSL2 Ubuntu: `prepare-runtime` → `electron-builder --linux deb` (282 MB) → `smoke-linux-package` passed (first boot 3.4s, offline plugin seeding verified); then installed with `dpkg -i` inside a **Debian 10 chroot (glibc 2.28, the same base as UOS V20)** and it booted (4s to ready on a warm second start). **Not verified on real 信创 hardware (UOS / Kylin DDE desktop)**, AppImage was not built, and browser use still cannot locate a system browser off win32 |
 | macOS | Build targets are configured (dmg/zip), not built or verified in this project yet |
 
 Releases still ship Windows x64 only; the Linux row is a feasibility check, and there is no build script for it yet.
