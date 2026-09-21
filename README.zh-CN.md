@@ -46,9 +46,10 @@ DSH My Desktop 是**启动器 + 桌面壳**。它本身**不实现**对话/工�
 | 平台 | 状态 |
 | --- | --- |
 | Windows x64 | 已在本项目实际打包并本地运行（NSIS 安装器 + 便携 zip） |
-| macOS / Linux | 打包目标已配置（dmg/zip、AppImage/deb），但尚未在本项目构建/验证 |
+| Linux x64 | 2026-09-21 在 WSL2 Ubuntu 上完整走通：`prepare-runtime` → `electron-builder --linux deb`（282 MB）→ `smoke-linux-package` 冒烟通过（首启 3.4 秒、离线补种校验通过）。**未在信创真机（统信 UOS / 银河麒麟）验证**，AppImage 未出，browser use 在非 win32 上仍挂不上系统浏览器 |
+| macOS | 打包目标已配置（dmg/zip），尚未在本项目构建/验证 |
 
-目前**只有 Windows x64** 真正打包并跑起来过。
+日常发版仍以 **Windows x64** 为准；Linux 那条是可行性验证，构建入口和依赖装配还没有对应的脚本。
 
 ## 随包内容 vs 不随包
 

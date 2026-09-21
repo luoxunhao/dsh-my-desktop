@@ -210,6 +210,34 @@ tar -xzf release\win-unpacked\resources\dsh-runtime.tgz -C $tmp "node_modules/@d
 第 2 条是唯一能证明"运行时真的换掉了、不是复用了旧缓存"的检查；`dist-local` 的静默陷阱
 只有它会暴露。
 
+## Linux / 信创适配现状（2026-09-21 WSL2 实测）
+
+结论：Linux x64 这条路**能走通**（`prepare-runtime` → `electron-builder --linux deb` → 冒烟通过，首启 3.4 秒），
+但它是一次性验证，没有构建脚本、没在真机跑过。下面几条是实测出来的前提。
+
+- **glibc 门槛是压线过的。** 扫 ELF 的 `GLIBC_2.xx` 符号版本：Electron 44.1.1 linux-x64 主二进制最高
+  只到 `GLIBC_2.25`（`chrome-sandbox` 到 2.4），但**随包 Node v24.20.0 linux-x64 到 `GLIBC_2.28`**。
+  统信 UOS V20（Debian 10 派生、kernel 4.19）正好是 glibc 2.28 ⟹ 能过但零余量；银河麒麟 V10 是 2.31。
+  随包 Node 的 linux-x64 SHA256 与 `config.bundledNodeSha256["linux-x64"]` 已核对相等。
+- **原生依赖按构建机平台装配，交叉打包必坏。** Windows 上跑 `prepare-runtime` 得到的 `runtime-dsh/`
+  里是 `@img/sharp-win32-x64`、`@koromix/koffi-win32-x64`、`node-addon-require-builtin-win32-x64-msvc`、
+  `libreoffice-kit-win32-x64`（后者是体积大头）；Linux 上装出来的才是 `*-linux-x64` 一族。
+  所以**出 Linux 包必须在 Linux 上跑完整 `prepare-runtime`（走 `main()`）**，`dist:local` 的缓存优先
+  会把 Windows 那套原样复用进 Linux 包。
+- **`runCurrentNpm` 要求 Node 是完整发行版。** 它只在 `dirname(execPath)/node_modules/npm` 与
+  `prefix/lib/node_modules/npm` 两处找 npm。把随包 Node 拷成单文件（`.build-node/node`）时两处都没有
+  ⟹ 官方运行时装配报「未找到当前 Node 附带的 npm CLI」。
+- **browser use 在非 win32 不探测系统浏览器**（`chromiumCandidatePaths()` 直接返回 `[]`），overlay 照样
+  挂但不写 `executablePath`，退回 playwright 的每用户缓存发现。**缺的不是代码路径而是"机器上得有浏览器"**：
+  实测在 Linux 上用 provider 的同一套参数（`cli.js --browser chromium --isolated --headless`）跑通了
+  navigate / snapshot / evaluate（`HeadlessChrome/153.0.0.0`），只要 `~/.cache/ms-playwright` 里有
+  chromium 就能用；显式传 `--executable-path` 同样有效。全新信创机器既探不到系统浏览器、也没有那份缓存，
+  所以首次使用即失败。UOS 上常见的是奇安信/360/火狐，也不是 `chrome.exe` 那套目录布局。
+- **冒烟走的是 `--no-sandbox`。** 真机要么由 deb 的 postinst 把 `chrome-sandbox` 设成 root:root 4755，
+  要么放开非特权 user namespace。AppImage 不设 setuid，所以信创首选 deb。
+- 测试基线（Linux）：`dist/test/*.test.js` 551 项 / 545 通过 / 4 失败 / 2 跳过——4 条失败仍是缺
+  `.github` 那几条，与 Windows 一致。
+
 ## pnpm install 会挂死（真坑，先别急着重跑）
 
 实测过一次：`pnpm install` 在 lockfile 与 manifest 不一致、需要整树重建时**挂死**——
@@ -472,7 +500,9 @@ Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','By
 而本仓库 **没有 `.github/`**，这些用例会因文件不存在（ENOENT）而失败——这是该副本缺 `.github`
 导致的已知缺口，不是被测代码的问题。若需要这些 CI 相关用例通过，需补 `.github/workflows/desktop-package.yml`。
 
-当前基线是 **548 项 / 543 通过 / 4 失败 / 1 跳过**（4 条失败全部为上述 `.github` 缺口；0.8.2 实测）。
+当前基线是 **551 项 / 545 通过 / 4 失败 / 2 跳过**（4 条失败全部为上述 `.github` 缺口；2 条跳过里有一条
+是「从符号链接的 pnpm 垫片定位随包 pnpm 包装目录」——Windows 无符号链接权限时跳过，Linux 上实跑通过。
+0.8.3 实测）。
 这个数字会随版本变化——**判断是否回归要看"失败的 4 条是不是都是 `.github` 那 4 条"，
 而不是看总数**。
 

@@ -52,9 +52,10 @@ This version (0.8.2):
 | Platform | Status |
 | --- | --- |
 | Windows x64 | Built and run locally (NSIS installer + portable zip) |
-| macOS / Linux | Build targets are configured (dmg/zip, AppImage/deb), but not built or verified in this project yet |
+| Linux x64 | Walked end to end on 2026-09-21 in WSL2 Ubuntu: `prepare-runtime` → `electron-builder --linux deb` (282 MB) → `smoke-linux-package` passed (first boot 3.4s, offline plugin seeding verified). **Not verified on real 信创 hardware (UOS / Kylin)**, AppImage was not built, and browser use still cannot locate a system browser off win32 |
+| macOS | Build targets are configured (dmg/zip), not built or verified in this project yet |
 
-Only Windows x64 has actually been packaged and run here.
+Releases still ship Windows x64 only; the Linux row is a feasibility check, and there is no build script for it yet.
 
 ## What is bundled vs not
 

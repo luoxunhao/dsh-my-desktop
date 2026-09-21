@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -180,25 +180,19 @@ test('拒绝符号链接目标（否则数据会写到链接指向的意外位�
   }
 })
 
-test('isRealDirectory 拒绝符号链接（平台语义说明）', () => {
-  // Documents WHY the explicit `!isSymbolicLink()` exists: it is the only thing
-  // stopping a POSIX directory symlink from being accepted as a real directory.
-  // On Windows the junction case is already caught by isDirectory() === false, so
-  // this test records the platform fact instead of claiming coverage it lacks.
+test('isRealDirectory 拒绝符号链接（lstat 与 stat 的差别就是拦截点）', () => {
+  // 实现用的是 lstatSync，它在**两个平台**上都不跟随链接：符号链接一律是
+  // isSymbolicLink() === true 且 isDirectory() === false，所以 `!isSymbolicLink()`
+  // 在当前实现下只是第二道保险。它真正吃重的场景是有人换成 statSync（跟随链接）——
+  // 那时 isDirectory() 为 true，链接就能替用户决定数据落在哪。两种语义一起钉住。
   const root = mkdtempSync(join(tmpdir(), 'dsh-symlink-probe-'))
   const victim = mkdtempSync(join(tmpdir(), 'dsh-victim-'))
   try {
     const link = join(root, 'link')
     symlinkSync(victim, link, 'junction')
-    const stat = lstatSync(link)
-    assert.equal(stat.isSymbolicLink(), true)
-    if (process.platform === 'win32') {
-      // The Windows semantics that make the explicit branch redundant here.
-      assert.equal(stat.isDirectory(), false)
-    } else {
-      // On POSIX the branch is the only protection.
-      assert.equal(stat.isDirectory(), true)
-    }
+    assert.equal(lstatSync(link).isSymbolicLink(), true)
+    assert.equal(lstatSync(link).isDirectory(), false)
+    assert.equal(statSync(link).isDirectory(), true)
   } finally {
     rmSync(root, { recursive: true, force: true })
     rmSync(victim, { recursive: true, force: true })

@@ -6,7 +6,7 @@ import { join, relative } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { copyWorkspacePackages, officialRuntimeGlobalNodeModulesRoot, officialRuntimeNpmDependencies, officialRuntimeNpmInstallArgs, pruneStoreForPackaging, removePreparedPath, resolveBundledNodeSha256, stageDesktopSettingsPlugin, validateOfficialRuntimeLayout, wipePreparedDirectoryKeepingCache, writePnpmShims } from '../scripts/prepare-runtime.js'
+import { copyWorkspacePackages, officialRuntimeGlobalNodeModulesRoot, officialRuntimeNpmDependencies, officialRuntimeNpmInstallArgs, pruneStoreForPackaging, removePreparedPath, resolveBundledNodeSha256, resolvePnpmPackageRoot, stageDesktopSettingsPlugin, validateOfficialRuntimeLayout, wipePreparedDirectoryKeepingCache, writePnpmShims } from '../scripts/prepare-runtime.js'
 import { DESKTOP_BRIDGE_FILES } from '../src/bridge/desktop-host.js'
 
 test('按目标平台选择随包 Node 的 SHA256', () => {
@@ -21,6 +21,31 @@ test('按目标平台选择随包 Node 的 SHA256', () => {
   assert.equal(resolveBundledNodeSha256(checksums, 'darwin', 'x64'), 'INTEL')
   assert.equal(resolveBundledNodeSha256(checksums, 'linux', 'arm64'), 'LINUX_ARM64')
   assert.equal(resolveBundledNodeSha256(checksums, 'linux', 'x64'), 'LINUX')
+})
+
+test('从符号链接的 pnpm 垫片定位随包 pnpm 包装目录', async (t) => {
+  // Linux/macOS 上 npm 全局装的 pnpm 会把 npm_execpath 指到 bin 里的 shell 垫片（指向真
+  // 入口的符号链接）。不先 realpath 就向上找，会撞到调用方自己的 package.json 而定位失败。
+  const root = await mkdtemp(join(tmpdir(), 'dsh-pnpm-entry-'))
+  try {
+    const packageDir = join(root, 'lib', 'node_modules', 'pnpm')
+    await mkdir(join(packageDir, 'bin'), { recursive: true })
+    await writeFile(join(packageDir, 'package.json'), JSON.stringify({ name: 'pnpm', version: '11.24.0', bin: 'bin/pnpm.cjs' }), 'utf8')
+    const realEntry = join(packageDir, 'bin', 'pnpm.cjs')
+    await writeFile(realEntry, '', 'utf8')
+    const shimDir = join(root, 'bin')
+    await mkdir(shimDir, { recursive: true })
+    const shim = join(shimDir, 'pnpm')
+    try {
+      await symlink(realEntry, shim)
+    } catch {
+      t.skip('当前环境不允许创建文件符号链接（Windows 需要管理员或开发者模式）')
+      return
+    }
+    assert.equal(resolvePnpmPackageRoot(shim), packageDir)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('项目配置包含 Linux x64 与 ARM64 的随包 Node SHA256', async () => {

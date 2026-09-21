@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, readFileSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, realpathSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -212,9 +212,21 @@ export async function copyWorkspacePackages(directory: string, depth: 1 | 2, des
   }
 }
 
+/** 解不开就原样返回：调用方要的是「尽量按真实路径处理」，不是「路径必须存在」。 */
+function realpathOrSelf(target: string): string {
+  try {
+    return realpathSync(target)
+  } catch {
+    return target
+  }
+}
+
 export function resolvePnpmPackageRoot(entry = process.env.npm_execpath): string {
   if (entry === undefined || entry === '') throw new Error('未找到 pnpm 入口，必须通过 pnpm 执行运行时装配。')
-  let current = resolve(entry)
+  // 先 realpath 再向上找：Windows 上 npm_execpath 直接就是 `…\pnpm.cjs`，但 Linux/macOS 上
+  // npm 全局装的 pnpm 给的是 `bin/pnpm` 这个 shell 垫片（指向真入口的符号链接）。不先解开的
+  // 话向上走会撞到本仓库自己的 package.json，于是定位失败，掉进下面那条从未跑通的下载回退。
+  let current = resolve(realpathOrSelf(entry))
   for (let index = 0; index < 8; index += 1) {
     const manifestPath = join(current, 'package.json')
     if (existsSync(manifestPath)) {
@@ -470,8 +482,10 @@ async function materializePnpmPackage(destinationRoot: string): Promise<string> 
   } catch {
     const packDir = join(destinationRoot, '.pnpm-pack')
     await mkdir(packDir, { recursive: true })
-    const packed = runCurrentPnpm(['pack', `pnpm@${bundledPnpmVersion}`, '--pack-destination', packDir])
-    const archive = packed.stdout.split(/\r?\n/).map(line => line.trim()).find(line => line.endsWith('.tgz'))
+    // 取包走 npm 而不是 pnpm：`pnpm pack <spec>` 会忽略 spec 去打包**当前工作区**，
+    // 于是产物里根本没有 pnpm-<版本>.tgz，只会在解包那一步炸出「压缩包不存在」。
+    runCurrentNpm(['pack', `pnpm@${bundledPnpmVersion}`, '--pack-destination', packDir, '--no-audit', '--no-fund', '--registry=' + buildRegistry()])
+    const archive = (await readdir(packDir)).find(name => name === `pnpm-${bundledPnpmVersion}.tgz`)
     if (archive === undefined) throw new Error('下载随包 pnpm 失败。')
     extractTarGz(join(packDir, archive), packDir)
     const packedManifest = JSON.parse(await readFile(join(packDir, 'package', 'package.json'), 'utf8')) as { name?: unknown; version?: unknown }
@@ -510,14 +524,6 @@ function runCurrentNpm(args: readonly string[]): void {
   if (entry === undefined) throw new Error('未找到当前 Node 附带的 npm CLI。')
   const result = spawnSync(process.execPath, [entry, ...args], { stdio: 'inherit', windowsHide: true })
   if (result.status !== 0) throw new Error(`npm ${args[0]} 失败（退出码 ${result.status ?? '未知'}）。`)
-}
-
-function runCurrentPnpm(args: readonly string[]): { stdout: string } {
-  const pnpmEntry = process.env.npm_execpath
-  if (!pnpmEntry) throw new Error('未找到 pnpm 入口，必须通过 pnpm 执行运行时装配。')
-  const result = spawnSync(process.execPath, [pnpmEntry, ...args], { encoding: 'utf8' })
-  if (result.status !== 0) throw new Error(`pnpm ${args[0]} 失败（退出码 ${result.status ?? '未知'}）。`)
-  return { stdout: result.stdout ?? '' }
 }
 
 async function findDirectories(directory: string): Promise<string[]> {
