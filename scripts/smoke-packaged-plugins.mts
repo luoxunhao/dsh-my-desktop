@@ -32,7 +32,8 @@ function resolveSmokeProfileDir(profilesRoot: string): string {
 /** 验证隔离 Profile 完全依靠随包 store 安装了全部固定版本插件。 */
 export async function verifyBundledPluginsInstalled(dshHome: string, catalog: readonly BundledPlugin[] = BUNDLED_PLUGINS): Promise<void> {
   const profileDir = resolveSmokeProfileDir(join(dshHome, 'profiles'))
-  // 市场插件是 opt-in：没在 profile 里打开市场开关时，首启本来就不该装它。
+  // 市场开关决定 dshmarket 在不在补种里：新 profile 默认开启（0.8.5），显式关掉的 profile 首启
+  // 本来就不该装它。校验必须走同一套判定，否则会在该装的时候报缺、不该装的时候报多。
   const plugins = applyMarketPreference(catalog, profileDir)
   for (const plugin of plugins) {
     const manifestPath = join(profileDir, 'node_modules', ...plugin.packageName.split('/'), 'package.json')

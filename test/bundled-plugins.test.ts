@@ -15,11 +15,14 @@ const SYNTH_VENDORED: BundledPlugin = {
 }
 const SYNTH_REGISTRY: BundledPlugin = { packageName: 'sample-community', version: '2.0.0' }
 
-test('随包社区插件清单为空：0.8.4 起不预装社区插件', () => {
-  // 清空的原因记在 BUNDLED_PLUGINS 的注释里：社区插件的 peer 追不上官方家族的预发布号，
-  // 随包预装会把上游兼容性变成每次升版的阻塞项。
-  assert.deepEqual(bundledPluginNames(), [])
-  assert.deepEqual(STORE_PACKAGES, [])
+const CODEX = '@luoxunhao/dsh-codex-project'
+const QUOTE = 'dsh-quote'
+
+test('随包社区插件清单：预装市场与本仓库自写的两个插件', () => {
+  // 0.8.4 曾整张清空；0.8.5 只放回这三项，理由记在 BUNDLED_PLUGINS 的注释里。
+  // dsh-vision-router 与 dsh-context 不在其中——前者在 0.1.7-alpha.1 下渲染侧加载失败。
+  assert.deepEqual(bundledPluginNames(), ['dshmarket', CODEX, QUOTE])
+  assert.deepEqual(STORE_PACKAGES, BUNDLED_PLUGINS)
 })
 
 test('随包插件钉死精确版本', () => {
@@ -112,8 +115,8 @@ test('所有 DeepSeek 官方作用域包使用同一套隔离判定', () => {
   assert.equal(isDeepSeekOfficialPackage('@sample/plugin-a'), false)
 })
 
-test('补种清单 = 官方运行时（社区插件清单为空时不再带上任何社区包）', () => {
-  assert.deepEqual(seededPackageNames(), ['@deepseek-ai/dsh'])
+test('补种清单 = 官方运行时 + 随包社区插件', () => {
+  assert.deepEqual(seededPackageNames(), ['@deepseek-ai/dsh', 'dshmarket', CODEX, QUOTE])
 })
 
 test('官方 DSH 家族锁在同一个精确版本', () => {

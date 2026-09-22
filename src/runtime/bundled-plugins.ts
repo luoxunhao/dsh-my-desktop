@@ -61,24 +61,64 @@ export const OFFICIAL_BROWSER_USE_PACKAGES: readonly BundledPlugin[] = [
 ]
 
 /**
- * 随桌面端离线仓库分发的社区插件清单。**0.8.4 起为空：不再预装任何社区插件。**
+ * 随桌面端离线仓库分发的社区插件清单：出包时装配进 `store.tgz` 打进安装包，
+ * 首启 / 新建或切换 profile 时**不需要联网**即可补种。
  *
- * 清空的原因是这套机制把上游兼容性变成了发版阻塞，而不是因为它不工作：
+ * 0.8.4 曾整张清空（`dsh-vision-router` 在新家族下渲染侧加载失败，而它的 peer 追不上预发布号，
+ * 随包预装把上游兼容性变成了每次升版的阻塞项）。0.8.5 只放回这三项：
  *
- * - 清单里每个插件都要按精确版本随包，而它们的 peer 普遍追不上官方家族的预发布号
- *   （`dsh-vision-router` 2.1.6/2.1.7 的 peer 上限是 `0.1.5-rc.2`，2.2.0 才刚加到
- *   `0.1.6-alpha.1`）⟹ 家族升版后它在渲染侧直接加载失败，而这只能靠真启动冒烟发现。
- * - store 的离线元数据按 registry 域名分键（`<store>/cache/v11/metadata/<host>/<包>.jsonl`），
- *   构建走镜像源、首启按默认源找 ⟹ 一次强制重装就能让离线补种全灭。
+ * - `dshmarket` —— 可视化插件市场，用户装别的东西的入口，缺它整个设置页的插件面就是空的。
+ * - `@luoxunhao/dsh-codex-project` 与 `dsh-quote` —— 本仓库维护者自己写的两个插件，走
+ *   `vendorTarball`（适配本运行时的版本没发 npm）。
  *
- * 随包仍然只有官方运行时（含实验性 browser use，见 `OFFICIAL_BROWSER_USE_PACKAGES`）。
- * 用户要这些插件时在设置页自行安装即可 —— 装它们走的 `desktopPnpm` 桥不受影响。
+ * **不放回**：`dsh-vision-router`（实测在 `0.1.7-alpha.1` 下加载失败，离线与放网各验一次）、
+ * `dsh-context`（本轮不随包）。
  *
- * 下面的 `vendorTarball` 机制、`prepare-runtime` 的 store 装配与首启补种路径都保留：
- * 清单非空时它们照常工作（`STORE_PACKAGES.length === 0` 时整段跳过），重新启用只需往
- * 这个数组里加条目。
+ * 每次升官方家族版本都要为这里的每一项跑一次真启动冒烟，读 profile 的
+ * `.dsh-desktop-startup-diagnostics.json`：peer 不满足只是信号（这三项的 peer 早于当前家族，
+ * 却一直在用），真正会坏的是客户端加载，而单元测试全绿照样能坏。
  */
-export const BUNDLED_PLUGINS: readonly BundledPlugin[] = []
+export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
+  // 可视化插件市场。上游源码在 https://github.com/dsh-market/dsh-market，
+  // 本仓库不保留副本（参考源码目录已删除并 ignore，见 .gitignore）。
+  { packageName: 'dshmarket', version: '1.45.1' },
+  // Codex 式工作区共享子目录：一个工作区外挂任意可写根（可跨盘符），权限仍限
+  // workspace-write。源码在 https://github.com/luoxunhao/dsh-codex-project。
+  //
+  // 走 vendorTarball 而不是 registry：npm 上最新的 0.11.0 是 0.1.2-alpha 线，
+  // peer 范围 ^0.1.0-rc.6 拒绝预发布的 0.1.5-rc.x / 0.1.6-alpha.x（semver 普通范围
+  // 不匹配预发布版本），且上游 README 明确该线宿主服务面已变、不再支持。适配
+  // 0.1.6-alpha.2 的 0.13.0 尚未发布，所以这里直接随包它**已构建好的产物**
+  // （lib/ 四个 js + 清单），本仓库不再构建它。
+  //
+  // 0.13.0 的 peer 仍是 ^0.1.6-alpha.2，而 semver 的预发布规则不跨 [major,minor,patch]
+  // 元组放行 ⟹ 家族升到 0.1.7-alpha.1 后这组 peer 一律判为未满足。pnpm 只告警不中断
+  // （未开 strict-peer-dependencies），装得上、能不能真正激活要在启动冒烟里看宿主注册结果
+  // 与启动诊断，别把"没报错"当成兼容。
+  //
+  // 0.13.0 起「项目文件夹」「文件预览」改挂 DSH **原生**右侧栏
+  // （ctx.sidebarRightTabs + sidebar.right.pane.tab 键控 seat，随包 0.1.7-alpha.1
+  // 默认装配），并已删除 better-sidebar 回退线（better-sidebar ≥0.19 会把 tab 转发进
+  // 同一原生面，两条都注册会出两个 tab）。0.12.0 那份只有 better-sidebar 一条线，而
+  // 本 profile 不装 better-sidebar，于是侧边栏什么都不注册。
+  {
+    packageName: '@luoxunhao/dsh-codex-project',
+    version: '0.13.0',
+    vendorTarball: 'vendor/dsh-codex-project/luoxunhao-dsh-codex-project-0.13.0.tgz',
+  },
+  // 会话里选中一段文字 → 「添加到对话」：以一次性注入上下文搭在下一条真实用户消息上，
+  // 不进入消息正文。源码在 https://github.com/luoxunhao/dsh-quote。
+  //
+  // 同为 vendorTarball：npm 上只有 0.0.1，本地适配版是 0.1.0（未发布）。它的 peer
+  // 声明仍是 0.1.2-alpha 线，已实测在随包的 0.1.5-rc.2 上能正常激活（host 行 state=2、
+  // client 进名册、无错误）——它只真正 import @deepseek-ai/dsh-llm，宿主服务面没有踩到
+  // 那批变化。随包的是它 0.1.0 的构建产物。
+  {
+    packageName: 'dsh-quote',
+    version: '0.1.0',
+    vendorTarball: 'vendor/dsh-quote/dsh-quote-0.1.0.tgz',
+  },
+]
 
 /** 离线 store 只放社区插件。 */
 export const STORE_PACKAGES: readonly BundledPlugin[] = BUNDLED_PLUGINS

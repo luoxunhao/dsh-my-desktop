@@ -2,6 +2,29 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.8.5
+
+Community plugin preinstallation returns, and two couplings that broke offline first launch are fixed.
+
+- **Preinstalled**: `dshmarket` (the visual plugin market), `@luoxunhao/dsh-codex-project` 0.13.0 and
+  `dsh-quote` 0.1.0 — staged into the offline store at build time and seeded with no network on
+  first launch. **No longer preinstalled**: `dsh-vision-router` (measured to fail client-side
+  loading on `0.1.7-alpha.1`, reproduced both offline and online) and `dsh-context`.
+- **New profiles default the plugin market to ON**: `dshmarket` shipped in the store but the
+  opt-in gate kept it from being seeded on first launch. A profile with no state file is now
+  treated as market-enabled; the settings switch still turns it off, and profiles that already
+  made a choice keep it exactly. A state file that exists but cannot be parsed still means
+  "disabled" — an untrusted document must not be overwritten by the product default.
+- **The bundled store now carries the offline metadata the app actually looks up**: pnpm keys that
+  metadata by registry host, staging defaults to a mirror while first-launch seeding resolves
+  against `registry.npmjs.org`, so a forced runtime rebuild left only the mirror's keys and offline
+  seeding failed with `ERR_PNPM_NO_OFFLINE_META`. Staging now resolves the official registry a
+  second time (`--lockfile-only`: metadata only, no tarball download).
+- **Pending plugin updates read the bundled metadata too**: that path is not in offline mode, so it
+  previously omitted `--cache-dir` and looked in the current user's cache — on an air-gapped
+  machine seeding succeeded while plugin updates silently failed. `--cache-dir` now follows the
+  store, not the `--offline` flag.
+
 ## 0.8.4
 
 Bundled DSH runtime upgrade, and **community plugins are no longer preinstalled**.

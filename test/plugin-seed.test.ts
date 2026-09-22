@@ -430,7 +430,9 @@ test('旧 profile 离线补装缺缓存时在线重试也必须沿用原 store',
         attempts++
         if (args.includes('--offline')) throw new Error('ERR_PNPM_NO_OFFLINE_META')
         assert.ok(args.includes(`--store-dir=${expectedStore}`), '在线重试丢弃原 store 会导致 ERR_PNPM_UNEXPECTED_STORE')
-        assert.equal(args.some(arg => arg.startsWith('--cache-dir=')), false)
+        // 元数据缓存跟着 store 走，不跟 `--offline` 走：允许联网的那次同样要先看随包元数据，
+        // 否则离线机器上补种能成、待更新应用会静默失败。
+        assert.ok(args.includes(`--cache-dir=${join(expectedStore, 'cache')}`))
       },
     })
     assert.equal(attempts, 2)
@@ -800,22 +802,25 @@ test('随包插件补种后写进 dependencies 并激活为 bundle', async () =>
  * 用户显式关掉市场后，profile 里残留的声明必须被主动摘掉——否则上一次启用留下的
  * `dependencies.dshmarket` 与 `bundles` 会让 DSH 继续加载市场，"关闭"就形同虚设。
  */
-test('未启用市场时不补种 dshmarket（安全默认：读不到偏好即不加载）', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-market-off-'))
+test('没有状态文件的新 profile 默认开市场，dshmarket 照样补种', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-market-default-on-'))
   try {
     const store = join(root, 'store')
     const profile = join(root, 'profile')
     await mkdir(store)
     await mkdir(profile)
-    // 不写状态文件：等价于用户从未选择过市场，必须按 disabled 处理。
+    // 不写状态文件 = 用户从没选过 ⟹ 0.8.5 起按产品默认值"开"处理，随包的市场要装上。
+    // 显式关闭由下一条测试守住；读不动的文档由 market-preference.test.ts 守住。
+    const calls: string[][] = []
     const result = await seedBundledPlugins({
       nodeExecutable: 'node',
       profileDir: profile,
       pluginStoreDir: store,
       catalog: bundledCatalog,
-      runner: async () => { throw new Error('未启用市场时不应发起 pnpm 调用') },
+      runner: async args => { calls.push([...args]) },
     })
-    assert.deepEqual(result.seeded, [])
+    assert.deepEqual(result.seeded, ['dshmarket'])
+    assert.equal(calls[0]?.includes('dshmarket@1.45.1'), true)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

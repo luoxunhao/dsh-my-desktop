@@ -149,8 +149,11 @@ export function buildSeedPluginArgs(packages: readonly BundledPlugin[], targetDi
     ...packages.map((plugin) => bundledPluginSeedSpec(plugin, options.storeDir)),
     `--dir=${targetDir}`,
     ...(options.storeDir === undefined ? [] : [`--store-dir=${options.storeDir}`]),
-    // pnpm 11 把版本元数据放在 cache-dir；纯离线首启不能依赖当前用户的缓存。
-    ...(options.offline === true && options.storeDir !== undefined ? [`--cache-dir=${join(options.storeDir, 'cache')}`] : []),
+    // pnpm 11 把版本元数据放在 cache-dir；随包 store 的元数据就在 `<store>/cache`，
+    // 而默认 cache 属于当前用户 —— 纯离线首启找不到它就直接 `ERR_PNPM_NO_OFFLINE_META`。
+    // 这条不跟 `offline` 绑定：待更新应用那条路径允许联网，但同样必须先看随包元数据，
+    // 否则离线机器上补种成功、更新却静默失败（0.8.5 实测 `plugin-update.log`）。
+    ...(options.storeDir === undefined ? [] : [`--cache-dir=${join(options.storeDir, 'cache')}`]),
     ...(options.offline === true ? ['--offline'] : []),
     '--config.node-linker=hoisted',
     '--config.auto-install-peers=' + (options.autoInstallPeers === true ? 'true' : 'false'),

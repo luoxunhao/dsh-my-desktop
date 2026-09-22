@@ -137,8 +137,6 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
    就是为保住它们而存在的——**不要手工删 `runtime-plugins/`**。
    注意 `store.tgz` 仍每次出包都从一次 install 重新打包（"插件清单变了 store 必须重建"
    这条硬约束没有松动），保住的只是缓存。
-   > **0.8.4 起这一条对出包不再适用**：`BUNDLED_PLUGINS` 为空 ⟹ `stagePluginStore()` 整段跳过
-   > ⟹ 既没有冷/热装配，包里也没有 `plugins-store.tgz`。机制还在，重新启用即恢复。
 2. **`release/` 无限累积**。实测 `release/` 到 **7.1 GB / 640 个文件**（十几个历史版本的
    exe+zip+blockmap 叠在一起）。`electron-builder` 每次要重写 `release\win-unpacked`（766 MB），
    目录越大、杀软扫描与文件枚举越慢。**发布完成后按需清理历史版本产物**（保留当前版本即可）。
@@ -181,11 +179,10 @@ pwsh -File scripts\build.ps1 -Target dist-local
 （`-Target test` 的同类假失败见「测试说明」，同一个根因。）
 
 ⚠️ **`DSH_FORCE_RUNTIME_REBUILD=1` 连插件 store 缓存一起清**（`prepare-runtime.ts` 的
-`if (forceRuntime) removePreparedPath(pluginRoot)`）——清单非空时，下一次装配社区插件必然是冷启动
-（实测 ~290s 那档）。0.8.4 这轮它还顺手暴露了一件事：`plugins-store.tgz` 从 126 MB 掉到 34 MB、
-成员从 17,518 项掉到 6,333 项，**看着像洗掉历史垃圾，实际同时洗掉了运行时要用的那套 registry
-元数据键**（见「出包后必须校验」末段）。这两件事混在同一个数字里、光看体积分辨不出来，
-最后以"取消预装社区插件"收场（`BUNDLED_PLUGINS` 为空，包里不再有 store）。
+`if (forceRuntime) removePreparedPath(pluginRoot)`）——下一次装配社区插件必然是冷启动（实测
+~290s 那档）。0.8.4 这轮它还暴露了另一件事：`plugins-store.tgz` 从 126 MB 掉到 34 MB、成员从
+17,518 项掉到 6,333 项，**看着像洗掉历史垃圾，实际同时洗掉了运行时要用的那套 registry 元数据键**
+（见下一节）。两件事混在同一个数字里，光看体积分辨不出来。
 
 ⚠️ **压缩包与运行时目录是两份状态，判据只看目录**：`officialRuntimeIsCurrent()` 只读
 `runtime-dsh/node_modules/**/package.json` 的版本，**不看 `runtime-dsh.tgz`**；而
@@ -251,12 +248,17 @@ pwsh -File scripts\smoke-package.ps1 -ApplicationPath "release\win-unpacked\DSH 
 `ERR_PNPM_NO_OFFLINE_META`，5 个社区插件一个都装不上。非 FORCE 路径因为 `cache/` 跨版本累积、
 两种键都在，所以这个坑平时不显形——0.8.3 那份 store 就是两种键都有的。
 
-**0.8.4 起不预装社区插件，所以这条只在 `BUNDLED_PLUGINS` 重新填上条目后才会踩到。** 踩到时的两条：
+**0.8.5 起这条由 `stageBundledPlugins` 自动处理**：装配完镜像源那遍之后，若
+`buildRegistry() !== OFFICIAL_NPM_REGISTRY`，再对官方源跑一遍 `--lockfile-only`（只取元数据、
+不下 tarball，实测几百毫秒到几十秒），于是包里的 store 两套键都有。改这段前先确认
+`test/prepare-runtime.test.ts` 那条源码模式断言还在。
 
-- **看这一眼就知道有没有坏**：`ls release/win-unpacked/plugins/store/cache/v11/metadata/`
-  必须包含 `registry.npmjs.org`。
-- **修法很便宜**：不带 `DSH_BUILD_REGISTRY` 再跑一次 `node dist/scripts/prepare-runtime.js --stage-plugin`。
-  实测 48s、`reused 188 / downloaded 0`——内容寻址文件早就在了，缺的只是元数据。
+- **看这一眼就知道有没有坏**：`ls runtime-plugins/store/cache/v11/metadata/` 必须同时有
+  `registry.npmjs.org` 与构建用的那个镜像域名。
+- **清单清空时**（`STORE_PACKAGES.length === 0`）整段 store 装配跳过，`package.json` 里那两条
+  `plugins-store` 的 `extraResources` **必须一起删**，否则 electron-builder 因源文件不存在硬失败；
+  反过来，清单非空却漏了这两条 ⟹ 首启静默不预装（`test/prepare-runtime.test.ts` 钉的是
+  "清单非空 ⇒ 必须带上"）。
 
 
 ## Linux / 信创适配现状（2026-09-21 WSL2 实测）

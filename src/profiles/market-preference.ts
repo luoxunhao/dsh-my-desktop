@@ -18,10 +18,13 @@
  * the two sides agree on the on-disk document shape, so no new channel or IPC is
  * needed. The reader is deliberately total and best-effort:
  *
- *  - a missing file, unreadable file, malformed JSON, wrong schema version, or an
- *    unrecognised provider all resolve to the SAFE default (`disabled`) — the
- *    market stays out rather than being loaded because its preference was unclear;
- *  - an explicit `dsh-market` is the only value that enables the market.
+ *  - a missing file means the profile never made a choice (every new profile is in
+ *    that state) and resolves to the product default: the market is ON, so the
+ *    bundled `dshmarket` is seeded on first launch;
+ *  - an unreadable file, malformed JSON, wrong schema version, or an unrecognised
+ *    provider all resolve to `disabled` — a document that exists but cannot be
+ *    trusted must not be overwritten by the product default;
+ *  - an explicit `disabled` is honoured exactly like an explicit `dsh-market`.
  *
  * @module dsh-my-desktop/market-preference
  */
@@ -47,7 +50,7 @@ export const SUPPORTED_STATE_VERSION = 1
 /** The only provider value that loads a market. */
 export const MARKET_PROVIDER_DSH = 'dsh-market' as const
 
-/** Provider the launcher assumes when no trustworthy preference is readable. */
+/** Provider the launcher assumes for a preference document it cannot trust. */
 export const MARKET_PROVIDER_DISABLED = 'disabled' as const
 
 /** The market package the `dsh-market` provider corresponds to. */
@@ -74,7 +77,9 @@ export function settingsStatePath(profileDir: string): string {
  */
 export function readMarketProvider(profileDir: string): MarketProvider {
   const filePath = settingsStatePath(profileDir)
-  if (!existsSync(filePath)) return MARKET_PROVIDER_DISABLED
+  // 没有状态文件 = 这个 profile 从没做过选择（新建就是这种状态）⟹ 用产品默认值：开市场，
+  // 让随包的 dshmarket 首启就补种上。已经写过选择的 profile 一律照它自己记的走。
+  if (!existsSync(filePath)) return MARKET_PROVIDER_DSH
   try {
     const parsed = JSON.parse(readFileSync(filePath, 'utf8')) as unknown
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return MARKET_PROVIDER_DISABLED
@@ -87,8 +92,8 @@ export function readMarketProvider(profileDir: string): MarketProvider {
       ? MARKET_PROVIDER_DSH
       : MARKET_PROVIDER_DISABLED
   } catch {
-    // A corrupt or unreadable file must never break the launch, and must not be
-    // optimistically read as "market enabled".
+    // 文件在但读不动/解析不了：这是一份"有人写过选择、只是我们信不过"的文档，
+    // 不能拿产品默认值去替它说话，所以市场留在外面。
     return MARKET_PROVIDER_DISABLED
   }
 }

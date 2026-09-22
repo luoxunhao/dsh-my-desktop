@@ -5,7 +5,7 @@ import { cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'nod
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { ALLOWED_BUILD_PACKAGES, buildRegistry, officialRuntimeDependencies, officialRuntimePnpmConfig, pnpmWorkspaceYaml, STORE_PACKAGES, vendorTarballDir, vendorTarballName, type BundledPlugin } from '../src/runtime/bundled-plugins.js'
+import { ALLOWED_BUILD_PACKAGES, buildRegistry, OFFICIAL_NPM_REGISTRY, officialRuntimeDependencies, officialRuntimePnpmConfig, pnpmWorkspaceYaml, STORE_PACKAGES, vendorTarballDir, vendorTarballName, type BundledPlugin } from '../src/runtime/bundled-plugins.js'
 import { extractTarGz, packDirectoryToTarGz, verifyFileSha256, writeFileSha256 } from '../src/infra/runtime-archive.js'
 
 const projectRoot = resolve(import.meta.dirname, '..', '..')
@@ -310,6 +310,30 @@ export async function stageBundledPlugins(destinationRoot: string, nodeRoot: str
     '--fetch-retry-maxtimeout=60000',
     '--registry=' + buildRegistry(),
   ])
+  // 首启补种找元数据用的是**运行时**的 `buildRegistry()`（应用进程里没有
+  // `DSH_BUILD_REGISTRY` ⟹ 官方源），而 pnpm 的元数据缓存按 registry 域名分键
+  // （`<store>/cache/v11/metadata/<host>/<包>.jsonl`）。构建机走镜像源时只装一次，
+  // 包里的 store 就只剩镜像那套键，离线首启会 `ERR_PNPM_NO_OFFLINE_META`、一个插件都装不上
+  // （0.8.4 实测）。所以对官方源再解析一遍：`--lockfile-only` 只取元数据、不下 tarball
+  // （内容寻址文件已在 store 里），实测几十秒且 `downloaded 0`。
+  if (buildRegistry() !== OFFICIAL_NPM_REGISTRY) {
+    runStagedPnpm(nodeRoot, [
+      'install',
+      '--lockfile-only',
+      '--dir', stagingDir,
+      '--store-dir', storeDir,
+      '--cache-dir', join(storeDir, 'cache'),
+      '--prod',
+      '--config.node-linker=hoisted',
+      '--config.auto-install-peers=false',
+      '--config.minimumReleaseAge=0',
+      '--network-concurrency=1',
+      '--fetch-retries=5',
+      '--fetch-retry-mintimeout=10000',
+      '--fetch-retry-maxtimeout=60000',
+      '--registry=' + OFFICIAL_NPM_REGISTRY,
+    ])
+  }
   for (const plugin of stagedPackages) {
     if (!existsSync(join(stagingDir, 'node_modules', ...plugin.packageName.split('/'), 'package.json'))) {
       throw new Error(`内置插件装配后缺失：${plugin.packageName}`)

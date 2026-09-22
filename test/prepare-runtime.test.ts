@@ -106,20 +106,32 @@ test('只把官方包复制进安装目录，社区插件不走这条路径', as
   }
 })
 
-test('打包配置不再带上离线插件仓库（0.8.4 起不预装社区插件）', async () => {
+test('打包配置把离线插件仓库放进 extraResources（清单非空就必须带上）', async () => {
   const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
     build?: { extraResources?: { from?: string; to?: string }[] }
   }
-  // 清单为空 ⇒ prepare-runtime 不装配 store.tgz。此时 extraResources 里若还留着那两条，
-  // electron-builder 会因源文件缺失硬失败；若留着旧条目又用别的路径绕过，首启就会解出一个
-  // 空 store 并以为预装生效了。所以这里钉"必须没有"。
-  const storeEntries = manifest.build?.extraResources?.filter(item => item.to?.startsWith('plugins-store')) ?? []
-  assert.deepEqual(storeEntries, [])
-  // 官方运行时仍然必须随包（首启零联网解出运行时的承诺没有变）。
+  // STORE_PACKAGES 非空 ⇒ prepare-runtime 会装配 store.tgz，此时安装包必须真的带上它，
+  // 否则首启补种会因 missing-store 静默跳过，预装形同没有。清单清空时这两条要一起删，
+  // 否则 electron-builder 会因源文件不存在硬失败。
+  assert.notEqual((await import('../src/runtime/bundled-plugins.js')).STORE_PACKAGES.length, 0)
   assert.equal(
-    manifest.build?.extraResources?.some(item => item.from === 'runtime-dsh.tgz' && item.to === 'dsh-runtime.tgz'),
+    manifest.build?.extraResources?.some(item => item.from === 'runtime-plugins/store.tgz' && item.to === 'plugins-store.tgz'),
     true,
   )
+  assert.equal(
+    manifest.build?.extraResources?.some(item => item.from === 'runtime-plugins/store.tgz.sha256' && item.to === 'plugins-store.tgz.sha256'),
+    true,
+  )
+})
+
+test('镜像源装配后补一次官方源元数据解析（离线首启按默认源找）', async () => {
+  const source = await readFile(new URL('../../scripts/prepare-runtime.ts', import.meta.url), 'utf8')
+  // pnpm 的元数据缓存按 registry 域名分键；只按镜像源装配会让包里的 store 缺
+  // registry.npmjs.org 那套键，离线首启就全灭（0.8.4 实测）。这条钉住"必须再解析一次"。
+  assert.match(source, /buildRegistry\(\) !== OFFICIAL_NPM_REGISTRY/)
+  const secondPass = source.slice(source.indexOf('buildRegistry() !== OFFICIAL_NPM_REGISTRY'))
+  assert.match(secondPass.slice(0, 900), /'--lockfile-only'/)
+  assert.match(secondPass.slice(0, 1200), /'--registry=' \+ OFFICIAL_NPM_REGISTRY/)
 })
 
 test('内置插件装配限制下载并发并保留网络重试', async () => {
