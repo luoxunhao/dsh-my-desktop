@@ -190,6 +190,17 @@ pwsh -File scripts\build.ps1 -Target dist-local
 压缩包还是旧版本"会一路全绿出包。要么按上面第 2 步核对，要么直接删掉 `runtime-dsh.tgz`
 逼它重打包——出包后从包内解出来验版本是唯一能证明这件事的检查（见「出包后必须校验」）。
 
+### 升家族版本必查：随包插件 client 引用的具名导出还在不在（0.8.5 实测踩过）
+
+`0.1.6-alpha.2 → 0.1.7-alpha.1` 把 `@deepseek-ai/dsh-client-ui-primitives` 的整套 **`Icon*` 具名导出按"尺寸后缀"改成了"字重后缀"**：`IconChevronDownOutline14` → `IconChevronDownOutline` / `…Regular` / `…Medium`，`IconFolderOpen16` → `IconFolderOpen…`。第三方插件的 client bundle 是 `let ns = require("@deepseek-ai/dsh-client-ui-primitives")` 再按成员取用，取到 `undefined` 当组件渲染就是 **`Minified React error #130`** —— 市场页整页崩，用户看到的是"所有插件都失效"。
+
+实测缺口（记下来免得再骗自己一次）：`@luoxunhao/dsh-codex-project` 0.13.0 访问 18 个成员里 **14 个缺失**，`dshmarket` 1.45.1 访问 26 个里 **17 个缺失**。对照跑同一套提取代码：0.1.6-alpha.2 六个抽样图标名全部命中，0.1.7-alpha.1 全部不命中，而该包导出名总数反而从 187 涨到 328 —— 所以不是工具看不见，是真删了/改名了。
+
+**为什么单元测试和冒烟都没拦住**：这两条都验到"宿主侧起来了"（启动诊断 `stage: healthy`、bundle 声明齐全、离线补种成功），**没有任何一条渲染过插件客户端界面**。客户端崩不写宿主诊断，所以全绿是必然的。取证脚本留在 `.scratch/browser-use-probe/diff-client-members.mjs`（只读，接受 profile 与运行时两个 node_modules 根）。
+
+**出包前该做的比对**（尚未落成闸门）：把随包插件的 client 入口里 `require("@deepseek-ai/*")` 命名空间后访问的成员名，对随包运行时该包的 `lib/types` 导出做一次集合差，缺任何一个就硬失败——这一步能在装配阶段拦住本次这类断裂。回退路径已验证可行：`@deepseek-ai/dsh` 与两个 browser-use 包在 `0.1.6-alpha.2` 都有发布（即 0.8.3 那套）。
+
+
 升运行时还要同步下面这些（漏一处要么构建期报错、要么静默漂移）：
 
 - `src/runtime/bundled-plugins.ts` 的 `OFFICIAL_DSH_VERSION`（`OFFICIAL_RUNTIME` 与三个
