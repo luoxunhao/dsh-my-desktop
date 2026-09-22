@@ -2,7 +2,70 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.8.4
+
+Bundled DSH runtime upgrade, and **community plugins are no longer preinstalled**.
+
+- **The official family moves to `0.1.7-alpha.1` as one pin.** The bundled runtime, the three launch
+  peers (`dsh-scope`/`dsh-timeout`/`dsh-invariants`) and both experimental browser-use packages
+  follow that single version; `@deepseek-ai/cordis` goes 4.0.2 → 4.0.3 because the new family asks
+  for `^4.0.3` while cordis' own `latest` dist-tag still points at 4.0.2, so it has to be pinned
+  explicitly. The settings plugin's four client type tarballs are re-vendored under
+  `vendor/0.1.7-alpha.1/`.
+- **browser use updates with the family; the mount shape is unchanged**: `mode: launch` +
+  `headless: true` + `executablePath` of a system Chrome/Edge, mounted per launch through an
+  overlay written with `file:` URLs. `DSH_DISABLE_BROWSER_USE=1` still opts out.
+- **The settings page follows the renamed client settings service**: `ctx.settingsScope.bind({
+  namespace })` became `ctx.configForms.get(namespace)` — the new implementation treats the entry
+  id as the settings namespace itself.
+- **Fixed a launch-blocking availability check**: `@deepseek-ai/dsh-web-app` now declares its
+  bundle manifest entry `dsh.bundle.patch` as an array (the official packages ship several
+  presets), while `hasOfficialRuntimeBundle` accepted only a string — so the first launch reported
+  "official runtime incomplete: missing built-in bundle `@deepseek-ai/dsh-web-app`" and the DSH
+  child never started. Both shapes are accepted now, and an array must have **every** patch file on
+  disk; a single missing entry still counts as unavailable.
+- **No community plugin is preinstalled any more** (`dshmarket`, `dsh-vision-router`,
+  `dsh-context`, `@luoxunhao/dsh-codex-project`, `dsh-quote`) and the installer no longer ships an
+  offline plugin store; first launch only unpacks the official runtime. Two measured reasons:
+  1. those plugins' peers cannot follow the family's prerelease numbers — `dsh-vision-router` tops
+     out at `0.1.5-rc.2` (2.2.0 only adds `0.1.6-alpha.1`), so on `0.1.7-alpha.1` it **fails to
+     load** in the client, identically offline and online;
+  2. the offline store's metadata is keyed by registry host, so a mirror-based build plus a
+     default-registry first launch turns every plugin install into `ERR_PNPM_NO_OFFLINE_META`.
+- **Install them from the settings page instead**: the `desktopPnpm` bridge that serves
+  install/uninstall/update is unchanged. The bundling machinery (catalog, store staging, first-run
+  seeding, `vendor/` artifacts and their checksums) stays in place — re-enabling it means adding
+  entries back to `BUNDLED_PLUGINS`.
+
+## 0.8.3
+
+Regression fix release. **0.8.2 must not be installed**: it failed on the first launch after
+a fresh install, so the DSH child process never started and the window stayed on the error
+page.
+
+- **The launcher created its `browser-use` overlay directory.** `prepareBrowserUseOverlay`
+  wrote `<userData>/browser-use/browser-use.patch.yml` with `writeFileSync` but never made
+  `browser-use/` — on a clean install that path does not exist, so every launch threw
+  `ENOENT` out of the startup path. Fixed with `mkdirSync(..., { recursive: true })`, plus: an
+  optional feature can no longer take the launcher down — any write failure now degrades to
+  "not mounted" instead of propagating.
+- **The overlay mounts by `file:` URL, not by package name.** A patch `include` resolves
+  against the **profile directory**, so a bare `@deepseek-ai/dsh-experimental-browser-use-*`
+  name is not found in the packaged runtime and the child died with `ERR_MODULE_NOT_FOUND`
+  (exit code 1). The launcher's own bridge and settings overlays already used absolute
+  `file:` URLs for exactly this reason; browser-use now does the same, resolving each
+  package's host entry inside the runtime tree (top level or nested under `@deepseek-ai/dsh`).
+- **Mounting is now gated on those entries actually resolving**, so a dev tree that has not
+  run `prepare-runtime` skips the mount instead of breaking startup.
+- Browser-use is otherwise unchanged from 0.8.2: same bundled packages, `mode: launch`,
+  `headless: true`, system Chrome/Edge via `executablePath`, `DSH_DISABLE_BROWSER_USE=1` off
+  switch.
+
 ## 0.8.2
+
+> **Do not install.** Superseded by 0.8.3 — the browser-use overlay was never created (missing
+> directory) and mounted by a bare package name the profile cannot resolve, so the DSH child
+> process exited during startup on every fresh install.
 
 **Experimental browser use now ships bundled and is mounted by default**, so the model can
 drive a real Chromium tab in any profile without the user installing anything.

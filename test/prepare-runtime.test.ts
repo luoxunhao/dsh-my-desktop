@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import test from 'node:test'
@@ -106,18 +106,18 @@ test('只把官方包复制进安装目录，社区插件不走这条路径', as
   }
 })
 
-test('打包配置把离线插件仓库放进 extraResources（随包预装 dshmarket）', async () => {
+test('打包配置不再带上离线插件仓库（0.8.4 起不预装社区插件）', async () => {
   const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
     build?: { extraResources?: { from?: string; to?: string }[] }
   }
-  // STORE_PACKAGES 非空 ⇒ prepare-runtime 会装配 store.tgz，此时安装包必须真的带上它，
-  // 否则首启补种会因 missing-store 静默跳过，预装形同没有。
+  // 清单为空 ⇒ prepare-runtime 不装配 store.tgz。此时 extraResources 里若还留着那两条，
+  // electron-builder 会因源文件缺失硬失败；若留着旧条目又用别的路径绕过，首启就会解出一个
+  // 空 store 并以为预装生效了。所以这里钉"必须没有"。
+  const storeEntries = manifest.build?.extraResources?.filter(item => item.to?.startsWith('plugins-store')) ?? []
+  assert.deepEqual(storeEntries, [])
+  // 官方运行时仍然必须随包（首启零联网解出运行时的承诺没有变）。
   assert.equal(
-    manifest.build?.extraResources?.some(item => item.from === 'runtime-plugins/store.tgz' && item.to === 'plugins-store.tgz'),
-    true,
-  )
-  assert.equal(
-    manifest.build?.extraResources?.some(item => item.from === 'runtime-plugins/store.tgz.sha256' && item.to === 'plugins-store.tgz.sha256'),
+    manifest.build?.extraResources?.some(item => item.from === 'runtime-dsh.tgz' && item.to === 'dsh-runtime.tgz'),
     true,
   )
 })
@@ -362,13 +362,13 @@ test('官方运行时使用 npm 安装以兼容预发布 peer 依赖', () => {
       '--no-fund',
       '--allow-scripts=@deepseek-ai/dsh-subprocess-local,@google/genai,koffi,node-pty,protobufjs',
       '--registry=https://registry.npmjs.org/',
-      '@deepseek-ai/dsh@0.1.6-alpha.2',
+      '@deepseek-ai/dsh@0.1.7-alpha.1',
       '@deepseek-ai/cordis-plugin-group@1.0.2',
-      '@deepseek-ai/dsh-scope@0.1.6-alpha.2',
-      '@deepseek-ai/dsh-timeout@0.1.6-alpha.2',
-      '@deepseek-ai/dsh-invariants@0.1.6-alpha.2',
-      '@deepseek-ai/dsh-browser-use@0.1.6-alpha.2',
-      '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp@0.1.6-alpha.2',
+      '@deepseek-ai/dsh-scope@0.1.7-alpha.1',
+      '@deepseek-ai/dsh-timeout@0.1.7-alpha.1',
+      '@deepseek-ai/dsh-invariants@0.1.7-alpha.1',
+      '@deepseek-ai/dsh-browser-use@0.1.7-alpha.1',
+      '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp@0.1.7-alpha.1',
     ])
   } finally {
     if (previousRegistry === undefined) delete process.env.DSH_BUILD_REGISTRY
@@ -383,13 +383,13 @@ test('npm 全局安装目录按平台归一化', () => {
 
 test('官方运行时把 DSH、启动 peer 与随包浏览器能力包一起装成 npm 顶层依赖', () => {
   assert.deepEqual(officialRuntimeNpmDependencies(), {
-    '@deepseek-ai/dsh': '0.1.6-alpha.2',
+    '@deepseek-ai/dsh': '0.1.7-alpha.1',
     '@deepseek-ai/cordis-plugin-group': '1.0.2',
-    '@deepseek-ai/dsh-scope': '0.1.6-alpha.2',
-    '@deepseek-ai/dsh-timeout': '0.1.6-alpha.2',
-    '@deepseek-ai/dsh-invariants': '0.1.6-alpha.2',
-    '@deepseek-ai/dsh-browser-use': '0.1.6-alpha.2',
-    '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp': '0.1.6-alpha.2',
+    '@deepseek-ai/dsh-scope': '0.1.7-alpha.1',
+    '@deepseek-ai/dsh-timeout': '0.1.7-alpha.1',
+    '@deepseek-ai/dsh-invariants': '0.1.7-alpha.1',
+    '@deepseek-ai/dsh-browser-use': '0.1.7-alpha.1',
+    '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp': '0.1.7-alpha.1',
   })
 })
 
@@ -669,13 +669,16 @@ test('随仓产物装配校验清单身份与版本，防止产物与清单漂�
 })
 
 test('真实产物通过 SHA256 校验（产物已入库且未被改动）', async () => {
-  const { BUNDLED_PLUGINS } = await import('../src/runtime/bundled-plugins.js')
   const { verifyFileSha256 } = await import('../src/infra/runtime-archive.js')
-  const vendored = BUNDLED_PLUGINS.filter(plugin => plugin.vendorTarball !== undefined)
-  assert.ok(vendored.length > 0, '至少要有一个随仓产物插件')
-  for (const plugin of vendored) {
-    const artifact = fileURLToPath(new URL(`../../${plugin.vendorTarball}`, import.meta.url))
-    // Throws on mismatch: this is what catches a hand-swapped binary blob.
+  // 扫仓库而不是扫清单：0.8.4 起 `BUNDLED_PLUGINS` 为空，但 `vendor/` 下的产物仍然入库，
+  // 且随时可能被重新启用。它们仍是二进制 blob——被人手换过就得在这里炸出来。
+  const vendorRoot = fileURLToPath(new URL('../../vendor', import.meta.url))
+  const artifacts = (await readdir(vendorRoot, { recursive: true }))
+    .map(entry => join(vendorRoot, entry))
+    .filter(path => path.endsWith('.tgz'))
+  assert.ok(artifacts.length > 0, 'vendor/ 下至少要有一个随仓产物')
+  for (const artifact of artifacts) {
+    assert.equal(existsSync(`${artifact}.sha256`), true, `缺少产物校验文件：${artifact}`)
     verifyFileSha256(artifact)
   }
 })

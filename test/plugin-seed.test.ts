@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { OFFICIAL_DSH_VERSION, OFFICIAL_LAUNCH_PEERS, OFFICIAL_RUNTIME, officialDshVersionOverrides } from '../src/runtime/bundled-plugins.js'
-import { applyPendingProfileUpdates, buildSeedPluginArgs, ensureAutoInstallPeersEnabled, isOfficialRuntimeLaunchable, missingOfficialLaunchPeers, officialRuntimeInstallArgs, planBundledPluginSeed, finalizeProfileBundlesAfterInstall, pnpmStoreRoot, pruneMissingProfileBundles, resolvePnpmStoreDir, seedBundledPlugins, shouldUsePackagedStore, stripOfficialProfileDependencies, writeOfficialRuntimeManifest } from '../src/profiles/plugin-seed.js'
+import { applyPendingProfileUpdates, assertOfficialProfileBundlesAvailable, buildSeedPluginArgs, ensureAutoInstallPeersEnabled, isOfficialRuntimeLaunchable, missingOfficialLaunchPeers, officialRuntimeInstallArgs, planBundledPluginSeed, finalizeProfileBundlesAfterInstall, pnpmStoreRoot, pruneMissingProfileBundles, resolvePnpmStoreDir, seedBundledPlugins, shouldUsePackagedStore, stripOfficialProfileDependencies, writeOfficialRuntimeManifest } from '../src/profiles/plugin-seed.js'
 
 const catalog = [
   { packageName: '@sample/plugin-a', version: '0.2.58' },
@@ -476,6 +476,57 @@ test('启动前会隔离缺少 patch 文件的第三方 bundle', async () => {
       dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', 'broken-plugin'] } },
     }), 'utf8')
     assert.deepEqual(await pruneMissingProfileBundles(root), ['broken-plugin'])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('官方 bundle 的 dsh.bundle.patch 是数组时，逐条都在盘上才算可用', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bundle-patch-array-'))
+  try {
+    const runtimeDir = join(root, 'runtime')
+    const dshDir = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh')
+    // 官方 bundle 嵌在 @deepseek-ai/dsh 自己的 node_modules 下，判据按 dsh 清单解析，
+    // 所以靶场必须复刻这个嵌套，否则会走出一条与安装包不同的判定路径。
+    const bundleDir = join(dshDir, 'node_modules', '@deepseek-ai', 'dsh-web-app')
+    await mkdir(join(bundleDir, 'presets'), { recursive: true })
+    await writeFile(join(dshDir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: OFFICIAL_DSH_VERSION }), 'utf8')
+    await writeFile(join(bundleDir, 'package.json'), JSON.stringify({
+      name: '@deepseek-ai/dsh-web-app',
+      dsh: { bundle: { patch: ['./cordis.patch.yml', './presets/standard.patch.yml'] } },
+    }), 'utf8')
+    await writeFile(join(bundleDir, 'cordis.patch.yml'), '[]\n', 'utf8')
+    await writeFile(join(bundleDir, 'presets', 'standard.patch.yml'), '[]\n', 'utf8')
+    const profileDir = join(root, 'profile')
+    await mkdir(profileDir)
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-web-app'] } },
+    }), 'utf8')
+    assert.doesNotThrow(() => assertOfficialProfileBundlesAvailable(profileDir, [runtimeDir]))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('官方 bundle 的 patch 数组缺任意一条都判为不可用', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bundle-patch-array-missing-'))
+  try {
+    const runtimeDir = join(root, 'runtime')
+    const dshDir = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh')
+    const bundleDir = join(dshDir, 'node_modules', '@deepseek-ai', 'dsh-web-app')
+    await mkdir(join(bundleDir, 'presets'), { recursive: true })
+    await writeFile(join(dshDir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: OFFICIAL_DSH_VERSION }), 'utf8')
+    await writeFile(join(bundleDir, 'package.json'), JSON.stringify({
+      name: '@deepseek-ai/dsh-web-app',
+      dsh: { bundle: { patch: ['./cordis.patch.yml', './presets/standard.patch.yml'] } },
+    }), 'utf8')
+    await writeFile(join(bundleDir, 'cordis.patch.yml'), '[]\n', 'utf8')
+    const profileDir = join(root, 'profile')
+    await mkdir(profileDir)
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-web-app'] } },
+    }), 'utf8')
+    assert.throws(() => assertOfficialProfileBundlesAvailable(profileDir, [runtimeDir]), /缺少内置 bundle/)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

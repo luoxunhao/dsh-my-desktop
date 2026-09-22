@@ -79,21 +79,21 @@ importers:
   plugins/dsh-my-desktop-settings:
     dependencies:
       '@deepseek-ai/cordis':
-        specifier: 4.0.2
-        version: 4.0.2
+        specifier: 4.0.3
+        version: 4.0.3
     devDependencies:
       '@deepseek-ai/dsh-client-locale':
-        specifier: file:vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-locale-0.1.6-alpha.2.tgz
-        version: file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-locale-0.1.6-alpha.2.tgz(@deepseek-ai/cordis@4.0.2)
+        specifier: file:vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-locale-0.1.7-alpha.1.tgz
+        version: file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-locale-0.1.7-alpha.1.tgz(@deepseek-ai/cordis@4.0.3)
       '@deepseek-ai/dsh-client-ui-renderer':
-        specifier: file:vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-renderer-0.1.6-alpha.2.tgz
-        version: file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-renderer-0.1.6-alpha.2.tgz(@deepseek-ai/cordis@4.0.2)
+        specifier: file:vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-renderer-0.1.7-alpha.1.tgz
+        version: file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-renderer-0.1.7-alpha.1.tgz(@deepseek-ai/cordis@4.0.3)
       '@deepseek-ai/dsh-client-ui-settings':
-        specifier: file:vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-settings-0.1.6-alpha.2.tgz
-        version: file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-settings-0.1.6-alpha.2.tgz(@deepseek-ai/cordis@4.0.2)
+        specifier: file:vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-settings-0.1.7-alpha.1.tgz
+        version: file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-settings-0.1.7-alpha.1.tgz(@deepseek-ai/cordis@4.0.3)
       '@deepseek-ai/dsh-client-ui-slots':
-        specifier: file:vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-slots-0.1.6-alpha.2.tgz
-        version: file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-slots-0.1.6-alpha.2.tgz(@deepseek-ai/cordis@4.0.2)
+        specifier: file:vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-slots-0.1.7-alpha.1.tgz
+        version: file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-slots-0.1.7-alpha.1.tgz(@deepseek-ai/cordis@4.0.3)
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3
@@ -173,47 +173,47 @@ packages:
       '@types/react':
         optional: true
 
-  '@deepseek-ai/cordis@4.0.2':
-    resolution: {integrity: sha512-asOnXP1TzFSFQlHb1iegDZp0z/8WD1c7YNrwJR/Tx2bzNuMXfcekE/I67Iv6SQXeLB4csxqCngzQKANP7gdw0g==}
+  '@deepseek-ai/cordis@4.0.3':
+    resolution: {integrity: sha512-ka+8UVh1JDTqkrEcgkfGwquM3lsBmLDsJMNAQUgumY65tI7IIrLFSERcNfde5kF1rtSSktOJmsC9WmJLt4rd8A==}
     hasBin: true
     peerDependencies:
-      '@deepseek-ai/cordis-plugin-include': ^1.0.7
-      '@deepseek-ai/cordis-plugin-loader': ^1.0.3
+      '@deepseek-ai/cordis-plugin-include': ^1.0.8
+      '@deepseek-ai/cordis-plugin-loader': ^1.0.4
     peerDependenciesMeta:
       '@deepseek-ai/cordis-plugin-include':
         optional: true
       '@deepseek-ai/cordis-plugin-loader':
         optional: true
 
-  '@deepseek-ai/cosmokit@1.8.3':
-    resolution: {integrity: sha512-qBo+ronVM6Eu2WNVJXi8JcMiqZ19T9BRIpV+5qJUFPXjGH/Z0QKcQMC/IZJ7L394YTOtJgcovbk9qP0w2GsBXQ==}
+  '@deepseek-ai/cosmokit@1.8.4':
+    resolution: {integrity: sha512-zOX7hFKtUQNY6GlZi1OCGY+bp6swWDf8aFNbCSAonVKEpEb5Tc2m3moUtNZscT7ksflIcVn+qgqYZo9QKUF+fQ==}
 
-  '@deepseek-ai/dsh-client-locale@file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-locale-0.1.6-alpha.2.tgz':
-    resolution: {integrity: sha512-n22prMdNVl+d7Bx/E16zhtTEXZqk9fUBRY7DScNem0kXftIwxuQCXQkOmDraNrbLUtA3WHPe6/4+8UpQ+1xIuA==, tarball: file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-locale-0.1.6-alpha.2.tgz}
-    version: 0.1.6-alpha.2
+  '@deepseek-ai/dsh-client-locale@file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-locale-0.1.7-alpha.1.tgz':
+    resolution: {integrity: sha512-2S1Ji9bBwU133HGyRPNNbsyiG2Jg5GR/NMY6FD46cYhZryUyYxz6irxHlqwI/t8Qk6cfDoIXj6i72ID49KPG0Q==, tarball: file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-locale-0.1.7-alpha.1.tgz}
+    version: 0.1.7-alpha.1
     peerDependencies:
-      '@deepseek-ai/cordis': ^4.0.2
+      '@deepseek-ai/cordis': ^4.0.3
 
-  '@deepseek-ai/dsh-client-ui-renderer@file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-renderer-0.1.6-alpha.2.tgz':
-    resolution: {integrity: sha512-zMcD2TqBsOml/92tTfn55CRmzGfqqtgbzC6nYFdWsxuG5EavtmMv8O9qqUHdgCqnOQQ5BveKgJigIFQuBxIjHw==, tarball: file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-renderer-0.1.6-alpha.2.tgz}
-    version: 0.1.6-alpha.2
+  '@deepseek-ai/dsh-client-ui-renderer@file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-renderer-0.1.7-alpha.1.tgz':
+    resolution: {integrity: sha512-hxcW9WeEW9mnT7pH5jN4i3S+vj7beh6I//zBhuRk9tvBeoWEgDzo4Z6Q1A1FD7Q6+fAkZ/l5QV2p4FIPhYDwwg==, tarball: file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-renderer-0.1.7-alpha.1.tgz}
+    version: 0.1.7-alpha.1
     peerDependencies:
-      '@deepseek-ai/cordis': ^4.0.2
+      '@deepseek-ai/cordis': ^4.0.3
 
-  '@deepseek-ai/dsh-client-ui-settings@file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-settings-0.1.6-alpha.2.tgz':
-    resolution: {integrity: sha512-90hotMS5Cdk2pYuOC/E4K9Giffze/UTGekXyB9yzsV2DSEaFAD0s0/Ie/NnVe8xmdTrLgFd2fxKTi6xDQIwooQ==, tarball: file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-settings-0.1.6-alpha.2.tgz}
-    version: 0.1.6-alpha.2
+  '@deepseek-ai/dsh-client-ui-settings@file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-settings-0.1.7-alpha.1.tgz':
+    resolution: {integrity: sha512-bFUKeO5KsxNteVwMhB8LOayPKXXkATUqPZMH2c9LJKnxCw9MliC3hmiMfHw3QjL7cFaoNA7/T9f49zmtIwvlFQ==, tarball: file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-settings-0.1.7-alpha.1.tgz}
+    version: 0.1.7-alpha.1
     peerDependencies:
-      '@deepseek-ai/cordis': ^4.0.2
+      '@deepseek-ai/cordis': ^4.0.3
 
-  '@deepseek-ai/dsh-client-ui-slots@file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-slots-0.1.6-alpha.2.tgz':
-    resolution: {integrity: sha512-yvmMjjwcVgy+PuOPljdYcMuqrhL0fNzwjT7Ar0pPZ5Jv8WcRFJGeo7s8vrW6/V1dcQyhgvPGvz+ozSu8MUmwUw==, tarball: file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-slots-0.1.6-alpha.2.tgz}
-    version: 0.1.6-alpha.2
+  '@deepseek-ai/dsh-client-ui-slots@file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-slots-0.1.7-alpha.1.tgz':
+    resolution: {integrity: sha512-lN4WVTzDb/t01KGmwjtZxjoqCIMKvi5kyY9/XPVkFjI+6q5RmorbCIyZiq84YJ2I36Cj2nYUQLB8KSRXjGMQbw==, tarball: file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-slots-0.1.7-alpha.1.tgz}
+    version: 0.1.7-alpha.1
     peerDependencies:
-      '@deepseek-ai/cordis': ^4.0.2
+      '@deepseek-ai/cordis': ^4.0.3
 
-  '@deepseek-ai/schemastery@3.18.2':
-    resolution: {integrity: sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ==}
+  '@deepseek-ai/schemastery@3.18.3':
+    resolution: {integrity: sha512-plZIZADuGLT/3PoYmUaEDZd0vG1rVahU89MevnxXsyQhFEi2D6DUuTJel7FUb3cUM9aCzqGMN99sHJe1RIushA==}
 
   '@electron-internal/extract-zip@1.0.5':
     resolution: {integrity: sha512-+bqFCP98pLI0Tt0XQo1TmlXtwjWchISndDOxCkEcIuUgXWpBnLyRI+2DU+mesvnMMX6L1XDqYNA0lXNDHd/yiA==}
@@ -2250,33 +2250,34 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@deepseek-ai/cordis@4.0.2':
+  '@deepseek-ai/cordis@4.0.3':
     dependencies:
-      '@deepseek-ai/cosmokit': 1.8.3
+      '@deepseek-ai/cosmokit': 1.8.4
       '@standard-schema/spec': 1.1.0
 
-  '@deepseek-ai/cosmokit@1.8.3': {}
+  '@deepseek-ai/cosmokit@1.8.4': {}
 
-  '@deepseek-ai/dsh-client-locale@file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-locale-0.1.6-alpha.2.tgz(@deepseek-ai/cordis@4.0.2)':
+  '@deepseek-ai/dsh-client-locale@file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-locale-0.1.7-alpha.1.tgz(@deepseek-ai/cordis@4.0.3)':
     dependencies:
-      '@deepseek-ai/cordis': 4.0.2
-      '@deepseek-ai/schemastery': 3.18.2
+      '@deepseek-ai/cordis': 4.0.3
+      '@deepseek-ai/schemastery': 3.18.3
 
-  '@deepseek-ai/dsh-client-ui-renderer@file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-renderer-0.1.6-alpha.2.tgz(@deepseek-ai/cordis@4.0.2)':
+  '@deepseek-ai/dsh-client-ui-renderer@file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-renderer-0.1.7-alpha.1.tgz(@deepseek-ai/cordis@4.0.3)':
     dependencies:
-      '@deepseek-ai/cordis': 4.0.2
+      '@deepseek-ai/cordis': 4.0.3
 
-  '@deepseek-ai/dsh-client-ui-settings@file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-settings-0.1.6-alpha.2.tgz(@deepseek-ai/cordis@4.0.2)':
+  '@deepseek-ai/dsh-client-ui-settings@file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-settings-0.1.7-alpha.1.tgz(@deepseek-ai/cordis@4.0.3)':
     dependencies:
-      '@deepseek-ai/cordis': 4.0.2
+      '@deepseek-ai/cordis': 4.0.3
+      '@deepseek-ai/schemastery': 3.18.3
 
-  '@deepseek-ai/dsh-client-ui-slots@file:plugins/dsh-my-desktop-settings/vendor/0.1.6-alpha.2/deepseek-ai-dsh-client-ui-slots-0.1.6-alpha.2.tgz(@deepseek-ai/cordis@4.0.2)':
+  '@deepseek-ai/dsh-client-ui-slots@file:plugins/dsh-my-desktop-settings/vendor/0.1.7-alpha.1/deepseek-ai-dsh-client-ui-slots-0.1.7-alpha.1.tgz(@deepseek-ai/cordis@4.0.3)':
     dependencies:
-      '@deepseek-ai/cordis': 4.0.2
+      '@deepseek-ai/cordis': 4.0.3
 
-  '@deepseek-ai/schemastery@3.18.2':
+  '@deepseek-ai/schemastery@3.18.3':
     dependencies:
-      '@deepseek-ai/cosmokit': 1.8.3
+      '@deepseek-ai/cosmokit': 1.8.4
       '@standard-schema/spec': 1.1.0
 
   '@electron-internal/extract-zip@1.0.5': {}

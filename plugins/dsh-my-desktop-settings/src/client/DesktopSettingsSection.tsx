@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   DesktopSettingsApi,
@@ -33,7 +33,7 @@ export interface DesktopNotificationSettings {
 export interface DesktopSettingsSectionInjected {
   readonly api: DesktopSettingsApi
   /** `dsh-desktop-notifications` namespace binding (registry surface). */
-  readonly notificationSettings?: SettingsScope<DesktopNotificationSettings>
+  readonly notificationSettings?: ConfigForm<DesktopNotificationSettings>
 }
 
 /** Renderer-composed props for the official settings section entry. */

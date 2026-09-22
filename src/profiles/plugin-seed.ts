@@ -665,11 +665,22 @@ function hasOfficialRuntimeBundle(runtimeDir: string, packageName: string): bool
     const resolvedManifestPath = createRequire(dshManifestPath).resolve(`${packageName}/package.json`)
     const packageDir = dirname(resolvedManifestPath)
     const manifest = JSON.parse(readFileSync(resolvedManifestPath, 'utf8')) as { name?: unknown, dsh?: { bundle?: { patch?: unknown } } }
-    const patch = manifest.dsh?.bundle?.patch
-    return manifest.name === packageName && typeof patch === 'string' && patch.trim() !== '' && isPackageFile(packageDir, patch)
+    return manifest.name === packageName && bundlePatchFiles(manifest.dsh?.bundle?.patch)
+      ?.every((patch) => isPackageFile(packageDir, patch)) === true
   } catch {
     return false
   }
+}
+
+/**
+ * `dsh.bundle.patch` 的一条或一组包内相对路径。官方 bundle 自
+ * `@deepseek-ai/dsh-web-app` 0.1.7-alpha.1 起改用数组声明多份 preset，
+ * 所以两种形状都要认；含非字符串项或为空的清单判为没有 patch。
+ */
+function bundlePatchFiles(patch: unknown): readonly string[] | undefined {
+  const entries = Array.isArray(patch) ? patch : [patch]
+  const files = entries.filter((entry): entry is string => typeof entry === 'string' && entry.trim() !== '')
+  return files.length === 0 || files.length !== entries.length ? undefined : files
 }
 
 function hasBundleManifest(profileDir: string, packageName: string): boolean {
@@ -681,9 +692,8 @@ function hasBundleManifest(profileDir: string, packageName: string): boolean {
       name?: unknown
       dsh?: { bundle?: { patch?: unknown } }
     }
-    const patch = manifest.dsh?.bundle?.patch
-    if (manifest.name !== packageName || typeof patch !== 'string' || patch.trim() === '') return false
-    return isPackageFile(packageDir, patch)
+    return manifest.name === packageName && bundlePatchFiles(manifest.dsh?.bundle?.patch)
+      ?.every((patch) => isPackageFile(packageDir, patch)) === true
   } catch {
     return false
   }

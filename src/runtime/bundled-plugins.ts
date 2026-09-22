@@ -22,7 +22,7 @@ export interface BundledPlugin {
 }
 
 /** 官方 DSH 家族统一锁死的版本。打包和在线升级都按这一个号对齐。 */
-export const OFFICIAL_DSH_VERSION = '0.1.6-alpha.2'
+export const OFFICIAL_DSH_VERSION = '0.1.7-alpha.1'
 
 /** 官方 DSH 运行时。从 npm 安装，不依赖本地 deepseek-harness 源码。 */
 export const OFFICIAL_RUNTIME: BundledPlugin = {
@@ -47,11 +47,11 @@ export const OFFICIAL_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/
  * 而 `reconcileProfileBundles` 对官方作用域包直接 `continue`（见 plugin-seed.ts），
  * 于是它们永远进不了 profile 的 `dsh.profile.bundles`。装进 profile 又不在 bundles 里
  * = 启动插件对账眼中"没声明却躺在磁盘上"的多余包，实测会在下一次启动被摘掉。
- * 放进随包运行时目录则完全绕开这条路径：profile 对账不管理运行时目录，且裸包名由
- * 运行时的解析根命中。
+ * 放进随包运行时目录则完全绕开这条路径：profile 对账不管理运行时目录。
  *
  * 随包 ≠ 启用：官方 provider 的设计是"仅在显式挂载后启用"，实际挂载由启动时生成的
- * browser-use overlay 负责（见 src/bridge/browser-use-overlay.ts）。
+ * browser-use overlay 负责（见 src/bridge/browser-use-overlay.ts）。该 overlay 必须用入口
+ * 文件的 `file:` URL —— profile 的 patch 以 profile 目录为解析基准，裸包名解析不到这里。
  */
 export const OFFICIAL_BROWSER_USE_PACKAGES: readonly BundledPlugin[] = [
   // 独占命名的 browserUse 服务槽位。
@@ -61,63 +61,29 @@ export const OFFICIAL_BROWSER_USE_PACKAGES: readonly BundledPlugin[] = [
 ]
 
 /**
- * 随桌面端离线仓库分发的社区插件清单。
+ * 随桌面端离线仓库分发的社区插件清单。**0.8.4 起为空：不再预装任何社区插件。**
  *
- * 这些插件在**出包时**由 `prepare-runtime` 从 npm 装配进 `store.tgz` 并打进安装包，
- * 因此首启 / 新建或切换 profile 时**不需要联网**即可补种进 profile。
+ * 清空的原因是这套机制把上游兼容性变成了发版阻塞，而不是因为它不工作：
  *
- * 注意构建代价：非空时 `pnpm run prepare-runtime` 会联网（`DSH_BUILD_REGISTRY`
- * 可指向镜像源），且装配时间与 store 体积都随清单增长——五个插件的 store.tgz
- * 实测约 110 MB（压缩后），插件自身代码合计约 27 MB，其余是共享依赖与 registry
- * 缓存元数据。插件升级需要重新出包。
+ * - 清单里每个插件都要按精确版本随包，而它们的 peer 普遍追不上官方家族的预发布号
+ *   （`dsh-vision-router` 2.1.6/2.1.7 的 peer 上限是 `0.1.5-rc.2`，2.2.0 才刚加到
+ *   `0.1.6-alpha.1`）⟹ 家族升版后它在渲染侧直接加载失败，而这只能靠真启动冒烟发现。
+ * - store 的离线元数据按 registry 域名分键（`<store>/cache/v11/metadata/<host>/<包>.jsonl`），
+ *   构建走镜像源、首启按默认源找 ⟹ 一次强制重装就能让离线补种全灭。
+ *
+ * 随包仍然只有官方运行时（含实验性 browser use，见 `OFFICIAL_BROWSER_USE_PACKAGES`）。
+ * 用户要这些插件时在设置页自行安装即可 —— 装它们走的 `desktopPnpm` 桥不受影响。
+ *
+ * 下面的 `vendorTarball` 机制、`prepare-runtime` 的 store 装配与首启补种路径都保留：
+ * 清单非空时它们照常工作（`STORE_PACKAGES.length === 0` 时整段跳过），重新启用只需往
+ * 这个数组里加条目。
  */
-export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
-  // 可视化插件市场。上游源码在 https://github.com/dsh-market/dsh-market，
-  // 本仓库不保留副本（参考源码目录已删除并 ignore，见 .gitignore）。
-  { packageName: 'dshmarket', version: '1.45.1' },
-  // 为纯文本模型补视觉能力 + 像素级视觉工具（Q&A / grounding / crop / OCR 等）。
-  // 上游：https://github.com/ysr666/dsh-vision-router
-  { packageName: 'dsh-vision-router', version: '2.1.6' },
-  // 上下文洞察与管理（context 看板 / 浏览器 / context 命令）。
-  // 上游：https://github.com/bowenliang123/dsh-context
-  { packageName: 'dsh-context', version: '0.50.0' },
-  // Codex 式工作区共享子目录：一个工作区外挂任意可写根（可跨盘符），权限仍限
-  // workspace-write。源码在 https://github.com/luoxunhao/dsh-codex-project。
-  //
-  // 走 vendorTarball 而不是 registry：npm 上最新的 0.11.0 是 0.1.2-alpha 线，
-  // peer 范围 ^0.1.0-rc.6 拒绝预发布的 0.1.5-rc.x / 0.1.6-alpha.x（semver 普通范围
-  // 不匹配预发布版本），且上游 README 明确该线宿主服务面已变、不再支持。适配
-  // 0.1.6-alpha.2 的 0.13.0 尚未发布，所以这里直接随包它**已构建好的产物**
-  // （lib/ 四个 js + 清单），本仓库不再构建它。
-  //
-  // 0.13.0 起「项目文件夹」「文件预览」改挂 DSH **原生**右侧栏
-  // （ctx.sidebarRightTabs + sidebar.right.pane.tab 键控 seat，随包 0.1.6-alpha.2
-  // 默认装配），并已删除 better-sidebar 回退线（better-sidebar ≥0.19 会把 tab 转发进
-  // 同一原生面，两条都注册会出两个 tab）。0.12.0 那份只有 better-sidebar 一条线，而
-  // 本 profile 不装 better-sidebar，于是侧边栏什么都不注册。
-  {
-    packageName: '@luoxunhao/dsh-codex-project',
-    version: '0.13.0',
-    vendorTarball: 'vendor/dsh-codex-project/luoxunhao-dsh-codex-project-0.13.0.tgz',
-  },
-  // 会话里选中一段文字 → 「添加到对话」：以一次性注入上下文搭在下一条真实用户消息上，
-  // 不进入消息正文。源码在 https://github.com/luoxunhao/dsh-quote。
-  //
-  // 同为 vendorTarball：npm 上只有 0.0.1，本地适配版是 0.1.0（未发布）。它的 peer
-  // 声明仍是 0.1.2-alpha 线，已实测在随包的 0.1.5-rc.2 上能正常激活（host 行 state=2、
-  // client 进名册、无错误）——它只真正 import @deepseek-ai/dsh-llm，宿主服务面没有踩到
-  // 那批变化。随包的是它 0.1.0 的构建产物。
-  {
-    packageName: 'dsh-quote',
-    version: '0.1.0',
-    vendorTarball: 'vendor/dsh-quote/dsh-quote-0.1.0.tgz',
-  },
-]
+export const BUNDLED_PLUGINS: readonly BundledPlugin[] = []
 
 /** 离线 store 只放社区插件。 */
 export const STORE_PACKAGES: readonly BundledPlugin[] = BUNDLED_PLUGINS
 
-/** 首次补种的完整清单：官方运行时 + 离线社区插件。 */
+/** 首次补种的完整清单：官方运行时，加上清单非空时的离线社区插件。 */
 export const SEEDED_PACKAGES: readonly BundledPlugin[] = [OFFICIAL_RUNTIME, ...BUNDLED_PLUGINS]
 
 /**

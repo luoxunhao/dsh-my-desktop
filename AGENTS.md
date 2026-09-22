@@ -137,6 +137,8 @@ pwsh -File scripts\build.ps1 -Target prepare-runtime   # 只装配随包运行�
    就是为保住它们而存在的——**不要手工删 `runtime-plugins/`**。
    注意 `store.tgz` 仍每次出包都从一次 install 重新打包（"插件清单变了 store 必须重建"
    这条硬约束没有松动），保住的只是缓存。
+   > **0.8.4 起这一条对出包不再适用**：`BUNDLED_PLUGINS` 为空 ⟹ `stagePluginStore()` 整段跳过
+   > ⟹ 既没有冷/热装配，包里也没有 `plugins-store.tgz`。机制还在，重新启用即恢复。
 2. **`release/` 无限累积**。实测 `release/` 到 **7.1 GB / 640 个文件**（十几个历史版本的
    exe+zip+blockmap 叠在一起）。`electron-builder` 每次要重写 `release\win-unpacked`（766 MB），
    目录越大、杀软扫描与文件枚举越慢。**发布完成后按需清理历史版本产物**（保留当前版本即可）。
@@ -170,6 +172,26 @@ Get-Content runtime-dsh\node_modules\@deepseek-ai\dsh\package.json | Select-Stri
 Remove-Item Env:\DSH_FORCE_RUNTIME_REBUILD
 pwsh -File scripts\build.ps1 -Target dist-local
 ```
+
+⚠️ **上面第 1 步必须从 Git Bash 里补 PATH 再跑**：`packDirectoryToTarGz`/`extractTarGz` 裸调
+`tar`（`src/infra/runtime-archive.ts`），而从 Git Bash 启动的 `pwsh` 会继承 MSYS 的 GNU tar，
+它不认 `E:\...` 盘符（当成 `host:path`）⟹ **打包步骤在 `tar -czf runtime-dsh.tgz` 上炸
+`Cannot connect to E: resolve failed`，而这一步在整条链的最后**，前面几百秒的联网装配全部白做。
+先 `export PATH="/c/Windows/System32:/c/Windows:$PATH"`，用 `tar --version` 确认是 bsdtar。
+（`-Target test` 的同类假失败见「测试说明」，同一个根因。）
+
+⚠️ **`DSH_FORCE_RUNTIME_REBUILD=1` 连插件 store 缓存一起清**（`prepare-runtime.ts` 的
+`if (forceRuntime) removePreparedPath(pluginRoot)`）——清单非空时，下一次装配社区插件必然是冷启动
+（实测 ~290s 那档）。0.8.4 这轮它还顺手暴露了一件事：`plugins-store.tgz` 从 126 MB 掉到 34 MB、
+成员从 17,518 项掉到 6,333 项，**看着像洗掉历史垃圾，实际同时洗掉了运行时要用的那套 registry
+元数据键**（见「出包后必须校验」末段）。这两件事混在同一个数字里、光看体积分辨不出来，
+最后以"取消预装社区插件"收场（`BUNDLED_PLUGINS` 为空，包里不再有 store）。
+
+⚠️ **压缩包与运行时目录是两份状态，判据只看目录**：`officialRuntimeIsCurrent()` 只读
+`runtime-dsh/node_modules/**/package.json` 的版本，**不看 `runtime-dsh.tgz`**；而
+`runtimeCurrent` 为真时整段打包（含 `packDirectoryToTarGz`）被跳过。于是"目录已是新版本、
+压缩包还是旧版本"会一路全绿出包。要么按上面第 2 步核对，要么直接删掉 `runtime-dsh.tgz`
+逼它重打包——出包后从包内解出来验版本是唯一能证明这件事的检查（见「出包后必须校验」）。
 
 升运行时还要同步下面这些（漏一处要么构建期报错、要么静默漂移）：
 
@@ -209,6 +231,33 @@ tar -xzf release\win-unpacked\resources\dsh-runtime.tgz -C $tmp "node_modules/@d
 
 第 2 条是唯一能证明"运行时真的换掉了、不是复用了旧缓存"的检查；`dist-local` 的静默陷阱
 只有它会暴露。
+
+### 第 3 条：离线首启冒烟（单元测试全绿也照样能坏）
+
+```powershell
+pwsh -File scripts\smoke-package.ps1 -ApplicationPath "release\win-unpacked\DSH My Desktop.exe"
+```
+
+它用临时 `DSH_HOME`/`userData` + `pnpm_config_offline=true` 真起一次应用，再校验随包插件是否
+补种到位。**只有这条能同时验到两件事**：DSH 子进程接不接受启动器注入的 `--patch`（0.8.2 的
+裸包名挂载就是它抓出来的），以及随包插件 store 能不能**离线**解析（下面这条坑）。
+
+### 随包 store 的离线元数据按 registry 域名分键（0.8.4 实测）
+
+`build.ps1` 默认把 `DSH_BUILD_REGISTRY` 指到 `registry.npmmirror.com`。pnpm 的版本元数据落在
+`<store>/cache/v11/metadata/<registry 域名>/<包>.jsonl`，而**运行时补种用的是 `buildRegistry()`
+的默认值 `registry.npmjs.org`**（应用进程里没有那个环境变量）。于是走一次
+`DSH_FORCE_RUNTIME_REBUILD=1` 之后装配出来的 store 只有 npmmirror 那套键 ⟹ 首启离线补种报
+`ERR_PNPM_NO_OFFLINE_META`，5 个社区插件一个都装不上。非 FORCE 路径因为 `cache/` 跨版本累积、
+两种键都在，所以这个坑平时不显形——0.8.3 那份 store 就是两种键都有的。
+
+**0.8.4 起不预装社区插件，所以这条只在 `BUNDLED_PLUGINS` 重新填上条目后才会踩到。** 踩到时的两条：
+
+- **看这一眼就知道有没有坏**：`ls release/win-unpacked/plugins/store/cache/v11/metadata/`
+  必须包含 `registry.npmjs.org`。
+- **修法很便宜**：不带 `DSH_BUILD_REGISTRY` 再跑一次 `node dist/scripts/prepare-runtime.js --stage-plugin`。
+  实测 48s、`reused 188 / downloaded 0`——内容寻址文件早就在了，缺的只是元数据。
+
 
 ## Linux / 信创适配现状（2026-09-21 WSL2 实测）
 
@@ -393,25 +442,36 @@ node bootstrap.mjs <dsh> --profile <当前profile> --patch <bridge.patch.yml> --
 **建/删 profile 的耗时差异很大**：create 要 seed（pnpm 装依赖，可能几十秒），
 select 近乎瞬时，所以超时按操作类型分别设置，且**永不挂死 HTTP 响应**。
 
-## 随包实验性 browser use：落点和四条硬限制
+## 随包实验性 browser use：落点和六条硬限制
 
 0.8.2 起随包 `@deepseek-ai/dsh-browser-use`（独占命名的 `browserUse` 槽位）与
 `@deepseek-ai/dsh-experimental-browser-use-playwright-mcp`（经固定版本 `@playwright/mcp`
-提供 Chromium 工具）。改这块前先读完下面四条，全部是实测踩出来的、光看代码看不出来。
+提供 Chromium 工具）；0.8.3 修掉其中两条导致的首启崩溃。改这块前先读完下面六条，
+全部是实测踩出来的、光看代码看不出来。
 
 - **落点是 `officialRuntimeDependencies()`（`OFFICIAL_BROWSER_USE_PACKAGES`），不是
   `BUNDLED_PLUGINS`。** 两个包都是 `@deepseek-ai/dsh-*` 官方作用域，而
   `reconcileProfileBundles` 对官方作用域名直接 `continue` ⟹ 它们永远进不了 profile 的
   `dsh.profile.bundles`。"没声明又在磁盘上"正是启动插件对账的清除条件：**把包装进 profile，
   应用一启动就没了**（实测：启动后被 `pnpm remove` 掉，`package.json`/`pnpm-lock.yaml`
-  回到原样；而应用运行期间动它反而没事）。运行时目录不在那条路径上，裸包名也由运行时的解析根命中。
+  回到原样；而应用运行期间动它反而没事）。运行时目录不在那条路径上。
   推论：新增任何官方作用域的随包能力都适用这条，不限于 browser use。
 - **随包 ≠ 启用。** 上游 provider 的设计是"仅在显式挂载后启用"。挂载由
   `src/bridge/browser-use-overlay.ts` 负责：每次启动在 `<userData>/browser-use/` 下物化
   `browser-use.patch.yml`，作为第三个 `--patch` 与桌面桥、设置插件的 overlay 一起传入
   （`main.ts` 两处启动路径都要加）。这样不需要动任何 profile 自己的 `cordis.patch.yml`；
   反过来说，**用户手写过的挂载行必须清掉**，否则同一个独占槽位会被注册两次。
-  `DSH_DISABLE_BROWSER_USE=1` 跳过挂载；运行时没装配这两个包时也不挂载（`browserUseRuntimeIsAvailable`）。
+  `DSH_DISABLE_BROWSER_USE=1` 跳过挂载；两个包的入口解析不到时也不挂载（`browserUseRuntimeIsAvailable`）。
+- **挂载必须写入口文件的绝对 `file:` URL，不能写裸包名。** 别指望"运行时目录里的包能被裸包名
+  解析到"——这个推断是**错的**，代价是一个坏版本：patch 的 `include` 以 profile 目录为解析基准，
+  裸包名解析不到只躺在运行时里的包，DSH 子进程直接 `ERR_MODULE_NOT_FOUND` 退出码 1
+  （0.8.2 实测）。桌面桥与设置插件的 overlay 一直用 `file:` URL，就是这个原因。入口在
+  `runtime/node_modules` 与 `runtime/node_modules/@deepseek-ai/dsh/node_modules` 两处找，
+  npm 会把版本冲突的包嵌进后者。
+- **overlay 这类"启动期顺手写个文件"的代码，必须自己建目录、且不能把异常抛给启动路径。**
+  0.8.2 的另一半故障就是 `writeFileSync` 到一个不存在的 `<userData>/browser-use/`，首启必抛
+  `ENOENT` 并让整条启动路径崩掉。可选能力出问题时正确行为是**退化成不挂载**（`mkdirSync` +
+  `try/catch → return undefined`），不是把应用带停。
 - **`PLAYWRIGHT_BROWSERS_PATH` 是无效的。** provider 构造子进程 env 时只保留
   `PLAYWRIGHT_MCP_*` 这些键且**全部置空**，所以任何"注入环境变量让 playwright 找随包浏览器"
   的想法都不成立，唯一通道是配置项 `executablePath`（→ `--executable-path`）。启动器按

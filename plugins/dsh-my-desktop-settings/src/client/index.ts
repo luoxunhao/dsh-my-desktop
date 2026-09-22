@@ -38,13 +38,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Services consumed by the Desktop settings surface. */
-export const inject = ['slots', 'locale', 'settingsScope']
+export const inject = ['slots', 'locale', 'configForms']
 
 /** Register the Desktop settings page in the official Settings shell. @param ctx - browser Cordis context. */
 export function apply(ctx: ClientContext): void {
-  const notificationSettings = ctx.settingsScope.bind<DesktopNotificationSettings>({
-    namespace: DESKTOP_NOTIFICATIONS_SETTINGS_NAMESPACE,
-  })
+  const notificationSettings = ctx.configForms.get<DesktopNotificationSettings>(
+    DESKTOP_NOTIFICATIONS_SETTINGS_NAMESPACE,
+  )
   const api = createDesktopSettingsApi()
   const t = ctx.locale.bind(DESKTOP_SETTINGS_LOCALE_NAMESPACE)
 

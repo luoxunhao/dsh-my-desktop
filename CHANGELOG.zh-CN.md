@@ -2,7 +2,59 @@
 
 [English](CHANGELOG.md)
 
+## 0.8.4
+
+随包 DSH 运行时升级，并**取消社区插件预装**。
+
+- **官方家族统一升到 `0.1.7-alpha.1`。** 随包运行时、三个启动 peer（`dsh-scope`/`dsh-timeout`/
+  `dsh-invariants`）与两个实验性 browser use 包都跟这一个号；`@deepseek-ai/cordis` 从 4.0.2 升到
+  4.0.3——新家族的 peer 要求是 `^4.0.3`，而 cordis 的 `latest` dist-tag 还停在 4.0.2，必须显式钉。
+  设置插件的 4 个 client 类型 tarball 同步入库到 `vendor/0.1.7-alpha.1/`。
+- **browser use 随该版本一起更新，挂载形态不变**：`mode: launch` + `headless: true` + 系统
+  Chrome/Edge 的 `executablePath`，仍由每次启动生成的 overlay 以 `file:` URL 挂进当前 profile，
+  `DSH_DISABLE_BROWSER_USE=1` 关闭。
+- **设置页适配新的客户端设置服务**：`ctx.settingsScope.bind({ namespace })` 改为
+  `ctx.configForms.get(namespace)`——新实现里 entry id 就是 settings namespace
+  （`client.js` 的 `get()` 直接把它当 `namespace` 用）。
+- **修掉一处会让应用起不来的判据**：`@deepseek-ai/dsh-web-app` 这一版把 bundle 清单的
+  `dsh.bundle.patch` 由字符串改成数组（官方开始随包多份 preset），而启动器的
+  `hasOfficialRuntimeBundle` 只认字符串 ⟹ 首启判定"官方运行时安装不完整：缺少内置 bundle
+  `@deepseek-ai/dsh-web-app`"，DSH 子进程根本不启动。现在两种形状都认，数组时要求**每一条** patch
+  文件都在盘上；缺任意一条仍判为不可用。
+- **不再预装任何社区插件**（`dshmarket`、`dsh-vision-router`、`dsh-context`、
+  `@luoxunhao/dsh-codex-project`、`dsh-quote`），安装包也不再带离线插件仓库，首启只解出官方
+  运行时。原因有两条，都是这一轮实测出来的：
+  1. 这些插件的 peer 追不上官方家族的预发布号 —— `dsh-vision-router` 的 peer 上限是
+     `0.1.5-rc.2`（2.2.0 才刚加到 `0.1.6-alpha.1`），升到 `0.1.7-alpha.1` 后它在渲染侧直接
+     **加载失败**，离线和放网两次启动都一样。随包预装等于把上游兼容性变成每次升版的阻塞项。
+  2. 离线仓库的元数据按 registry 域名分键，构建走镜像源、首启按默认源找，一次强制重装就能让
+     离线补种全灭（`ERR_PNPM_NO_OFFLINE_META`）。
+- **要这些插件请在设置页自行安装**：走桌面桥 `desktopPnpm` 的那条通道没有变动，装/卸/更新照旧。
+  随包机制（清单、store 装配、首启补种、`vendor/` 产物与校验）都保留着，重新启用只需往
+  `BUNDLED_PLUGINS` 里加条目。
+
+## 0.8.3
+
+缺陷修复版本。**0.8.2 请勿安装**：全新安装后的首次启动就会失败，DSH 子进程根本没起来，
+窗口停在错误页。
+
+- **启动器补建 overlay 自己的目录。** `prepareBrowserUseOverlay` 用 `writeFileSync` 往
+  `<userData>/browser-use/browser-use.patch.yml` 写，却没建 `browser-use/` 这一层——干净安装上
+  它必然不存在，于是每次启动都从启动路径里抛出 `ENOENT`。改为 `mkdirSync(..., { recursive: true })`，
+  并加一条原则：**可选能力不许把启动器带崩**——写失败一律退化成"不挂载"，不再外抛。
+- **overlay 改用 `file:` URL 挂载，不用裸包名。** patch 的 `include` 是以 **profile 目录**
+  为解析基准的，裸包名 `@deepseek-ai/dsh-experimental-browser-use-*` 在随包运行时里找不到，
+  子进程直接 `ERR_MODULE_NOT_FOUND`（退出码 1）。启动器自己的桌面桥、设置插件 overlay 早就在用
+  绝对 `file:` URL，正是这个原因；browser-use 现在照同样办法做，在运行时树里解析每个包的宿主入口
+  （顶层，或嵌在 `@deepseek-ai/dsh` 下的那一层都认）。
+- **挂载以"入口真能解析"为前提**：没跑过 `prepare-runtime` 的开发树会跳过挂载，而不是把启动搞坏。
+- browser-use 其余部分与 0.8.2 相同：同一批随包包、`mode: launch`、`headless: true`、
+  用系统 Chrome/Edge 的 `executablePath`、`DSH_DISABLE_BROWSER_USE=1` 关闭开关。
+
 ## 0.8.2
+
+> **请勿安装。** 已被 0.8.3 取代——browser-use overlay 的目录没被创建，且用裸包名挂载，
+> 而 profile 解析不到它，干净安装上每次启动 DSH 子进程都会中途退出。
 
 **实验性 browser use 随包发布，并默认挂载**：模型可以在任意 profile 里驱动真实的 Chromium
 标签页，用户不需要自己装任何东西。

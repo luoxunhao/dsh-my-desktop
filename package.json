@@ -1,6 +1,6 @@
 {
   "name": "deepseek-harness-desktop",
-  "version": "0.8.2",
+  "version": "0.8.4",
   "description": "DeepSeek Harness 原生桌面启动器",
   "author": "luoxunhao",
   "desktopName": "DSH My Desktop",
@@ -21,7 +21,7 @@
       "linux-arm64": "23A5637C2470FDE09FCC1ACC77C1B92E04E3D7E3E6E80FF7DF6F5831958D1477",
       "linux-x64": "89AF8424DD53E560B1933F87BA650D8BF57C83CA5A04600EEFB31F416AABBAE7"
     },
-    "bundledDshVersion": "0.1.6-alpha.2"
+    "bundledDshVersion": "0.1.7-alpha.1"
   },
   "main": "dist/src/main.js",
   "scripts": {
@@ -119,14 +119,6 @@
       {
         "from": "runtime-dsh.tgz.sha256",
         "to": "dsh-runtime.tgz.sha256"
-      },
-      {
-        "from": "runtime-plugins/store.tgz",
-        "to": "plugins-store.tgz"
-      },
-      {
-        "from": "runtime-plugins/store.tgz.sha256",
-        "to": "plugins-store.tgz.sha256"
       },
       {
         "from": "assets/icon.png",
