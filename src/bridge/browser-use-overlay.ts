@@ -8,6 +8,10 @@
  * 本模块负责第二步：每次启动在 userData 下物化一个 `--patch` overlay，把两个 provider
  * 挂进当前选中的 profile，与 desktop 桥、桌面设置插件走的是同一条 overlay 通道。
  *
+ * 挂载写的是**入口文件的绝对 `file:` URL，不是裸包名**：patch 的 include 以 profile 目录
+ * 为解析基准，裸包名找不到只躺在运行时目录里的包，DSH 子进程会直接 `ERR_MODULE_NOT_FOUND`
+ * 退出（0.8.2 首发实测过，别改回去）。
+ *
  * 为什么必须由启动器挂、不能让用户装进 profile：这两个包是 `@deepseek-ai/dsh-*` 官方
  * 作用域，`reconcileProfileBundles` 对官方名直接跳过 ⟹ 进不了 `dsh.profile.bundles`，
  * 于是躺在 profile 里会被启动插件对账当成多余包摘掉（0.8.1 那轮实测过）。
@@ -19,8 +23,9 @@
  * （`%LOCALAPPDATA%\ms-playwright`），由 provider 在真正用到浏览器时报错。
  */
 
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 /** overlay 里两个挂载点的稳定 id：用户可在自己的 cordis.patch.yml 里按 id 覆盖或禁用。 */
 export const BROWSER_USE_PROVIDER_ID = 'browser-use'
@@ -71,24 +76,58 @@ export function resolveChromiumExecutable(options: BrowserUseOverlayOptions = {}
 }
 
 /**
- * 随包运行时里是否真的装配了 provider。
+ * 在随包运行时目录里解析一个包的宿主入口文件。
  *
- * 开发树可能还没跑过 `prepare-runtime`，此时挂一个解析不到的 bundle 只会让每次启动多两条
- * 噪音，所以直接不挂。检查顶层与 DSH 自身嵌套两处：npm 全局安装把依赖放在哪一层不完全由
- * 我们决定。
+ * 顶层与 DSH 自身嵌套两处都要看：npm 安装会把版本冲突的包嵌套进
+ * `@deepseek-ai/dsh/node_modules`，放在哪一层不完全由我们决定。
+ */
+export function resolveRuntimePackageEntry(
+  runtimeRoot: string,
+  packageName: string,
+  options: Pick<BrowserUseOverlayOptions, 'fileExists'> = {},
+): string | undefined {
+  const fileExists = options.fileExists ?? existsSync
+  const roots = [
+    join(runtimeRoot, 'node_modules'),
+    join(runtimeRoot, 'node_modules', '@deepseek-ai', 'dsh', 'node_modules'),
+  ]
+  for (const root of roots) {
+    const dir = join(root, ...packageName.split('/'))
+    const manifestPath = join(dir, 'package.json')
+    if (!fileExists(manifestPath)) continue
+    let main = 'lib/index.js'
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { main?: unknown }
+      if (typeof manifest.main === 'string' && manifest.main !== '') main = manifest.main
+    } catch {
+      // 清单读不动就按官方包的通用约定 lib/index.js 再试一次，还不存在就走下面的 undefined。
+    }
+    const entry = join(dir, main)
+    if (fileExists(entry)) return entry
+  }
+  return undefined
+}
+
+/**
+ * 随包运行时里是否真的装配了两个 provider（以入口可解析为准）。
+ *
+ * 开发树可能还没跑过 `prepare-runtime`。这时若照样挂载，DSH 子进程是**直接退出**而不是
+ * 忽略（实测 `ERR_MODULE_NOT_FOUND` → 退出码 1），所以必须提前判掉。
  */
 export function browserUseRuntimeIsAvailable(
   runtimeRoot: string,
   options: Pick<BrowserUseOverlayOptions, 'fileExists'> = {},
 ): boolean {
-  const fileExists = options.fileExists ?? existsSync
-  const nested = join(runtimeRoot, 'node_modules', '@deepseek-ai', 'dsh', 'node_modules')
-  return [join(runtimeRoot, 'node_modules'), nested]
-    .some((root) => fileExists(join(root, ...BROWSER_USE_PACKAGES.chromium.split('/'), 'package.json')))
+  return Object.values(BROWSER_USE_PACKAGES)
+    .every((packageName) => resolveRuntimePackageEntry(runtimeRoot, packageName, options) !== undefined)
 }
 
 /**
- * 物化 overlay 并返回它的路径；返回 undefined 表示本次启动不挂载（被禁用 / 运行时没装配）。
+ * 物化 overlay 并返回它的路径；返回 undefined 表示本次启动不挂载（被禁用 / 运行时没装配 /
+ * 写入失败）。
+ *
+ * **写入失败绝不外抛**：这是可选能力，让它把整个启动器带崩是更糟的结果——0.8.2 就因为漏建
+ * destDir 在每次全新安装的首启上抛 ENOENT，DSH 子进程根本没起来。失败时宁可没有浏览器工具。
  *
  * 写成 JSON：JSON 是合法 YAML，且这样不必引入 YAML 序列化依赖，和 desktop 桥、设置插件的
  * overlay 生成方式保持一致。
@@ -110,9 +149,21 @@ export function prepareBrowserUseOverlay(
     ...(executablePath === undefined ? {} : { executablePath }),
   }
   const overlayPath = join(destDir, 'browser-use.patch.yml')
-  writeFileSync(overlayPath, `${JSON.stringify([{ insert: [
-    { id: BROWSER_USE_PROVIDER_ID, name: BROWSER_USE_PACKAGES.provider },
-    { id: BROWSER_USE_PLAYWRIGHT_MCP_ID, name: BROWSER_USE_PACKAGES.chromium, config: chromiumConfig },
-  ] }], undefined, 2)}\n`, 'utf8')
+  // 必须写 file: URL，不能写裸包名：patch 的 include 以 **profile 目录** 为解析基准，
+  // 裸包名解析不到随包运行时里的包，DSH 子进程会直接 ERR_MODULE_NOT_FOUND 退出（0.8.2 实测）。
+  // 与桌面桥、桌面设置插件的 overlay 一样走绝对 file URL，顺带兼容空格与中文目录。
+  const providerEntry = resolveRuntimePackageEntry(runtimeRoot, BROWSER_USE_PACKAGES.provider, options)
+  const chromiumEntry = resolveRuntimePackageEntry(runtimeRoot, BROWSER_USE_PACKAGES.chromium, options)
+  if (providerEntry === undefined || chromiumEntry === undefined) return undefined
+  try {
+    // destDir 是 userData 下的子目录，全新安装的首启上它还不存在——writeFileSync 不会代建。
+    mkdirSync(destDir, { recursive: true })
+    writeFileSync(overlayPath, `${JSON.stringify([{ insert: [
+      { id: BROWSER_USE_PROVIDER_ID, name: pathToFileURL(providerEntry).href },
+      { id: BROWSER_USE_PLAYWRIGHT_MCP_ID, name: pathToFileURL(chromiumEntry).href, config: chromiumConfig },
+    ] }], undefined, 2)}\n`, 'utf8')
+  } catch {
+    return undefined
+  }
   return overlayPath
 }
